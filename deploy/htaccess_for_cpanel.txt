@@ -1,0 +1,21 @@
+# SPA fallback for single-page app (Expo web static export)
+# Place this file as `.htaccess` in the folder you upload to your cPanel (e.g., public_html or a subfolder).
+# If deploying to a subfolder (example: https://example.com/myapp/), set `RewriteBase /myapp/` below.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # If the request matches an existing file or directory, serve it directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Otherwise rewrite to index.html (SPA entry)
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# Notes:
+# - For subfolder deployment, change `RewriteBase /` to `RewriteBase /your-subfolder/` and the last rule
+#   to `RewriteRule . /your-subfolder/index.html [L]`.
+# - Ensure `index.html` and the asset folders from the `dist` export are uploaded alongside this file.

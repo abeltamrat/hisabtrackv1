@@ -1,0 +1,158 @@
+import React, { createContext, useContext, useMemo } from 'react';
+import { useAppSettings } from './AppSettingsContext';
+
+// Minimal dictionary-based i18n
+const dictionaries: Record<string, Record<string, string>> = {
+  en: {
+    greetingMorning: 'Good Morning 👋',
+    greetingAfternoon: 'Good Afternoon 👋',
+    greetingEvening: 'Good Evening 👋',
+    welcomeBack: 'Welcome Back',
+    quickActions: 'Quick Actions',
+    dashboard: 'Dashboard',
+    transactions: 'Transactions',
+    reports: 'Reports',
+    recurring: 'Recurring',
+    budget: 'Budget',
+    loans: 'Loans',
+    calculator: 'Calculator',
+    settings: 'Settings',
+    accounts: 'Accounts',
+    loansDebtsTitle: 'Loans & Debts',
+    loansGiven: 'Loans Given',
+    debtsOwed: 'Debts Owed',
+    totalBalance: 'Total Balance',
+    income: 'Income',
+    expense: 'Expense',
+    addNew: 'Add New',
+    mainMenu: 'Main Menu',
+    financeManagement: 'Finance Management',
+    toolsFeatures: 'Tools & Features',
+    more: 'More',
+    resetAccount: 'Reset Account',
+    logout: 'Logout',
+    searchTransactions: 'Search transactions...',
+    noTransactionsFound: 'No Transactions Found',
+    tryAdjustingSearch: 'Try adjusting your search or filters',
+    startAddingTransactions: 'Start adding transactions to see them here',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    total: 'Total',
+    paid: 'Paid',
+    remaining: 'Remaining',
+    confirmPayment: 'Confirm Payment',
+    recordPaymentAmount: 'Record payment amount below:',
+    selectAccount: 'Select Account',
+    cancel: 'Cancel',
+    confirm: 'Confirm',
+    manual: 'Manual',
+    fullPaid: 'Full Paid',
+    grant: 'Grant',
+    quickStats: 'Quick Stats',
+    expenseDistribution: 'Expense Distribution',
+    historicalAnalysis: 'Historical Analysis',
+    pastSixMonths: 'Past 6 Months',
+    trendMonthly: 'Monthly Trend',
+    trendDaily: 'Daily Trend',
+    spendingPattern: 'Spending Pattern',
+    incomeVsExpense: 'Income vs Expense',
+    financialHealth: 'Financial Health',
+    totalIncome: 'Total Income',
+    totalExpenses: 'Total Expenses',
+    forecastNextMonth: 'FORECAST (Next Month)',
+    basedOn3MonthAverage: 'Based on 3-month average',
+    avgMonthlyExpense: 'Avg Monthly Expense',
+    topCategory: 'Top Category',
+    totalTransactions: 'Total Transactions',
+    avgDailyExpense: 'Avg Daily Expense',
+    noTrendData: 'No trend data',
+    noSufficientData: 'No sufficient data',
+  },
+  es: {
+    greetingMorning: 'Buenos días 👋',
+    greetingAfternoon: 'Buenas tardes 👋',
+    greetingEvening: 'Buenas noches 👋',
+    welcomeBack: 'Bienvenido de nuevo',
+    quickActions: 'Acciones rápidas',
+    dashboard: 'Panel',
+    transactions: 'Transacciones',
+    reports: 'Informes',
+    recurring: 'Recurrente',
+    budget: 'Presupuesto',
+    loans: 'Préstamos',
+    calculator: 'Calculadora',
+    settings: 'Configuración',
+    accounts: 'Cuentas',
+    loansDebtsTitle: 'Préstamos y Deudas',
+    loansGiven: 'Préstamos otorgados',
+    debtsOwed: 'Deudas contraídas',
+    totalBalance: 'Saldo total',
+    income: 'Ingresos',
+    expense: 'Gastos',
+    addNew: 'Agregar nuevo',
+    mainMenu: 'Menú principal',
+    financeManagement: 'Gestión financiera',
+    toolsFeatures: 'Herramientas y funciones',
+    more: 'Más',
+    resetAccount: 'Restablecer cuenta',
+    logout: 'Cerrar sesión',
+    searchTransactions: 'Buscar transacciones...',
+    noTransactionsFound: 'No se encontraron transacciones',
+    tryAdjustingSearch: 'Intenta ajustar tu búsqueda o filtros',
+    startAddingTransactions: 'Comienza a agregar transacciones para verlas aquí',
+    today: 'Hoy',
+    yesterday: 'Ayer',
+    total: 'Total',
+    paid: 'Pagado',
+    remaining: 'Restante',
+    confirmPayment: 'Confirmar pago',
+    recordPaymentAmount: 'Registre el monto del pago:',
+    selectAccount: 'Seleccionar cuenta',
+    cancel: 'Cancelar',
+    confirm: 'Confirmar',
+    manual: 'Manual',
+    fullPaid: 'Pago total',
+    grant: 'Conceder',
+    quickStats: 'Estadísticas rápidas',
+    expenseDistribution: 'Distribución de gastos',
+    historicalAnalysis: 'Análisis histórico',
+    pastSixMonths: 'Últimos 6 meses',
+    trendMonthly: 'Tendencia mensual',
+    trendDaily: 'Tendencia diaria',
+    spendingPattern: 'Patrón de gasto',
+    incomeVsExpense: 'Ingresos vs Gastos',
+    financialHealth: 'Salud financiera',
+    totalIncome: 'Ingresos totales',
+    totalExpenses: 'Gastos totales',
+    forecastNextMonth: 'PRONÓSTICO (Próximo mes)',
+    basedOn3MonthAverage: 'Basado en el promedio de 3 meses',
+    avgMonthlyExpense: 'Gasto mensual promedio',
+    topCategory: 'Categoría principal',
+    totalTransactions: 'Transacciones totales',
+    avgDailyExpense: 'Gasto diario promedio',
+    noTrendData: 'Sin datos de tendencia',
+    noSufficientData: 'Datos insuficientes',
+  },
+};
+
+interface I18nContextType {
+  t: (key: string) => string;
+}
+
+const I18nContext = createContext<I18nContextType | undefined>(undefined);
+
+export function I18nProvider({ children }: { children: React.ReactNode }) {
+  const { language } = useAppSettings();
+  const dict = dictionaries[language] || dictionaries.en;
+
+  const t = (key: string) => dict[key] ?? key;
+
+  const value = useMemo(() => ({ t }), [dict]);
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+export function useI18n() {
+  const ctx = useContext(I18nContext);
+  if (!ctx) throw new Error('useI18n must be used within I18nProvider');
+  return ctx;
+}
