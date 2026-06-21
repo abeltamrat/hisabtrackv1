@@ -3,7 +3,7 @@ import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { BankService } from '@/services/BankService';
 import LocalAssetService from '@/services/LocalAssetService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
-import { RootState } from '@/store';
+import { AppDispatch, RootState } from '@/store';
 import { addAccount, deleteAccount, fetchAccounts, updateAccount } from '@/store/slices/accountsSlice';
 import { Bank } from '@/types/bank';
 import { Account, AccountType } from '@/types/database';
@@ -19,7 +19,7 @@ import { DraftTransactionService } from '@/services/DraftTransactionService';
 
 export default function Accounts() {
   const router = useRouter();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const accounts = useSelector((state: RootState) => state.accounts.items);
   const transactions = useSelector((state: RootState) => state.transactions.items);
   const { preferLocalLogos, formatCurrency } = useAppSettings();
@@ -362,7 +362,6 @@ export default function Accounts() {
   };
 
   useEffect(() => {
-    // @ts-ignore
     dispatch(fetchAccounts());
     loadDraftCounts();
   }, [dispatch, accounts.length]);
@@ -424,7 +423,6 @@ export default function Accounts() {
                   const removed = await db.removeDuplicateTransactions(account.id);
                   totalRemoved += removed;
                 }
-                // @ts-ignore
                 dispatch(fetchAccounts());
                 Alert.alert('Success', `Removed ${totalRemoved} duplicate transaction(s).`);
               } else {
@@ -455,7 +453,6 @@ export default function Accounts() {
                 for (const account of accounts) {
                   await db.recalculateAccountBalance(account.id);
                 }
-                // @ts-ignore
                 dispatch(fetchAccounts());
                 Alert.alert('Success', 'Balances have been recalculated.');
               } else {
