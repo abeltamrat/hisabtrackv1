@@ -4,7 +4,7 @@ import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useI18n } from '@/contexts/I18nContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { RootState } from '@/store';
+import { AppDispatch, RootState } from '@/store';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import ExportService from '@/services/ExportService';
 import { hasTag } from '@/utils/tags';
@@ -76,7 +76,7 @@ export default function TransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { type, tag } = params as { type?: string; tag?: string };
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const { items: transactions, loading } = useSelector((state: RootState) => state.transactions);
   const accounts = useSelector((state: RootState) => state.accounts.items);
   const { categories } = useTransactions();
@@ -126,7 +126,6 @@ export default function TransactionsScreen() {
   };
 
   useEffect(() => {
-    // @ts-ignore
     dispatch(fetchTransactions());
   }, [dispatch]);
 

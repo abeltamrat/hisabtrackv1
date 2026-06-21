@@ -1,6 +1,7 @@
 import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { NotificationService } from '@/services/NotificationService';
+import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
 import { generateUUID } from '@/utils/uuid';
@@ -156,9 +157,8 @@ const PlatformTimePicker = ({ value, onChange }: { value: Date, onChange: (date:
 
 export default function RecurringTransactionsScreen() {
   const router = useRouter();
-  const dispatch = useDispatch();
-  // @ts-ignore
-  const { items: accounts } = useSelector((state: any) => state.accounts);
+  const dispatch = useDispatch<AppDispatch>();
+  const { items: accounts } = useSelector((state: RootState) => state.accounts);
   const { categories } = useTransactions();
   const { formatCurrency } = useAppSettings();
 
@@ -198,7 +198,6 @@ export default function RecurringTransactionsScreen() {
   useEffect(() => {
     void loadRecurringTransactions();
     NotificationService.requestPermissions();
-    // @ts-ignore
     dispatch(fetchAccounts());
   }, []);
 
@@ -384,7 +383,6 @@ export default function RecurringTransactionsScreen() {
           if (!isDuplicate) {
             try {
               if (current.type === 'TRANSFER' && current.toAccountId) {
-                // @ts-ignore
                 await dispatch(addTransaction({
                   account_id: current.accountId,
                   to_account_id: current.toAccountId,
@@ -396,7 +394,6 @@ export default function RecurringTransactionsScreen() {
                   date: current.nextDate,
                 }));
               } else if (current.type !== 'TRANSFER') {
-                // @ts-ignore
                 await dispatch(addTransaction({
                   account_id: current.accountId,
                   type: current.type,
@@ -435,9 +432,7 @@ export default function RecurringTransactionsScreen() {
         await AsyncStorage.setItem('@hisabtrack_recurring_transactions', raw);
       }
       setRecurringTransactions(updated);
-      // @ts-ignore
       dispatch(fetchAccounts());
-      // @ts-ignore
       dispatch(fetchTransactions());
       console.log('[Recurring catch-up] Processed overdue recurring transactions.');
     }
@@ -619,7 +614,6 @@ export default function RecurringTransactionsScreen() {
 
   const handleExecuteNow = async (recurring: RecurringTransaction) => {
     try {
-      // @ts-ignore
       const txResult = await dispatch(addTransaction({
         account_id: recurring.accountId,
         type: recurring.type,
@@ -677,7 +671,6 @@ export default function RecurringTransactionsScreen() {
         Alert.alert('Success', 'Transaction created!');
       }
 
-      // @ts-ignore
       dispatch(fetchTransactions());
     } catch (error) {
       if (Platform.OS === 'web') {
