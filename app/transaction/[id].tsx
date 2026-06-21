@@ -4,16 +4,15 @@ import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { AppDispatch, RootState } from '@/store';
 import { deleteTransaction } from '@/store/slices/transactionsSlice';
 import { FontAwesome } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 
 export default function TransactionDetail() {
-  const Router = require('expo-router');
-  const useParamsHook = (Router as any).useLocalSearchParams ?? (Router as any).useSearchParams ?? (() => ({}));
-  const { id } = useParamsHook() as { id?: string };
-  const router = (Router as any).useRouter ? (Router as any).useRouter() : (Router as any).useNavigation?.() ?? ({} as any);
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const router = useRouter();
 
   const dispatch = useDispatch<AppDispatch>();
   const { items: transactions } = useSelector((state: RootState) => state.transactions);
@@ -27,8 +26,19 @@ export default function TransactionDetail() {
     return (
       <View className="flex-1 bg-slate-50 dark:bg-background-dark">
         <StatusBar style="auto" />
-        <View className="p-6">
-          <Text className="text-slate-500">Transaction not found</Text>
+        <View className="px-6 pt-6 pb-4 flex-row items-center">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl justify-center items-center shadow-sm border border-slate-100 dark:border-slate-700"
+            style={{ elevation: 2 }}
+          >
+            <FontAwesome name="arrow-left" size={16} color="#64748b" />
+          </TouchableOpacity>
+          <Text className="text-slate-900 dark:text-white font-bold text-lg ml-4">Transaction Details</Text>
+        </View>
+        <View className="flex-1 items-center justify-center px-6">
+          <FontAwesome name="exclamation-circle" size={48} color="#cbd5e1" />
+          <Text className="text-slate-500 text-base mt-4">Transaction not found</Text>
         </View>
       </View>
     );
@@ -76,9 +86,9 @@ export default function TransactionDetail() {
           className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl justify-center items-center shadow-sm border border-slate-100 dark:border-slate-700"
           style={{ elevation: 2 }}
         >
-          <FontAwesome name="arrow-left" size={16} color="#000" />
+          <FontAwesome name="arrow-left" size={16} color="#64748b" />
         </TouchableOpacity>
-        <Text className="font-bold text-lg dark:text-white">Transaction Details</Text>
+        <Text className="text-slate-900 dark:text-white font-bold text-lg">Transaction Details</Text>
         <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={() => router.push({ pathname: '/modal', params: { edit: transaction.id } })}
