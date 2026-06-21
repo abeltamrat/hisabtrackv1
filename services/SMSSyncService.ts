@@ -24,6 +24,10 @@ export class SMSSyncService {
     this.SYNC_STATUS_LISTENER = listener;
   }
 
+  static clearSyncStatusListener() {
+    this.SYNC_STATUS_LISTENER = null;
+  }
+
   private static emitStatus(accountId: string, status: string, progress: number) {
     if (this.SYNC_STATUS_LISTENER) {
       this.SYNC_STATUS_LISTENER({ accountId, status, progress });
@@ -179,20 +183,32 @@ export class SMSSyncService {
 
       // Cache existing draft sms_ids to speed up duplicate check
       const existingDrafts = await DraftTransactionService.getAll();
-      const existingSmsIds = new Set(existingDrafts.map(d => d.sms_id));
+
 
       for (let i = 0; i < allMessages.length; i++) {
         const sms = allMessages[i];
         const progress = 30 + (Math.floor((i / allMessages.length) * 60));
         if (i % 5 === 0) this.emitStatus(account.id, `Parsing message ${i + 1}/${allMessages.length}...`, progress);
 
-        if (existingSmsIds.has(sms.id)) {
+        const parsed = EnhancedSMSParser.parseTransaction(sms.body, sms.address, sms.id, sms.date);
+        if (!parsed) continue;
+
+        const isAlreadyInDrafts = existingDrafts.some(d => {
+          if (sms.id && d.sms_id === sms.id) return true;
+          if (parsed.smsId && d.sms_id === parsed.smsId) return true;
+          if (parsed.referenceNumber && d.reference_number === parsed.referenceNumber) return true;
+
+          const timeWindow = 6 * 60 * 60 * 1000;
+          const amountMatch = Math.abs(d.amount - parsed.amount) < 0.01;
+          const typeMatch = d.type === parsed.type;
+          const dateMatch = Math.abs(d.date - parsed.date) < timeWindow;
+          return amountMatch && typeMatch && dateMatch;
+        });
+
+        if (isAlreadyInDrafts) {
           result.alreadyRecorded++;
           continue;
         }
-
-        const parsed = EnhancedSMSParser.parseTransaction(sms.body, sms.address, sms.id, sms.date);
-        if (!parsed) continue;
 
         result.parsedTransactions++;
 

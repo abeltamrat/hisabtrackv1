@@ -74,4 +74,47 @@ export async function getSmsNumbers(): Promise<string[]> {
   }
 }
 
-export default { requestSmsPermission, getSmsNumbers };
+/**
+ * Read SMS messages on Android and return sender IDs with a one-line preview of the most recent message.
+ */
+export async function getSmsWithPreview(): Promise<Array<{ sender: string; preview: string }>> {
+  if (Platform.OS !== 'android') return [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const SmsAndroid = require('react-native-get-sms-android');
+    return await new Promise<Array<{ sender: string; preview: string }>>((resolve) => {
+      try {
+        const filter = JSON.stringify({ box: 'inbox' });
+        SmsAndroid.list(
+          filter,
+          () => resolve([]),
+          (_count: number, smsList: string) => {
+            try {
+              const arr = JSON.parse(smsList) as Array<{ address: string; body: string; date: number }>;
+              const map = new Map<string, { preview: string; date: number }>();
+              for (const sms of arr) {
+                if (!sms.address) continue;
+                const existing = map.get(sms.address);
+                if (!existing || sms.date > existing.date) {
+                  map.set(sms.address, {
+                    preview: (sms.body || '').split('\n')[0].trim().slice(0, 80),
+                    date: sms.date,
+                  });
+                }
+              }
+              resolve(Array.from(map.entries()).map(([sender, { preview }]) => ({ sender, preview })));
+            } catch {
+              resolve([]);
+            }
+          }
+        );
+      } catch {
+        resolve([]);
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
+export default { requestSmsPermission, getSmsNumbers, getSmsWithPreview };

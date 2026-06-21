@@ -33,25 +33,65 @@ export default function Accounts() {
   const [initialBalance, setInitialBalance] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [smsNumber, setSmsNumber] = useState('');
-  const [fetchedSmsNumbers, setFetchedSmsNumbers] = useState<string[]>([]);
+  const [fetchedSmsNumbers, setFetchedSmsNumbers] = useState<Array<{ sender: string; preview: string }>>([]);
   const [loadingSms, setLoadingSms] = useState(false);
   const [showSmsList, setShowSmsList] = useState(false);
+  const [smsSearchQuery, setSmsSearchQuery] = useState('');
+  const [smsFilterShortcodes, setSmsFilterShortcodes] = useState(true);
 
   // Sync Management Modal State
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [selectedSyncAccount, setSelectedSyncAccount] = useState<Account | null>(null);
   const [syncDays, setSyncDays] = useState('30');
   const [syncStatus, setSyncStatus] = useState({ status: 'Idle', progress: 0 });
+  const [lastSyncResult, setLastSyncResult] = useState<Record<string, { newDrafts: number; timestamp: number }>>({});
+
+  const filteredSmsNumbers = useMemo(() => {
+    if (!fetchedSmsNumbers) return [];
+
+    const isShortcode = (address: string) => {
+      const clean = address.trim();
+      if (!/^\+?[0-9]+$/.test(clean)) return true;
+      return clean.replace(/\D/g, '').length <= 8;
+    };
+
+    let list = fetchedSmsNumbers.filter(({ sender }) =>
+      sender.toLowerCase().includes(smsSearchQuery.toLowerCase())
+    );
+
+    if (smsFilterShortcodes) {
+      list = list.filter(({ sender }) => isShortcode(sender));
+    }
+
+    return list.sort((a, b) => {
+      const aIsShort = isShortcode(a.sender);
+      const bIsShort = isShortcode(b.sender);
+      if (aIsShort && !bIsShort) return -1;
+      if (!aIsShort && bIsShort) return 1;
+
+      const name = accountName ? accountName.toLowerCase() : '';
+      if (name) {
+        const aMatches = a.sender.toLowerCase().includes(name) || name.includes(a.sender.toLowerCase());
+        const bMatches = b.sender.toLowerCase().includes(name) || name.includes(b.sender.toLowerCase());
+        if (aMatches && !bMatches) return -1;
+        if (!aMatches && bMatches) return 1;
+      }
+
+      return a.sender.localeCompare(b.sender);
+    });
+  }, [fetchedSmsNumbers, smsSearchQuery, smsFilterShortcodes, accountName]);
 
   useEffect(() => {
-    // Listen for sync status updates
+    let cleanup: (() => void) | null = null;
     import('@/services/SMSSyncService').then(({ SMSSyncService }) => {
       SMSSyncService.setSyncStatusListener((status) => {
         if (selectedSyncAccount?.id === status.accountId) {
           setSyncStatus({ status: status.status, progress: status.progress });
         }
       });
+      cleanup = () => SMSSyncService.clearSyncStatusListener();
     });
+    return () => { cleanup?.(); };
   }, [selectedSyncAccount]);
 
   // Logo suggestions
@@ -603,10 +643,11 @@ export default function Accounts() {
         return;
       }
 
-      // Lazy import our SMS helper service
-      const { getSmsNumbers } = await import('@/services/sms');
-      const numbers = await getSmsNumbers();
-      setFetchedSmsNumbers(numbers);
+      const { getSmsWithPreview } = await import('@/services/sms');
+      const senders = await getSmsWithPreview();
+      setFetchedSmsNumbers(senders);
+      setSmsSearchQuery('');
+      setSmsFilterShortcodes(true);
       setShowSmsList(true);
       setLoadingSms(false);
     } catch (err) {
@@ -644,8 +685,14 @@ export default function Accounts() {
   };
 
   const toggleSmsNumber = (num: string) => {
-    // Constraint: Only allow selecting one sender as per user request
-    setSmsNumber(num);
+    const currentSenders = smsNumber ? smsNumber.split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (currentSenders.includes(num)) {
+      const updated = currentSenders.filter(s => s !== num);
+      setSmsNumber(updated.join(', '));
+    } else {
+      const updated = [...currentSenders, num];
+      setSmsNumber(updated.join(', '));
+    }
   };
 
   const openSyncModal = (account: Account) => {
@@ -657,16 +704,35 @@ export default function Accounts() {
   const handleHistoricalSync = async (ignore: boolean = false) => {
     if (!selectedSyncAccount) return;
     const { SMSSyncService } = await import('@/services/SMSSyncService');
-    const days = parseInt(syncDays) || 30;
+    const days = syncDays === 'all' ? 3650 : (parseInt(syncDays) || 30);
 
     setSyncStatus({ status: ignore ? 'Ignoring Previous...' : 'Starting Sync...', progress: 10 });
 
     try {
-      await SMSSyncService.syncAccountSMS(selectedSyncAccount, transactions, {
+      const result = await SMSSyncService.syncAccountSMS(selectedSyncAccount, transactions, {
         historicalDays: ignore ? undefined : days,
         ignorePrevious: ignore
       });
       LocalChangeEmitter.emit();
+
+      if (!ignore) {
+        setLastSyncResult(prev => ({
+          ...prev,
+          [selectedSyncAccount.id]: { newDrafts: result.newDrafts, timestamp: Date.now() },
+        }));
+        Alert.alert(
+          'Sync Complete',
+          `SMS Sync finished for ${selectedSyncAccount.name}:\n\n` +
+          `• Messages scanned: ${result.totalSMS}\n` +
+          `• Parsed transactions: ${result.parsedTransactions}\n` +
+          `• Matched to account: ${result.matchedAccounts}\n` +
+          `• New draft transactions: ${result.newDrafts}\n` +
+          `• Already recorded/duplicates: ${result.alreadyRecorded}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Success', 'All previous SMS marked as seen. Only new messages will be synced going forward.', [{ text: 'OK' }]);
+      }
     } catch (e) {
       console.error('[Accounts] Historical sync failed:', e);
       setSyncStatus({ status: 'Sync Failed', progress: 0 });
@@ -1035,7 +1101,7 @@ export default function Accounts() {
                   </TouchableOpacity>
                 </View>
 
-                <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2">Android only — Fetch will scan your inbox for bank sender IDs; you can also type them manually (comma separated).</Text>
+                <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2">Tap Fetch to scan your inbox for bank sender IDs. You can select multiple senders or type them manually.</Text>
               </View>
 
               {/* Buttons */}
@@ -1084,28 +1150,72 @@ export default function Accounts() {
             </View>
             <Text className="text-slate-500 text-sm mb-4">Select the sender ID used by your bank for transaction alerts.</Text>
 
+            {/* Search and Filters */}
+            <View className="mb-4">
+              <View className="flex-row items-center bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 mb-3">
+                <FontAwesome name="search" size={14} color="#94a3b8" />
+                <TextInput
+                  placeholder="Search sender..."
+                  placeholderTextColor="#94a3b8"
+                  value={smsSearchQuery}
+                  onChangeText={setSmsSearchQuery}
+                  className="flex-1 text-slate-900 dark:text-white text-sm ml-2 p-0 h-8"
+                />
+                {smsSearchQuery ? (
+                  <TouchableOpacity onPress={() => setSmsSearchQuery('')} className="p-1">
+                    <FontAwesome name="times-circle" size={14} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <View className="flex-row bg-slate-100 dark:bg-slate-700 p-1 rounded-xl">
+                <TouchableOpacity
+                  onPress={() => setSmsFilterShortcodes(true)}
+                  className={`flex-1 py-1.5 rounded-lg items-center ${smsFilterShortcodes ? 'bg-white dark:bg-slate-800 shadow-sm' : ''}`}
+                >
+                  <Text className={`text-xs font-semibold ${smsFilterShortcodes ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}>
+                    Banks/Shortcodes
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setSmsFilterShortcodes(false)}
+                  className={`flex-1 py-1.5 rounded-lg items-center ${!smsFilterShortcodes ? 'bg-white dark:bg-slate-800 shadow-sm' : ''}`}
+                >
+                  <Text className={`text-xs font-semibold ${!smsFilterShortcodes ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}>
+                    All Senders
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <ScrollView
-              style={{ maxHeight: 320 }}
+              style={{ maxHeight: 240 }}
               className="mb-6"
               nestedScrollEnabled={true}
             >
-              {fetchedSmsNumbers.length === 0 ? (
-                <Text className="text-center text-slate-400 py-4">No sender IDs found in your inbox.</Text>
+              {filteredSmsNumbers.length === 0 ? (
+                <Text className="text-center text-slate-400 py-4">No matching sender IDs found.</Text>
               ) : (
-                fetchedSmsNumbers.map((num: string) => {
-                  const isSelected = smsNumber === num;
+                filteredSmsNumbers.map(({ sender, preview }) => {
+                  const currentSenders = smsNumber ? smsNumber.split(',').map(s => s.trim()).filter(Boolean) : [];
+                  const isSelected = currentSenders.includes(sender);
                   return (
                     <TouchableOpacity
-                      key={num}
-                      onPress={() => toggleSmsNumber(num)}
+                      key={sender}
+                      onPress={() => toggleSmsNumber(sender)}
                       className={`flex-row items-center p-4 rounded-xl mb-2 ${isSelected ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-500' : 'bg-slate-50 dark:bg-slate-900'}`}
                     >
-                      <View className={`w-6 h-6 rounded-md border-2 mr-3 justify-center items-center ${isSelected ? 'bg-primary-500 border-primary-500' : 'border-slate-300'}`}>
+                      <View className={`w-6 h-6 rounded-md border-2 mr-3 flex-shrink-0 justify-center items-center ${isSelected ? 'bg-primary-500 border-primary-500' : 'border-slate-300'}`}>
                         {isSelected && <FontAwesome name="check" size={12} color="#fff" />}
                       </View>
-                      <Text className={`font-medium ${isSelected ? 'text-primary-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                        {num}
-                      </Text>
+                      <View className="flex-1">
+                        <Text className={`font-medium ${isSelected ? 'text-primary-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                          {sender}
+                        </Text>
+                        {preview ? (
+                          <Text className="text-slate-400 text-xs mt-0.5" numberOfLines={1}>{preview}</Text>
+                        ) : null}
+                      </View>
                     </TouchableOpacity>
                   );
                 })
@@ -1166,18 +1276,34 @@ export default function Accounts() {
                       style={{ width: `${syncStatus.progress}%` }}
                     />
                   </View>
+                  {selectedSyncAccount && lastSyncResult[selectedSyncAccount.id] && (() => {
+                    const r = lastSyncResult[selectedSyncAccount.id];
+                    const diff = Date.now() - r.timestamp;
+                    const mins = Math.floor(diff / 60000);
+                    const ago = mins < 1 ? 'just now' : mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`;
+                    return (
+                      <View className="flex-row items-center mt-2">
+                        <FontAwesome name="clock-o" size={10} color="#94a3b8" />
+                        <Text className="text-slate-400 text-xs ml-1">
+                          Last sync: {r.newDrafts} new draft{r.newDrafts !== 1 ? 's' : ''} · {ago}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
 
                 <View className="mb-6">
                   <Text className="text-slate-500 text-sm font-bold mb-3">Sync History</Text>
                   <View className="flex-row gap-2 mb-4">
-                    {['30', '60', '90'].map(d => (
+                    {['30', '60', '90', 'all'].map(d => (
                       <TouchableOpacity
                         key={d}
                         onPress={() => setSyncDays(d)}
                         className={`flex-1 py-2 rounded-xl border items-center ${syncDays === d ? 'bg-primary-500 border-primary-500' : 'border-slate-200 dark:border-slate-700'}`}
                       >
-                        <Text className={`font-bold ${syncDays === d ? 'text-white' : 'text-slate-600 dark:text-slate-400'}`}>{d} Days</Text>
+                        <Text className={`font-bold ${syncDays === d ? 'text-white' : 'text-slate-600 dark:text-slate-400'}`}>
+                          {d === 'all' ? 'All' : `${d} Days`}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -1191,7 +1317,7 @@ export default function Accounts() {
                     onPress={() => handleHistoricalSync(true)}
                     className="py-3 rounded-xl border border-slate-200 dark:border-slate-700 items-center"
                   >
-                    <Text className="text-slate-600 dark:text-slate-400 font-bold">Ignore All Previous SMS</Text>
+                    <Text className="text-slate-600 dark:text-slate-400 font-bold">Mark all SMS as seen (skip import)</Text>
                   </TouchableOpacity>
                 </View>
 
