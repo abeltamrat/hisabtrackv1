@@ -793,6 +793,14 @@ export default function DraftTransactionsScreen() {
 
               <View className="mb-6">
                 <Text className="text-slate-500 text-sm font-bold mb-2">Category</Text>
+                {selectedDraft?.categoryHint && (
+                  <View className="flex-row items-center mb-3 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
+                    <FontAwesome name="magic" size={11} color="#6366f1" />
+                    <Text className="text-indigo-600 dark:text-indigo-400 text-[11px] ml-2 font-semibold">
+                      Parser detected: <Text className="font-bold">{selectedDraft.categoryHint}</Text>
+                    </Text>
+                  </View>
+                )}
                 <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4">
                   <Text className="text-[11px] text-slate-400 uppercase font-bold mb-3">
                     {selectedDraft?.type === 'INCOME' ? 'Income categories' : 'Expense categories'}
