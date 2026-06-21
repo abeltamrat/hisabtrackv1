@@ -38,7 +38,10 @@ export default function SummaryCard({ balance, income, expense, percentageChange
             <View className={`${isVerySmall ? 'w-7 h-7' : 'w-8 h-8'} bg-green-100 dark:bg-green-900/30 rounded-xl justify-center items-center mr-2`}>
               <FontAwesome name="arrow-down" size={isVerySmall ? 11 : 12} color="#10b981" />
             </View>
-            <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} font-medium`}>{t('income')}</Text>
+            <View>
+              <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} font-medium`}>{t('income')}</Text>
+              <Text className={`text-slate-400 dark:text-slate-500 ${isVerySmall ? 'text-[8px]' : 'text-[10px]'}`}>This Month</Text>
+            </View>
           </View>
           <Text className={`text-slate-900 dark:text-white ${valueSize} font-bold`}>{formatCurrency(income)}</Text>
         </View>
@@ -48,7 +51,10 @@ export default function SummaryCard({ balance, income, expense, percentageChange
             <View className={`${isVerySmall ? 'w-7 h-7' : 'w-8 h-8'} bg-red-100 dark:bg-red-900/30 rounded-xl justify-center items-center mr-2`}>
               <FontAwesome name="arrow-up" size={isVerySmall ? 11 : 12} color="#ef4444" />
             </View>
-            <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} font-medium`}>{t('expense')}</Text>
+            <View>
+              <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} font-medium`}>{t('expense')}</Text>
+              <Text className={`text-slate-400 dark:text-slate-500 ${isVerySmall ? 'text-[8px]' : 'text-[10px]'}`}>This Month</Text>
+            </View>
           </View>
           <Text className={`text-slate-900 dark:text-white ${valueSize} font-bold`}>{formatCurrency(expense)}</Text>
         </View>

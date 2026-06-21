@@ -91,14 +91,6 @@ export default function DashboardScreen() {
     return new Date(n.getFullYear(), n.getMonth(), 1).getTime();
   }, []);
 
-  const income = useMemo(
-    () => transactions.filter(t => t.type === 'INCOME').reduce((acc, curr) => acc + curr.amount, 0),
-    [transactions]
-  );
-  const expense = useMemo(
-    () => transactions.filter(t => t.type === 'EXPENSE').reduce((acc, curr) => acc + curr.amount, 0),
-    [transactions]
-  );
   const balance = useMemo(
     () => accounts.reduce((sum, account) => sum + account.balance, 0),
     [accounts]
@@ -211,7 +203,7 @@ export default function DashboardScreen() {
           </View>
 
           {/* Balance Card - Floating */}
-          <SummaryCard balance={balance} income={income} expense={expense} percentageChange={percentageChange} />
+          <SummaryCard balance={balance} income={thisMonthIncome} expense={thisMonthExpense} percentageChange={percentageChange} />
         </LinearGradient>
 
         {/* Content Section */}
