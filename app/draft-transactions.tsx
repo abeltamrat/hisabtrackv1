@@ -124,6 +124,7 @@ export default function DraftTransactionsScreen() {
         setSyncStatus({ status: status.status, progress: status.progress });
       }
     });
+    return () => SMSSyncService.clearSyncStatusListener();
   }, [accountId]);
 
   useEffect(() => {
