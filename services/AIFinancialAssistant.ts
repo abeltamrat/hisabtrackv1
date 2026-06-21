@@ -1220,14 +1220,71 @@ Keep your response concise, friendly, and professional.`;
     }
 
     /**
+     * Parse transaction details from a raw SMS message using AI
+     */
+    static async parseSMS(
+        rawMessage: string,
+        apiKeys: AssistantApiKeys | string
+    ): Promise<{
+        amount?: number;
+        type?: 'INCOME' | 'EXPENSE';
+        accountNumber?: string;
+        merchant?: string;
+        referenceNumber?: string;
+        balance?: number;
+        fees?: number;
+        tax?: number;
+    } | null> {
+        try {
+            const normalizedKeys = this.normalizeApiKeys(apiKeys);
+            const prompt = `You are a financial parsing engine. Extract the transaction details from the following bank SMS message.
+Response must be a raw JSON object only (no markdown, no codeblocks like \`\`\`json) matching this exact format:
+{
+  "amount": number or null,
+  "type": "INCOME" or "EXPENSE" or null,
+  "accountNumber": "last 4 digits or null",
+  "merchant": "sender/recipient name or null",
+  "referenceNumber": "ref id or transaction id if present or null",
+  "balance": number or null,
+  "fees": number or null,
+  "tax": number or null
+}
+
+SMS: "${rawMessage.replace(/"/g, '\\"')}"`;
+
+            const text = await this.generateWithProviderFallback(normalizedKeys, prompt);
+            
+            // Clean up code block backticks if AI returns it inside a markdown block
+            const cleanText = text.replace(/```json|```/gi, '').trim();
+            const result = JSON.parse(cleanText);
+            
+            if (!result || typeof result.amount !== 'number') {
+                return null;
+            }
+            
+            return {
+                amount: result.amount || undefined,
+                type: result.type === 'INCOME' || result.type === 'EXPENSE' ? result.type : undefined,
+                accountNumber: result.accountNumber ? String(result.accountNumber) : undefined,
+                merchant: result.merchant || undefined,
+                referenceNumber: result.referenceNumber || undefined,
+                balance: typeof result.balance === 'number' ? result.balance : undefined,
+                fees: typeof result.fees === 'number' ? result.fees : undefined,
+                tax: typeof result.tax === 'number' ? result.tax : undefined
+            };
+        } catch (error) {
+            console.error('AI SMS Parsing Error:', error);
+            return null;
+        }
+    }
+
+    /**
      * Chat with AI about finances
      */
     static async chat(userMessage: string, financialData: FinancialData, apiKeys: AssistantApiKeys | string): Promise<string> {
         try {
             const normalizedKeys = this.normalizeApiKeys(apiKeys);
             const context = this.generateFinancialContext(financialData);
-
-            // Build conversation history
             const conversationHistory = this.chatHistory
                 .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
                 .join('\n');

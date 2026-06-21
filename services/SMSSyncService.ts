@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { DraftTransaction, DraftTransactionService } from './DraftTransactionService';
 import LocalChangeEmitter from './LocalChangeEmitter';
 import { SMSLearningService } from './SMSLearningService';
+import { StorageService } from '@/utils/storage';
 
 export type { SMSReconciliationResult } from './DraftTransactionService';
 import type { SMSReconciliationResult } from './DraftTransactionService';
@@ -154,6 +155,8 @@ export class SMSSyncService {
 
     if (!account.sms_number) return result;
 
+    const userCategories = await StorageService.loadCategories();
+
     try {
       this.emitStatus(account.id, 'Identifying Senders...', 10);
       const senders = account.sms_number.split(',').map(s => s.trim()).filter(Boolean);
@@ -183,14 +186,58 @@ export class SMSSyncService {
 
       // Cache existing draft sms_ids to speed up duplicate check
       const existingDrafts = await DraftTransactionService.getAll();
+      const draftsToAdd: Omit<DraftTransaction, 'id' | 'created_at'>[] = [];
 
+      // Load app settings to check if Gemini/AI keys are configured
+      let appSettings: any = null;
+      try {
+        const { loadStoredAppSettings } = require('@/contexts/AppSettingsContext');
+        appSettings = await loadStoredAppSettings();
+      } catch (e) {
+        console.warn('[SMS] Failed to load app settings for AI fallback:', e);
+      }
 
       for (let i = 0; i < allMessages.length; i++) {
         const sms = allMessages[i];
         const progress = 30 + (Math.floor((i / allMessages.length) * 60));
         if (i % 5 === 0) this.emitStatus(account.id, `Parsing message ${i + 1}/${allMessages.length}...`, progress);
 
-        const parsed = EnhancedSMSParser.parseTransaction(sms.body, sms.address, sms.id, sms.date);
+        let parsed = EnhancedSMSParser.parseTransaction(sms.body, sms.address, sms.id, sms.date);
+        
+        // AI Fallback parsing if regex failed and a Gemini API key (or fallback provider) is configured
+        if (!parsed && appSettings && (appSettings.geminiApiKey || appSettings.groqApiKey || appSettings.openRouterApiKey)) {
+          const hasFinancialKeywords = /(?:birr|etb|br|usd|amt|amount|debited|credited|spent|paid|received|deposited|transfer|send|sent|transferred|ref)/i.test(sms.body);
+          if (hasFinancialKeywords) {
+            try {
+              const { AIFinancialAssistant } = require('./AIFinancialAssistant');
+              const aiParsed = await AIFinancialAssistant.parseSMS(sms.body, {
+                geminiApiKey: appSettings.geminiApiKey,
+                groqApiKey: appSettings.groqApiKey,
+                openRouterApiKey: appSettings.openRouterApiKey
+              });
+              if (aiParsed && aiParsed.amount) {
+                parsed = {
+                  amount: aiParsed.amount,
+                  type: aiParsed.type || 'EXPENSE',
+                  accountNumber: aiParsed.accountNumber,
+                  merchant: aiParsed.merchant,
+                  date: sms.date,
+                  balance: aiParsed.balance,
+                  fees: aiParsed.fees,
+                  tax: aiParsed.tax,
+                  referenceNumber: aiParsed.referenceNumber,
+                  rawMessage: sms.body,
+                  smsId: sms.id || '',
+                  sender: sms.address,
+                  categoryHint: EnhancedSMSParser.suggestCategoryHint(aiParsed.merchant, sms.body, aiParsed.type || 'EXPENSE')
+                };
+              }
+            } catch (err) {
+              console.warn('[SMS] AI fallback parsing failed:', err);
+            }
+          }
+        }
+
         if (!parsed) continue;
 
         const isAlreadyInDrafts = existingDrafts.some(d => {
@@ -228,8 +275,9 @@ export class SMSSyncService {
         result.matchedAccounts++;
         const isAlreadyRecorded = this.isTransactionRecorded(parsed, existingTransactions);
 
-        // Learning
-        let category = EnhancedSMSParser.suggestCategory(parsed.merchant, parsed.rawMessage, parsed.type);
+        // Learning & Category Suggestion
+        const categoryHint = parsed.categoryHint || EnhancedSMSParser.suggestCategoryHint(parsed.merchant, parsed.rawMessage, parsed.type);
+        let category = EnhancedSMSParser.matchCategory(categoryHint, userCategories, parsed.type);
         let description = parsed.merchant || `${parsed.type === 'INCOME' ? 'Received' : 'Paid'} via ${sms.address}`;
 
         const rule = await SMSLearningService.getRule({
@@ -260,12 +308,17 @@ export class SMSSyncService {
           raw_sms: parsed.rawMessage,
           status: isAlreadyRecorded ? 'RECORDED' : 'PENDING',
           is_recorded: isAlreadyRecorded,
+          categoryHint,
         };
 
-        const savedDraft = await DraftTransactionService.add(draft);
-        result.drafts.push(savedDraft);
+        draftsToAdd.push(draft);
         if (!isAlreadyRecorded) result.newDrafts++;
         else result.alreadyRecorded++;
+      }
+
+      if (draftsToAdd.length > 0) {
+        const savedDrafts = await DraftTransactionService.addMany(draftsToAdd);
+        result.drafts.push(...savedDrafts);
       }
 
       this.emitStatus(account.id, 'Sync Complete', 100);

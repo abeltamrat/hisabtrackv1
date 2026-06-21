@@ -368,13 +368,12 @@ export default function Accounts() {
   }, [dispatch, accounts.length]);
 
   const loadDraftCounts = async () => {
-    const entries = await Promise.all(
-      accounts.map(async (acc) => {
-        const count = await DraftTransactionService.getUnrecordedCount(acc.id);
-        return [acc.id, count] as const;
-      })
-    );
-    setDraftCounts(Object.fromEntries(entries));
+    try {
+      const counts = await DraftTransactionService.getUnrecordedCounts();
+      setDraftCounts(counts);
+    } catch (e) {
+      console.error('Failed to load draft counts', e);
+    }
   };
 
   // Load local logos and subscribe to changes
@@ -764,6 +763,113 @@ export default function Accounts() {
     );
   };
 
+  const handleDirectSync = async (account: Account) => {
+    if (Platform.OS !== 'android') {
+      Platform.OS === 'web'
+        ? window.alert('SMS reading is only available on Android builds.')
+        : Alert.alert('Info', 'SMS reading is only available on Android builds.');
+      return;
+    }
+
+    setLoadingSms(true);
+    try {
+      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_SMS, {
+        title: 'SMS Access',
+        message: 'This app needs access to SMS messages to scan bank numbers for auto-parsing.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      });
+
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert('Permission Denied', 'Cannot read SMS without permission.');
+        setLoadingSms(false);
+        return;
+      }
+
+      const { SMSSyncService } = await import('@/services/SMSSyncService');
+      const result = await SMSSyncService.syncAccountSMS(account, transactions, {
+        historicalDays: 30,
+        ignorePrevious: false
+      });
+      LocalChangeEmitter.emit();
+      loadDraftCounts();
+
+      Alert.alert(
+        'Sync Complete',
+        `SMS Sync finished for ${account.name}:\n\n` +
+        `• Messages scanned: ${result.totalSMS}\n` +
+        `• Parsed transactions: ${result.parsedTransactions}\n` +
+        `• Matched to account: ${result.matchedAccounts}\n` +
+        `• New draft transactions: ${result.newDrafts}\n` +
+        `• Already recorded/duplicates: ${result.alreadyRecorded}`,
+        [{ text: 'OK' }]
+      );
+    } catch (e) {
+      console.error('[Accounts] Direct sync failed:', e);
+      Alert.alert('Sync Failed', 'An error occurred during SMS sync.');
+    } finally {
+      setLoadingSms(false);
+    }
+  };
+
+  const handleProcessAllMessages = async () => {
+    if (Platform.OS !== 'android') {
+      Platform.OS === 'web'
+        ? window.alert('SMS reading is only available on Android builds.')
+        : Alert.alert('Info', 'SMS reading is only available on Android builds.');
+      return;
+    }
+
+    setLoadingSms(true);
+    try {
+      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_SMS, {
+        title: 'SMS Access',
+        message: 'This app needs access to SMS messages to check all bank numbers for auto-parsing.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      });
+
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert('Permission Denied', 'Cannot read SMS without permission.');
+        setLoadingSms(false);
+        return;
+      }
+
+      const { SMSSyncService } = await import('@/services/SMSSyncService');
+      let totalNewDrafts = 0;
+      let accountsChecked = 0;
+
+      for (const account of accounts) {
+        if (account.sms_number) {
+          accountsChecked++;
+          const res = await SMSSyncService.syncAccountSMS(account, transactions, {
+            historicalDays: 30, // Scan last 30 days
+            ignorePrevious: false
+          });
+          totalNewDrafts += res.newDrafts;
+        }
+      }
+
+      LocalChangeEmitter.emit();
+      loadDraftCounts();
+
+      if (accountsChecked === 0) {
+        Alert.alert('No Bank Accounts', 'None of your accounts have an SMS number configured. Go to edit account to configure SMS.');
+      } else {
+        Alert.alert(
+          'Processing Complete',
+          `Successfully processed messages for ${accountsChecked} accounts.\n\n• Found ${totalNewDrafts} new draft transactions.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (err) {
+      console.error('Error processing messages:', err);
+      Alert.alert('Error', 'Failed to process messages');
+    } finally {
+      setLoadingSms(false);
+    }
+  };
+
   const accountTypes: Array<{ value: AccountType; label: string }> = [
     { value: 'CASH', label: 'Cash' },
     { value: 'BANK', label: 'Bank Account' },
@@ -804,6 +910,31 @@ export default function Accounts() {
       </LinearGradient>
 
       <ScrollView className="flex-1 px-6 -mt-6" showsVerticalScrollIndicator={false}>
+        {/* Global Process Messages Action */}
+        {accounts.length > 0 && accounts.some(a => a.sms_number) && (
+          <TouchableOpacity
+            onPress={handleProcessAllMessages}
+            disabled={loadingSms}
+            className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-4 flex-row items-center justify-between shadow-lg border border-slate-100 dark:border-slate-700"
+            style={{ elevation: 4 }}
+          >
+            <View className="flex-row items-center flex-1">
+              <View className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 justify-center items-center mr-4">
+                {loadingSms ? (
+                  <ActivityIndicator size="small" color="#10b981" />
+                ) : (
+                  <FontAwesome name="envelope-open-o" size={20} color="#10b981" />
+                )}
+              </View>
+              <View className="flex-1 mr-2">
+                <Text className="text-slate-900 dark:text-white font-bold text-base">Process Messages</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Scan SMS for all configured accounts</Text>
+              </View>
+            </View>
+            <FontAwesome name="refresh" size={16} color="#10b981" />
+          </TouchableOpacity>
+        )}
+
         {/* Accounts List */}
         {accounts.length === 0 ? (
           <View className="bg-white dark:bg-slate-800 rounded-3xl p-8 items-center shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
@@ -821,11 +952,14 @@ export default function Accounts() {
           </View>
         ) : (
           accounts.map((account) => (
-            <View key={account.id} className="mb-4">
+            <View
+              key={account.id}
+              className="mb-4 bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden"
+              style={{ elevation: 4 }}
+            >
               <TouchableOpacity
                 onPress={() => router.push(`/account/${account.id}`)}
-                className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-lg border border-slate-100 dark:border-slate-700"
-                style={{ elevation: 4 }}
+                className="p-6"
               >
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center flex-1">
@@ -865,12 +999,21 @@ export default function Accounts() {
                   <View className="items-end">
                     <View className="flex-row gap-2 mb-1">
                       {account.sms_number && (
-                        <TouchableOpacity
-                          onPress={() => openSyncModal(account)}
-                          className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg"
-                        >
-                          <FontAwesome name="envelope" size={12} color="#10b981" />
-                        </TouchableOpacity>
+                        <>
+                          <TouchableOpacity
+                            onPress={() => handleDirectSync(account)}
+                            className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg"
+                            disabled={loadingSms}
+                          >
+                            <FontAwesome name="refresh" size={12} color="#10b981" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => openSyncModal(account)}
+                            className="p-2 bg-slate-100 dark:bg-slate-700/50 rounded-lg"
+                          >
+                            <FontAwesome name="envelope" size={12} color="#64748b" />
+                          </TouchableOpacity>
+                        </>
                       )}
                       <TouchableOpacity onPress={() => handleEdit(account)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                         <FontAwesome name="pencil" size={12} color="#3b82f6" />
@@ -880,20 +1023,25 @@ export default function Accounts() {
                       </TouchableOpacity>
                     </View>
                     <Text className="text-slate-900 dark:text-white font-bold text-xl">{formatCurrency(account.balance)}</Text>
-                    {draftCounts[account.id] > 0 && (
-                      <TouchableOpacity
-                        onPress={() => router.push(`/draft-transactions?accountId=${account.id}`)}
-                        className="flex-row items-center mt-2 bg-yellow-100 dark:bg-yellow-900/30 px-2 py-1 rounded-lg"
-                      >
-                        <FontAwesome name="history" size={10} color="#b45309" />
-                        <Text className="text-amber-700 dark:text-amber-400 text-[10px] font-bold ml-1">
-                          {draftCounts[account.id]} Pending
-                        </Text>
-                      </TouchableOpacity>
-                    )}
                   </View>
                 </View>
               </TouchableOpacity>
+              {draftCounts[account.id] > 0 && (
+                <TouchableOpacity
+                  onPress={() => router.push(`/draft-transactions?accountId=${account.id}`)}
+                  className="bg-amber-50 dark:bg-amber-900/20 border-t border-slate-100 dark:border-slate-700 py-3.5 px-6 flex-row items-center justify-between"
+                >
+                  <View className="flex-row items-center">
+                    <View className="w-5 h-5 rounded-full bg-amber-500 justify-center items-center mr-2">
+                      <Text className="text-white text-[10px] font-black">{draftCounts[account.id]}</Text>
+                    </View>
+                    <Text className="text-amber-800 dark:text-amber-300 font-bold text-xs">
+                      Pending SMS Transactions to Review
+                    </Text>
+                  </View>
+                  <FontAwesome name="chevron-right" size={12} color="#b45309" />
+                </TouchableOpacity>
+              )}
             </View>
           ))
         )}

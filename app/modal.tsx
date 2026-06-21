@@ -12,7 +12,7 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInp
 import { AppDispatch } from '@/store';
 import BudgetService from '@/services/BudgetService';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
-import { addTransaction, updateTransaction } from '@/store/slices/transactionsSlice';
+import { addTransaction, updateTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { NotificationService } from '@/services/NotificationService';
 import { formatTagInput, parseTagInput } from '@/utils/tags';
@@ -87,7 +87,33 @@ export default function AddTransactionScreen() {
   const [transactionDate, setTransactionDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Ensure accounts and budgets are loaded
+  const uniqueTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    transactions.forEach((t: any) => {
+      if (t.tags && Array.isArray(t.tags)) {
+        t.tags.forEach((tag: any) => {
+          if (tag && typeof tag === 'string') {
+            tagsSet.add(tag.trim().toLowerCase());
+          }
+        });
+      }
+    });
+    return Array.from(tagsSet).sort();
+  }, [transactions]);
+
+  const handleToggleTag = (tagToToggle: string) => {
+    const currentTags = parseTagInput(tagsInput) || [];
+    const exists = currentTags.some(t => t.toLowerCase() === tagToToggle.toLowerCase());
+    let newTags: string[];
+    if (exists) {
+      newTags = currentTags.filter(t => t.toLowerCase() !== tagToToggle.toLowerCase());
+    } else {
+      newTags = [...currentTags, tagToToggle];
+    }
+    setTagsInput(newTags.join(', '));
+  };
+
+  // Ensure accounts, budgets, and transactions are loaded
   useEffect(() => {
     if (accounts.length === 0) {
       dispatch(fetchAccounts());
@@ -96,7 +122,10 @@ export default function AddTransactionScreen() {
       // @ts-ignore
       dispatch(fetchBudgets());
     }
-  }, [dispatch, accounts.length, budgets.length]);
+    if (transactions.length === 0) {
+      dispatch(fetchTransactions());
+    }
+  }, [dispatch, accounts.length, budgets.length, transactions.length]);
 
   // Load transaction data for editing
   useEffect(() => {
@@ -521,6 +550,36 @@ export default function AddTransactionScreen() {
                 </View>
               ))}
             </ScrollView>
+          )}
+          {uniqueTags.length > 0 && (
+            <View className="mt-3">
+              <Text className="text-[10px] text-slate-400 font-bold mb-1.5 uppercase">Suggested / Used Tags</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1 px-1">
+                {uniqueTags.map((tag) => {
+                  const currentTags = parseTagInput(tagsInput) || [];
+                  const isSelected = currentTags.some(t => t.toLowerCase() === tag.toLowerCase());
+                  return (
+                    <TouchableOpacity
+                      key={tag}
+                      onPress={() => handleToggleTag(tag)}
+                      className={`mr-2 px-3 py-1 rounded-full border ${
+                        isSelected
+                          ? 'bg-indigo-600 border-indigo-600'
+                          : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-medium ${
+                          isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        #{tag}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
           )}
         </View>
 

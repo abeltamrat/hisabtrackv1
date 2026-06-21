@@ -13,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
 import { useDispatch, useSelector } from 'react-redux';
@@ -217,7 +217,7 @@ export default function TransactionsScreen() {
       groups[dateKey].push(transaction);
     });
 
-    return Object.entries(groups).map(([date, items]) => ({ date, items }));
+    return Object.entries(groups).map(([date, items]) => ({ title: date, data: items }));
   }, [filteredTransactions]);
 
   const formatTime = (timestamp: number) => {
@@ -574,88 +574,86 @@ export default function TransactionsScreen() {
 
       {viewMode === 'card' ? (
         /* ── Card view (existing) ── */
-        <FlatList
-          data={groupedTransactions}
-          keyExtractor={(item) => item.date}
+        <SectionList
+          sections={groupedTransactions}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 }}
           showsVerticalScrollIndicator={false}
-          maxToRenderPerBatch={5}
-          windowSize={5}
-          initialNumToRender={5}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          initialNumToRender={10}
           removeClippedSubviews={true}
-          renderItem={({ item: group }) => (
-            <View className="mb-6">
-              <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-3">{group.date}</Text>
-              {group.items.map((item) => {
-                const category = categoriesMap.get(item.category);
-                const isIncome = item.type === 'INCOME';
-
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    onPress={() => router.push(`/transaction/${item.id}`)}
-                    className={`flex-row items-center bg-white dark:bg-slate-800 ${isVerySmall ? 'p-3.5' : 'p-4'} rounded-2xl mb-3 shadow-sm border border-slate-100 dark:border-slate-700`}
-                    style={{ elevation: 1 }}
-                  >
-                    <View className="relative">
-                      <View
-                        className="w-14 h-14 rounded-2xl justify-center items-center mr-4"
-                        style={{ backgroundColor: category?.color ? category.color + '20' : (isIncome ? '#dcfce7' : '#fee2e2') }}
-                      >
-                        <CategoryIcon
-                          icon={category?.icon ?? 'question'}
-                          size={20}
-                          color={category?.color || (isIncome ? '#16a34a' : '#ef4444')}
-                        />
-                      </View>
-                      {(() => {
-                        const account = accountsMap.get(item.account_id);
-                        if (account?.logo) {
-                          return (
-                            <View className="absolute -bottom-2 -left-2 w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full justify-center items-center shadow-sm border border-white dark:border-slate-800 z-10 overflow-hidden">
-                              <FontAwesome name="bank" size={12} color="#94a3b8" style={{ position: 'absolute' }} />
-                              <Image
-                                source={getAccountImageSource(account.logo) as any}
-                                className="w-full h-full"
-                                resizeMode="cover"
-                              />
-                            </View>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">{item.description}</Text>
-                      <View className="flex-row items-center">
-                        <Text className="text-slate-400 text-xs">{item.category}</Text>
-                        <View className="w-1 h-1 bg-slate-300 rounded-full mx-2" />
-                        <Text className="text-slate-400 text-xs">{formatTime(item.date)}</Text>
-                      </View>
-                      {item.tags && item.tags.length > 0 && (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2 -mx-0.5 px-0.5">
-                          {item.tags.slice(0, 4).map((transactionTag) => (
-                            <TouchableOpacity
-                              key={`${item.id}-${transactionTag}`}
-                              onPress={() => setSelectedTag(transactionTag)}
-                              className="mr-2 px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800"
-                            >
-                              <Text className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold">#{transactionTag}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      )}
-                    </View>
-                    <View className="items-end">
-                      <Text className={`font-bold ${summaryValueSize} ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
-                        {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+          renderSectionHeader={({ section: { title } }) => (
+            <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-3 mt-2">{title}</Text>
           )}
+          renderItem={({ item }) => {
+            const category = categoriesMap.get(item.category);
+            const isIncome = item.type === 'INCOME';
+
+            return (
+              <TouchableOpacity
+                key={item.id}
+                onPress={() => router.push(`/transaction/${item.id}`)}
+                className={`flex-row items-center bg-white dark:bg-slate-800 ${isVerySmall ? 'p-3.5' : 'p-4'} rounded-2xl mb-3 shadow-sm border border-slate-100 dark:border-slate-700`}
+                style={{ elevation: 1 }}
+              >
+                <View className="relative">
+                  <View
+                    className="w-14 h-14 rounded-2xl justify-center items-center mr-4"
+                    style={{ backgroundColor: category?.color ? category.color + '20' : (isIncome ? '#dcfce7' : '#fee2e2') }}
+                  >
+                    <CategoryIcon
+                      icon={category?.icon ?? 'question'}
+                      size={20}
+                      color={category?.color || (isIncome ? '#16a34a' : '#ef4444')}
+                    />
+                  </View>
+                  {(() => {
+                    const account = accountsMap.get(item.account_id);
+                    if (account?.logo) {
+                      return (
+                        <View className="absolute -bottom-2 -left-2 w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full justify-center items-center shadow-sm border border-white dark:border-slate-800 z-10 overflow-hidden">
+                          <FontAwesome name="bank" size={12} color="#94a3b8" style={{ position: 'absolute' }} />
+                          <Image
+                            source={getAccountImageSource(account.logo) as any}
+                            className="w-full h-full"
+                            resizeMode="cover"
+                          />
+                        </View>
+                      );
+                    }
+                    return null;
+                  })()}
+                </View>
+                <View className="flex-1">
+                  <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">{item.description}</Text>
+                  <View className="flex-row items-center">
+                    <Text className="text-slate-400 text-xs">{item.category}</Text>
+                    <View className="w-1 h-1 bg-slate-300 rounded-full mx-2" />
+                    <Text className="text-slate-400 text-xs">{formatTime(item.date)}</Text>
+                  </View>
+                  {item.tags && item.tags.length > 0 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2 -mx-0.5 px-0.5">
+                      {item.tags.slice(0, 4).map((transactionTag) => (
+                        <TouchableOpacity
+                          key={`${item.id}-${transactionTag}`}
+                          onPress={() => setSelectedTag(transactionTag)}
+                          className="mr-2 px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800"
+                        >
+                          <Text className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold">#{transactionTag}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+                <View className="items-end">
+                  <Text className={`font-bold ${summaryValueSize} ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
+                    {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
           ListEmptyComponent={
             <View className="items-center justify-center mt-20">
               <View className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full justify-center items-center mb-4">

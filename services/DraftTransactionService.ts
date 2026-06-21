@@ -1,4 +1,3 @@
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type DraftStatus = 'PENDING' | 'RECORDED' | 'REJECTED';
@@ -23,6 +22,7 @@ export interface DraftTransaction {
   is_recorded: boolean; // Keep for backward compatibility or refactor
   created_at: number; // Sync date
   matched_transaction_id?: string;
+  categoryHint?: string;
 }
 
 export interface SMSReconciliationResult {
@@ -36,14 +36,27 @@ export interface SMSReconciliationResult {
 
 export class DraftTransactionService {
   private static STORAGE_KEY = 'draft_transactions';
+  private static cache: DraftTransaction[] | null = null;
 
   /**
-   * Get all draft transactions
+   * Clear the in-memory cache
+   */
+  static invalidateCache(): void {
+    this.cache = null;
+  }
+
+  /**
+   * Get all draft transactions (utilizes in-memory cache)
    */
   static async getAll(): Promise<DraftTransaction[]> {
     try {
+      if (this.cache !== null) {
+        return [...this.cache];
+      }
       const stored = await AsyncStorage.getItem(this.STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
+      const parsed: DraftTransaction[] = stored ? JSON.parse(stored) : [];
+      this.cache = parsed;
+      return [...parsed];
     } catch (error) {
       console.error('Error loading draft transactions:', error);
       return [];
@@ -87,6 +100,25 @@ export class DraftTransactionService {
     all.push(newDraft);
     await this.saveAll(all);
     return newDraft;
+  }
+
+  /**
+   * Add multiple draft transactions in a single batch operation
+   */
+  static async addMany(drafts: Omit<DraftTransaction, 'id' | 'created_at'>[]): Promise<DraftTransaction[]> {
+    if (drafts.length === 0) return [];
+    
+    const all = await this.getAll();
+    const timestamp = Date.now();
+    const newDrafts: DraftTransaction[] = drafts.map((draft, index) => ({
+      ...draft,
+      id: `${this.generateId()}_${index}`,
+      created_at: timestamp,
+    }));
+    
+    all.push(...newDrafts);
+    await this.saveAll(all);
+    return newDrafts;
   }
 
   /**
@@ -134,10 +166,11 @@ export class DraftTransactionService {
   }
 
   /**
-   * Save all drafts to storage
+   * Save all drafts to storage and update cache
    */
   private static async saveAll(drafts: DraftTransaction[]): Promise<void> {
     try {
+      this.cache = drafts;
       await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(drafts));
     } catch (error) {
       console.error('Error saving draft transactions:', error);
@@ -160,6 +193,20 @@ export class DraftTransactionService {
   }
 
   /**
+   * Get count of unrecorded drafts for all accounts in a single pass
+   */
+  static async getUnrecordedCounts(): Promise<Record<string, number>> {
+    const all = await this.getAll();
+    const counts: Record<string, number> = {};
+    all.forEach(draft => {
+      if (draft.status === 'PENDING') {
+        counts[draft.account_id] = (counts[draft.account_id] || 0) + 1;
+      }
+    });
+    return counts;
+  }
+
+  /**
    * Clear all recorded drafts older than specified days
    */
   static async clearOldRecorded(daysOld: number = 30): Promise<number> {
@@ -177,6 +224,7 @@ export class DraftTransactionService {
    * Clear all draft transactions
    */
   static async clearAll(): Promise<void> {
+    this.cache = null;
     await AsyncStorage.removeItem(this.STORAGE_KEY);
   }
 }

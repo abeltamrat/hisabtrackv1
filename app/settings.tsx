@@ -1029,12 +1029,19 @@ export default function SettingsScreen() {
                   <Switch value={!!preferLocalLogos} onValueChange={(v) => setPreferLocalLogos(v)} />
                 </View>
               </View>
-              <View className="mt-3">
+              <View className="mt-3 space-y-2">
                 <TouchableOpacity onPress={() => router.push('/manage-assets')} className="flex-row items-center p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
                   <View className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl justify-center items-center mr-4">
                     <FontAwesome name="folder" size={18} color="#6366f1" />
                   </View>
                   <Text className="font-bold text-slate-700 dark:text-slate-300">Manage Local Assets</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => router.push('/manage-sms-rules' as any)} className="flex-row items-center p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                  <View className="w-10 h-10 bg-teal-100 dark:bg-teal-900/30 rounded-xl justify-center items-center mr-4">
+                    <FontAwesome name="list-alt" size={18} color="#14b8a6" />
+                  </View>
+                  <Text className="font-bold text-slate-700 dark:text-slate-300">Manage SMS Learning Rules</Text>
                 </TouchableOpacity>
               </View>
             </View>
