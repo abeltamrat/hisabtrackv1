@@ -1,5 +1,5 @@
 import AIInsights from '@/components/AIInsights';
-import { CATEGORIES } from '@/constants/MockData';
+import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useI18n } from '@/contexts/I18nContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -73,6 +73,7 @@ export default function ReportsScreen() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useAuth();
+  const { categories } = useTransactions();
   const transactions = useSelector((s: RootState) => s.transactions.items);
   const budgets = useSelector((s: RootState) => s.budgets.items);
   const loans = useSelector((s: RootState) => s.loans.items);
@@ -207,30 +208,6 @@ export default function ReportsScreen() {
       }
     }, 500);
   };
-  // Derive categories primarily from Redux transactions, fallback to static defaults
-  const categories = useMemo(() => {
-    const fallback = CATEGORIES as unknown as any[];
-    const collected = new Map<string, any>();
-
-    // Start with fallback to preserve stable colors
-    fallback.forEach((c) => collected.set(c.name, c));
-
-    transactions.forEach((t) => {
-      const name = (t as any).category || fallback.find(c => c.id === (t as any).categoryId)?.name;
-      if (!name) return;
-      if (!collected.has(name)) {
-        const match = fallback.find(c => c.name === name) || fallback.find(c => c.id === (t as any).categoryId);
-        collected.set(name, {
-          id: (t as any).categoryId || name,
-          name,
-          color: match?.color || '#a0a0a0',
-          type: (t.type || '').toString().toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE',
-        });
-      }
-    });
-
-    return Array.from(collected.values());
-  }, [transactions]);
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
   const [activeTab, setActiveTab] = useState<ReportTab>('overview');
   const { t } = useI18n();
