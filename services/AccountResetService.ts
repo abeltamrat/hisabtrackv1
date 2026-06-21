@@ -76,7 +76,11 @@ export class AccountResetService {
     await reauthenticateWithCredential(currentUser, credential);
 
     if (currentUser.uid) {
-      await SyncService.deleteRemoteData(currentUser.uid);
+      try {
+        await SyncService.deleteRemoteData(currentUser.uid);
+      } catch (err) {
+        console.warn('[AccountResetService] Failed to delete remote data, continuing with local reset:', err);
+      }
     }
 
     SyncService.stopAutoSync();
