@@ -1,4 +1,5 @@
-import { Transaction } from '@/types/database';
+import BudgetService from '@/services/BudgetService';
+import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
 
 export interface FinancialInsight {
   id: string;
@@ -16,7 +17,10 @@ export class FinancialAdvisorService {
    */
   static analyzeTransactions(
     transactions: Transaction[],
-    previousPeriodTransactions: Transaction[] = []
+    previousPeriodTransactions: Transaction[] = [],
+    budgets: Budget[] = [],
+    loans: Loan[] = [],
+    recurring: RecurringTransaction[] = []
   ): FinancialInsight[] {
     const insights: FinancialInsight[] = [];
 
@@ -49,8 +53,451 @@ export class FinancialAdvisorService {
     // 6. Savings opportunities
     insights.push(...this.findSavingsOpportunities(transactions, income, expenses));
 
+    // 7. NEW: Subscription Detection
+    insights.push(...this.detectSubscriptions(transactions, recurring));
+
+    // 8. NEW: Debt Risk Analysis
+    insights.push(...this.analyzeDebtRisk(loans, income));
+
+    // 9. NEW: Cash Flow Prediction
+    insights.push(...this.predictCashFlow(balance, recurring, loans));
+
+    // 10. NEW: Budget Adherence
+    insights.push(...this.analyzeBudgetAdherence(transactions, budgets));
+
+    // 11. NEW: Day of Week Analysis
+    insights.push(...this.analyzeDayOfWeekSpending(transactions));
+
+    // 12. NEW: Merchant Concentration
+    insights.push(...this.analyzeMerchantConcentration(transactions));
+
+    // 13. NEW: Financial Runway
+    insights.push(...this.analyzeRunway(balance, expenses));
+
+    // 14. NEW: Savings Velocity
+    if (previousPeriodTransactions.length > 0) {
+      insights.push(...this.analyzeSavingsVelocity(income, expenses, prevIncome, prevExpenses));
+    }
+
+    // 15. NEW: Archetype Detection
+    insights.push(...this.detectArchetype(income, expenses, transactions));
+
+    // 16. NEW: Savvy Optimization
+    insights.push(...this.analyzeOptimization(transactions, expenses));
+
+    // 17. NEW: Liquidity Check
+    insights.push(...this.analyzeLiquidity(transactions, balance));
+
+    // 18. NEW: Fixed Cost Analysis
+    insights.push(...this.analyzeFixedCosts(recurring, expenses));
+
+    // 19. NEW: The Latte Factor
+    insights.push(...this.analyzeSmallFrequentPurchases(transactions));
+
     // Sort by priority (higher priority first)
-    return insights.sort((a, b) => b.priority - a.priority).slice(0, 8);
+    return insights.sort((a, b) => b.priority - a.priority).slice(0, 10);
+  }
+
+  private static analyzeOptimization(transactions: Transaction[], totalExpenses: number): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    if (totalExpenses <= 0) return insights;
+
+    const categoryTotals = this.groupByCategory(transactions.filter(t => t.type === 'EXPENSE'));
+    const entries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+
+    if (entries.length > 0) {
+      const [topCat, amount] = entries[0];
+      const potentialSaving = amount * 0.15; // Aim for 15% reduction in top category
+
+      insights.push({
+        id: 'optimization-tip',
+        type: 'suggestion',
+        title: '💡 Quick Win',
+        description: `Reducing "${topCat}" spending by prefix 15% would save you $${potentialSaving.toFixed(0)} this period.`,
+        icon: 'lightbulb-o',
+        color: '#eab308',
+        priority: 48,
+      });
+    }
+
+    return insights;
+  }
+
+  private static analyzeLiquidity(transactions: Transaction[], balance: number): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const expenses = transactions.filter(t => t.type === 'EXPENSE');
+    if (expenses.length < 5) return insights;
+
+    const dailyExp = this.getTotalByType(transactions, 'EXPENSE') / 30; // Rough monthly to daily
+    if (dailyExp > 0) {
+      const daysOfSurvival = balance / dailyExp;
+
+      if (daysOfSurvival < 7) {
+        insights.push({
+          id: 'low-liquidity',
+          type: 'warning',
+          title: '🌊 Liquidity Warning',
+          description: `Your current cash covers less than ${daysOfSurvival.toFixed(0)} days of average spending.`,
+          icon: 'tint',
+          color: '#ef4444',
+          priority: 97,
+        });
+      } else {
+        insights.push({
+          id: 'liquidity-info',
+          type: 'info',
+          title: '💧 Cash Buffer',
+          description: `You have ${daysOfSurvival.toFixed(0)} days of liquidity at your current spending rate.`,
+          icon: 'shield',
+          color: '#3b82f6',
+          priority: 42,
+        });
+      }
+    }
+
+    return insights;
+  }
+
+  private static analyzeSavingsVelocity(
+    income: number,
+    expenses: number,
+    prevIncome: number,
+    prevExpenses: number
+  ): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const currentRate = income > 0 ? (income - expenses) / income : 0;
+    const prevRate = prevIncome > 0 ? (prevIncome - prevExpenses) / prevIncome : 0;
+
+    const velocity = currentRate - prevRate;
+
+    if (velocity > 0.05) {
+      insights.push({
+        id: 'savings-acceleration',
+        type: 'success',
+        title: '🚀 Savings Velocity Up',
+        description: `Your savings rate improved by ${(velocity * 100).toFixed(0)}% vs last period. You're gaining momentum!`,
+        icon: 'bolt',
+        color: '#10b981',
+        priority: 82,
+      });
+    }
+
+    return insights;
+  }
+
+  private static detectArchetype(income: number, expenses: number, transactions: Transaction[]): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const savingsRate = income > 0 ? (income - expenses) / income : 0;
+    const expenseCount = transactions.filter(t => t.type === 'EXPENSE').length;
+
+    let archetype = { title: '', desc: '', icon: '', color: '' };
+
+    if (savingsRate > 0.4) {
+      archetype = {
+        title: 'The Fortress',
+        desc: 'You have an exceptionally high savings rate. Your financial security is your priority.',
+        icon: 'university',
+        color: '#059669'
+      };
+    } else if (savingsRate > 0.15 && expenseCount < 15) {
+      archetype = {
+        title: 'The Minimalist',
+        desc: 'You make few, deliberate purchases and maintain a healthy surplus.',
+        icon: 'leaf',
+        color: '#10b981'
+      };
+    } else if (expenseCount > 40) {
+      archetype = {
+        title: 'The High-Frequency Spender',
+        desc: 'You make many small purchases. Consolidation could reveal hidden savings.',
+        icon: 'shopping-cart',
+        color: '#f59e0b'
+      };
+    } else if (savingsRate < 0) {
+      archetype = {
+        title: 'The Lifestyle Enthusiast',
+        desc: 'You are currently prioritizing experiences or needs over surplus. Monitor your runway.',
+        icon: 'glass',
+        color: '#ef4444'
+      };
+    } else {
+      archetype = {
+        title: 'The Balanced Strategist',
+        desc: 'You maintain a steady equilibrium between enjoying today and saving for tomorrow.',
+        icon: 'balance-scale',
+        color: '#3b82f6'
+      };
+    }
+
+    insights.push({
+      id: 'archetype',
+      type: 'info',
+      title: `👤 Archetype: ${archetype.title}`,
+      description: archetype.desc,
+      icon: archetype.icon,
+      color: archetype.color,
+      priority: 35,
+    });
+
+    return insights;
+  }
+
+  private static analyzeDayOfWeekSpending(transactions: Transaction[]): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const expenses = transactions.filter(t => t.type === 'EXPENSE');
+    if (expenses.length < 10) return insights;
+
+    const dayTotals: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    expenses.forEach(t => {
+      const day = new Date(t.date).getDay();
+      dayTotals[day] += t.amount;
+    });
+
+    const weekendTotal = dayTotals[0] + dayTotals[6]; // Sun + Sat
+    const weekdayTotal = dayTotals[1] + dayTotals[2] + dayTotals[3] + dayTotals[4] + dayTotals[5];
+
+    const weekendAvg = weekendTotal / 2;
+    const weekdayAvg = weekdayTotal / 5;
+
+    if (weekendAvg > weekdayAvg * 1.5) {
+      insights.push({
+        id: 'weekend-spender',
+        type: 'info',
+        title: '🏖️ Weekend Surge',
+        description: `Your spending spikes by ${((weekendAvg / weekdayAvg - 1) * 100).toFixed(0)}% on weekends. Plan your leisure budget!`,
+        icon: 'calendar',
+        color: '#8b5cf6',
+        priority: 40,
+      });
+    }
+
+    return insights;
+  }
+
+  private static analyzeMerchantConcentration(transactions: Transaction[]): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const expenses = transactions.filter(t => t.type === 'EXPENSE');
+    if (expenses.length < 5) return insights;
+
+    const merchants: Record<string, number> = {};
+    expenses.forEach(t => {
+      const name = (t.description || t.sender_receiver || 'Unknown').split(' ')[0].toLowerCase();
+      if (name.length > 2) {
+        merchants[name] = (merchants[name] || 0) + t.amount;
+      }
+    });
+
+    const totalExpense = expenses.reduce((s, t) => s + t.amount, 0);
+    const topMerchant = Object.entries(merchants).sort((a, b) => b[1] - a[1])[0];
+
+    if (topMerchant && topMerchant[1] > totalExpense * 0.2) {
+      insights.push({
+        id: 'merchant-monopoly',
+        type: 'suggestion',
+        title: `🏢 Top Payee: ${topMerchant[0].toUpperCase()}`,
+        description: `You've spent ${((topMerchant[1] / totalExpense) * 100).toFixed(0)}% of your budget at ${topMerchant[0]}. Can you find cheaper alternatives?`,
+        icon: 'shopping-bag',
+        color: '#f97316',
+        priority: 55,
+      });
+    }
+
+    return insights;
+  }
+
+  private static analyzeRunway(balance: number, monthlyExpenses: number): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    if (monthlyExpenses <= 0 || balance <= 0) return insights;
+
+    const runwayMonths = balance / monthlyExpenses;
+
+    if (runwayMonths >= 6) {
+      insights.push({
+        id: 'strong-runway',
+        type: 'success',
+        title: '🛡️ Strong Runway',
+        description: `Your current balance can cover ${runwayMonths.toFixed(1)} months of expenses. You are very secure!`,
+        icon: 'shield',
+        color: '#10b981',
+        priority: 75,
+      });
+    } else if (runwayMonths < 1) {
+      insights.push({
+        id: 'short-runway',
+        type: 'warning',
+        title: '⚠️ Critical Runway',
+        description: `Your balance covers less than 1 month of expenses. Immediate savings recommended.`,
+        icon: 'clock-o',
+        color: '#ef4444',
+        priority: 99,
+      });
+    }
+
+    return insights;
+  }
+
+  private static detectSubscriptions(transactions: Transaction[], recurring: RecurringTransaction[]): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const expenses = transactions.filter(t => t.type === 'EXPENSE');
+
+    // Group by amount and description to find potential hidden subscriptions
+    const groups: Record<string, Transaction[]> = {};
+    expenses.forEach(t => {
+      const key = `${t.amount}-${t.description?.toLowerCase() || ''}-${t.category}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+
+    Object.entries(groups).forEach(([key, matches]) => {
+      if (matches.length >= 2) {
+        // Check if this is already tracked as a recurring transaction
+        const desc = matches[0].description;
+        const exists = recurring.some(r => r.name.toLowerCase() === desc?.toLowerCase());
+
+        if (!exists) {
+          insights.push({
+            id: `potential-sub-${key}`,
+            type: 'suggestion',
+            title: '📅 Hidden Subscription?',
+            description: `We noticed "${desc}" repeats frequently ($${matches[0].amount}). Add it to recurring to track it better.`,
+            icon: 'refresh',
+            color: '#f97316',
+            priority: 45,
+          });
+        }
+      }
+    });
+
+    return insights;
+  }
+
+  private static analyzeDebtRisk(loans: Loan[], monthlyIncome: number): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const debts = loans.filter(l => l.type === 'BORROWED' && l.status === 'ACTIVE');
+    const totalDebt = debts.reduce((s, l) => s + l.remaining_balance, 0);
+
+    if (totalDebt > 0 && monthlyIncome > 0) {
+      const debtToIncome = totalDebt / monthlyIncome;
+      if (debtToIncome > 2) {
+        insights.push({
+          id: 'high-debt-risk',
+          type: 'warning',
+          title: '🚩 High Debt Ratio',
+          description: `Your total debt is ${debtToIncome.toFixed(1)}x your monthly income. Focus on high-interest repayment.`,
+          icon: 'warning',
+          color: '#ef4444',
+          priority: 95,
+        });
+      } else if (debtToIncome > 1) {
+        insights.push({
+          id: 'moderate-debt',
+          type: 'info',
+          title: '⚖️ Debt Management',
+          description: `Your debt is roughly equal to your monthly income. Avoid new borrowing for now.`,
+          icon: 'balance-scale',
+          color: '#f59e0b',
+          priority: 70,
+        });
+      }
+    }
+    return insights;
+  }
+
+  private static predictCashFlow(currentBalance: number, recurring: RecurringTransaction[], loans: Loan[]): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const now = new Date();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const daysLeft = endOfMonth.getDate() - now.getDate();
+
+    if (daysLeft < 1) return insights;
+
+    // Estimate upcoming recurring costs
+    const upcomingRecurring = recurring
+      .filter(r => r.isActive && r.nextDate <= endOfMonth.getTime())
+      .reduce((s, r) => s + (r.type === 'EXPENSE' ? r.amount : -r.amount), 0);
+
+    // Estimate upcoming loan payments
+    const upcomingLoans = loans
+      .filter(l => l.status === 'ACTIVE' && l.type === 'BORROWED' && l.due_date <= endOfMonth.getTime())
+      .reduce((s, l) => s + (l.remaining_balance / 3), 0); // Estimate partial payment if not full
+
+    const projectedExpenses = upcomingRecurring + upcomingLoans;
+    const projectedSafeSpend = currentBalance - projectedExpenses;
+
+    if (projectedSafeSpend < 0) {
+      insights.push({
+        id: 'cash-flow-alert',
+        type: 'warning',
+        title: '📉 Cash Flow Shortfall',
+        description: `Projected expenses ($${projectedExpenses.toFixed(0)}) exceed current balance. You may need to draw from savings.`,
+        icon: 'bank',
+        color: '#ef4444',
+        priority: 98,
+      });
+    } else if (projectedSafeSpend < currentBalance * 0.2) {
+      insights.push({
+        id: 'tight-budget',
+        type: 'warning',
+        title: '⚠️ Tight Month Ahead',
+        description: `Only $${projectedSafeSpend.toFixed(0)} left for non-essential spending after bills and loans.`,
+        icon: 'clock-o',
+        color: '#f97316',
+        priority: 85,
+      });
+    } else {
+      insights.push({
+        id: 'healthy-outlook',
+        type: 'success',
+        title: '🌟 Positive Outlook',
+        description: `You're on track to finish the month with roughly $${projectedSafeSpend.toFixed(0)} surplus.`,
+        icon: 'star',
+        color: '#10b981',
+        priority: 60,
+      });
+    }
+
+    return insights;
+  }
+
+  private static analyzeBudgetAdherence(transactions: Transaction[], budgets: Budget[]): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    if (budgets.length === 0) return insights;
+
+    const now = Date.now();
+    budgets
+      .filter((budget) => budget.start_date <= now && budget.end_date >= now)
+      .forEach(budget => {
+      const metrics = BudgetService.calculateBudgetMetrics(budget, budgets, transactions);
+      if (metrics.effectiveLimit <= 0) {
+        return;
+      }
+
+      const percentage = (metrics.spent / metrics.effectiveLimit) * 100;
+
+      if (percentage >= 100) {
+        insights.push({
+          id: `budget-exceeded-${budget.id}`,
+          type: 'warning',
+          title: `🚫 Budget Over: ${budget.category}`,
+          description: `You've exceeded your ${budget.category} budget by $${Math.abs(metrics.remaining).toFixed(0)}.`,
+          icon: 'close',
+          color: '#ef4444',
+          priority: 92,
+        });
+      } else if (percentage >= 85) {
+        insights.push({
+          id: `budget-near-${budget.id}`,
+          type: 'warning',
+          title: `⚠️ Budget Alert: ${budget.category}`,
+          description: `You've used ${percentage.toFixed(0)}% of your "${budget.category}" budget ($${metrics.remaining.toFixed(0)} left).`,
+          icon: 'warning',
+          color: '#f97316',
+          priority: 88,
+        });
+      }
+    });
+
+    return insights;
   }
 
   private static analyzeFinancialHealth(
@@ -114,7 +561,7 @@ export class FinancialAdvisorService {
 
     // Analyze spending frequency
     const avgDailyTransactions = this.getAvgDailyTransactions(expenses);
-    
+
     if (avgDailyTransactions > 5) {
       const potentialSavings = expenses.length * 2; // Assume $2 per small transaction
       insights.push({
@@ -151,7 +598,7 @@ export class FinancialAdvisorService {
   private static analyzeCategorySpending(transactions: Transaction[]): FinancialInsight[] {
     const insights: FinancialInsight[] = [];
     const expenses = transactions.filter(t => t.type === 'EXPENSE');
-    
+
     if (expenses.length === 0) return insights;
 
     const categoryTotals = this.groupByCategory(expenses);
@@ -279,7 +726,7 @@ export class FinancialAdvisorService {
 
     // Check if user could save more
     const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
-    
+
     if (savingsRate < 20 && savingsRate > 0) {
       const targetSavings = income * 0.2;
       const currentSavings = income - expenses;
@@ -318,6 +765,52 @@ export class FinancialAdvisorService {
     return insights;
   }
 
+  private static analyzeFixedCosts(recurring: RecurringTransaction[], totalExpenses: number): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    if (totalExpenses === 0) return insights;
+
+    const fixedCostSum = recurring
+      .filter(r => r.type === 'EXPENSE' && r.isActive)
+      .reduce((sum, r) => sum + r.amount, 0);
+
+    const ratio = (fixedCostSum / totalExpenses) * 100;
+
+    if (ratio > 60) {
+      insights.push({
+        id: 'high-fixed-costs',
+        type: 'warning',
+        title: '🔒 High Fixed Costs',
+        description: `Fixed bills consume ${ratio.toFixed(0)}% of your spending. This reduces flexibility in emergencies.`,
+        icon: 'lock',
+        color: '#ef4444',
+        priority: 60,
+      });
+    }
+
+    return insights;
+  }
+
+  private static analyzeSmallFrequentPurchases(transactions: Transaction[]): FinancialInsight[] {
+    const insights: FinancialInsight[] = [];
+    const smallPurchases = transactions.filter(t => t.type === 'EXPENSE' && t.amount < 20); // < $20
+
+    if (smallPurchases.length > 5) {
+      const total = smallPurchases.reduce((sum, t) => sum + t.amount, 0);
+      if (total > 100) {
+        insights.push({
+          id: 'latte-factor',
+          type: 'info',
+          title: '☕ The Latte Factor',
+          description: `Small purchases (<$20) added up to $${total.toFixed(0)} this period. Mind the little things!`,
+          icon: 'coffee',
+          color: '#f59e0b',
+          priority: 50,
+        });
+      }
+    }
+    return insights;
+  }
+
   // Helper methods
   private static getTotalByType(transactions: Transaction[], type: string): number {
     return transactions
@@ -337,7 +830,7 @@ export class FinancialAdvisorService {
     const entries = Object.entries(categoryTotals);
     if (entries.length === 0) return null;
 
-    const [category, amount] = entries.reduce((max, curr) => 
+    const [category, amount] = entries.reduce((max, curr) =>
       curr[1] > max[1] ? curr : max
     );
 

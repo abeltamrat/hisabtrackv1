@@ -2,19 +2,21 @@ import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/databas
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
+import BudgetService from '@/services/BudgetService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 
 export interface AppNotification {
   id: string;
   title: string;
   message: string;
+  sourceKey?: string;
   type: 'info' | 'warning' | 'success' | 'tip' | 'alert';
   icon: string;
   color: string;
   timestamp: number;
   read: boolean;
   isAI?: boolean; // Flag to distinguish AI-driven notifications
-  actionType?: 'view_transactions' | 'view_budget' | 'view_reports' | 'view_loans' | 'view_recurring';
+  actionType?: 'view_transactions' | 'view_budget' | 'view_reports' | 'view_loans' | 'view_recurring' | 'view_drafts';
 }
 
 const STORAGE_KEY = 'app_notifications';
@@ -44,6 +46,11 @@ export class AppNotificationService {
   static async addNotification(notification: Omit<AppNotification, 'id' | 'timestamp' | 'read'>): Promise<void> {
     try {
       const notifications = await this.getNotifications();
+
+      if (notification.sourceKey) {
+        const existingBySource = notifications.find((item) => item.sourceKey === notification.sourceKey);
+        if (existingBySource) return;
+      }
       
       // Avoid duplicates relative to title and message in last 24h
       const recent = notifications.find(n => 
@@ -344,9 +351,14 @@ export class AppNotificationService {
        catSpending[cat] = (catSpending[cat] || 0) + t.amount;
     });
 
-    budgets.forEach(budget => {
+    budgets
+      .filter((budget) => budget.start_date <= now && budget.end_date >= now)
+      .forEach(budget => {
        const spent = catSpending[budget.category] || 0;
-       const limit = budget.limit_amount;
+       const limit = BudgetService.calculateBudgetMetrics(budget, budgets, transactions).effectiveLimit;
+       if (limit <= 0) {
+         return;
+       }
        const percent = spent / limit;
        
        // Alert if over 90%

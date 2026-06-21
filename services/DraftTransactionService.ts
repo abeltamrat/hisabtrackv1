@@ -1,6 +1,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export type DraftStatus = 'PENDING' | 'RECORDED' | 'REJECTED';
+
 export interface DraftTransaction {
   id: string;
   account_id: string;
@@ -8,17 +10,19 @@ export interface DraftTransaction {
   amount: number;
   category: string;
   description: string;
-  date: number;
+  date: number; // Transaction date from SMS
   sms_id: string;
   sender_receiver?: string;
+  sms_sender?: string;
   reference_number?: string;
   fees?: number;
   tax?: number;
   suggested_balance?: number;
   raw_sms: string;
-  is_recorded: boolean;
-  created_at: number;
-  matched_transaction_id?: string; // If matched with existing transaction
+  status: DraftStatus;
+  is_recorded: boolean; // Keep for backward compatibility or refactor
+  created_at: number; // Sync date
+  matched_transaction_id?: string;
 }
 
 export interface SMSReconciliationResult {
@@ -55,11 +59,19 @@ export class DraftTransactionService {
   }
 
   /**
+   * Get draft transactions by status
+   */
+  static async getByStatus(accountId: string, status: DraftStatus): Promise<DraftTransaction[]> {
+    const all = await this.getAll();
+    return all.filter(draft => draft.account_id === accountId && draft.status === status);
+  }
+
+  /**
    * Get unrecorded draft transactions for an account
    */
   static async getUnrecordedByAccount(accountId: string): Promise<DraftTransaction[]> {
     const all = await this.getAll();
-    return all.filter(draft => draft.account_id === accountId && !draft.is_recorded);
+    return all.filter(draft => draft.account_id === accountId && draft.status === 'PENDING');
   }
 
   /**
@@ -84,8 +96,22 @@ export class DraftTransactionService {
     const all = await this.getAll();
     const draft = all.find(d => d.id === draftId);
     if (draft) {
+      draft.status = 'RECORDED';
       draft.is_recorded = true;
       draft.matched_transaction_id = transactionId;
+      await this.saveAll(all);
+    }
+  }
+
+  /**
+   * Update draft status (e.g. REJECTED)
+   */
+  static async updateStatus(draftId: string, status: DraftStatus): Promise<void> {
+    const all = await this.getAll();
+    const draft = all.find(d => d.id === draftId);
+    if (draft) {
+      draft.status = status;
+      if (status === 'RECORDED') draft.is_recorded = true;
       await this.saveAll(all);
     }
   }
@@ -139,11 +165,18 @@ export class DraftTransactionService {
   static async clearOldRecorded(daysOld: number = 30): Promise<number> {
     const all = await this.getAll();
     const cutoffTime = Date.now() - (daysOld * 24 * 60 * 60 * 1000);
-    const filtered = all.filter(draft => 
+    const filtered = all.filter(draft =>
       !draft.is_recorded || draft.created_at > cutoffTime
     );
     const removedCount = all.length - filtered.length;
     await this.saveAll(filtered);
     return removedCount;
+  }
+
+  /**
+   * Clear all draft transactions
+   */
+  static async clearAll(): Promise<void> {
+    await AsyncStorage.removeItem(this.STORAGE_KEY);
   }
 }

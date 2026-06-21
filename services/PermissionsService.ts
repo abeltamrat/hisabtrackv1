@@ -37,22 +37,22 @@ export async function checkPermission(id: PermissionId): Promise<PermissionStatu
         return 'unknown';
       }
 
+      if (id === 'LOCATION') {
+        // @ts-ignore
+        if (navigator?.permissions?.query) {
+          try {
+            // @ts-ignore
+            const res = await navigator.permissions.query({ name: 'geolocation' as any });
+            return res.state === 'granted' ? 'granted' : res.state === 'denied' ? 'denied' : 'prompt';
+          } catch (e) {
+            return 'unknown';
+          }
+        }
+        return 'unknown';
+      }
+
       // Not supported on web
       return 'unavailable';
-    }
-
-    if (id === 'LOCATION') {
-      // @ts-ignore
-      if (navigator?.permissions?.query) {
-        try {
-          // @ts-ignore
-          const res = await navigator.permissions.query({ name: 'geolocation' as any });
-          return res.state === 'granted' ? 'granted' : res.state === 'denied' ? 'denied' : 'prompt';
-        } catch (e) {
-          return 'unknown';
-        }
-      }
-      return 'unknown';
     }
 
     // Native platforms (best-effort using PermissionsAndroid on Android)
@@ -81,12 +81,16 @@ export async function checkPermission(id: PermissionId): Promise<PermissionStatu
           perm = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
           break;
         case 'NOTIFICATIONS':
-          // Notifications are handled differently on Android; assume prompt
-          return 'prompt';
+          if (Platform.Version >= 33) {
+            perm = (PermissionsAndroid.PERMISSIONS as any).POST_NOTIFICATIONS;
+          } else {
+            return 'granted';
+          }
+          break;
       }
 
       if (!perm) return 'unknown';
-      const result = await PermissionsAndroid.check(perm);
+      const result = await PermissionsAndroid.check(perm as any);
       return result ? 'granted' : 'denied';
     }
 
@@ -120,7 +124,7 @@ export async function requestPermission(id: PermissionId): Promise<PermissionSta
       if (id === 'LOCATION') {
         try {
           // @ts-ignore
-          await navigator.geolocation.getCurrentPosition(() => {});
+          await navigator.geolocation.getCurrentPosition(() => { });
           return 'granted';
         } catch (e) {
           return 'denied';
@@ -143,6 +147,7 @@ export async function requestPermission(id: PermissionId): Promise<PermissionSta
           perm = PermissionsAndroid.PERMISSIONS.CAMERA;
           break;
         case 'FILES':
+          // Scoped storage on Android 10+ might not need this, but for older versions:
           perm = PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
           break;
         case 'CALENDAR':
@@ -155,12 +160,16 @@ export async function requestPermission(id: PermissionId): Promise<PermissionSta
           perm = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
           break;
         case 'NOTIFICATIONS':
-          // Recommend opening settings for notifications
-          return 'prompt';
+          if (Platform.Version >= 33) {
+            perm = (PermissionsAndroid.PERMISSIONS as any).POST_NOTIFICATIONS;
+          } else {
+            return 'granted'; // Implicitly granted on older Android
+          }
+          break;
       }
 
       if (!perm) return 'unknown';
-      const res = await PermissionsAndroid.request(perm);
+      const res = await PermissionsAndroid.request(perm as any);
       return res === PermissionsAndroid.RESULTS.GRANTED ? 'granted' : 'denied';
     }
 
@@ -171,3 +180,38 @@ export async function requestPermission(id: PermissionId): Promise<PermissionSta
     return 'unknown';
   }
 }
+
+export async function checkRequiredPermissions(): Promise<boolean> {
+  const required: PermissionId[] = ['NOTIFICATIONS'];
+  for (const id of required) {
+    const status = await checkPermission(id);
+    if (status !== 'granted') return false;
+  }
+  return true;
+}
+
+/**
+ * Requests the permissions that are core to the app's features,
+ * skipping any that are already granted. Call this after sign-in.
+ * Requests one at a time so Android shows a clear rationale dialog for each.
+ */
+export async function requestKeyPermissionsIfNeeded(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+
+  // Order matters: most important first
+  const keyPermissions: PermissionId[] = ['NOTIFICATIONS', 'READ_SMS'];
+
+  for (const id of keyPermissions) {
+    try {
+      const status = await checkPermission(id);
+      if (status !== 'granted') {
+        await requestPermission(id);
+        // Small delay between dialogs so Android has time to dismiss the previous one
+        await new Promise(r => setTimeout(r, 500));
+      }
+    } catch (e) {
+      console.warn(`requestKeyPermissionsIfNeeded: failed for ${id}`, e);
+    }
+  }
+}
+

@@ -1,0 +1,10 @@
+{
+  "latestVersion": "1.0.3",
+  "latestBuildNumber": 3,
+  "minimumSupportedVersion": "1.0.0",
+  "minimumSupportedBuildNumber": 1,
+  "androidDownloadUrl": "https://www.hisab.nonstopplc.com/downloads/hisabtrack-1.0.3.apk",
+  "iosDownloadUrl": "",
+  "forceUpdate": false,
+  "releaseNotes": "Performance improvements and bug fixes."
+}

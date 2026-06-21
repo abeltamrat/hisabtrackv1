@@ -1,16 +1,7 @@
-import { CATEGORIES, TRANSACTIONS as MOCK_TRANSACTIONS } from '@/constants/MockData';
+import { CATEGORIES } from '@/constants/MockData';
 import React, { createContext, useContext, useState } from 'react';
 
 export type TransactionType = 'income' | 'expense';
-
-export interface Transaction {
-  id: string;
-  amount: number;
-  type: TransactionType;
-  categoryId: string;
-  date: string;
-  note: string;
-}
 
 export interface Category {
   id: string;
@@ -22,10 +13,7 @@ export interface Category {
 }
 
 interface TransactionContextType {
-  transactions: Transaction[];
   categories: Category[];
-  addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
-  deleteTransaction: (id: string) => void;
   addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
   updateCategory: (id: string, updates: Partial<Category>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
@@ -36,7 +24,6 @@ interface TransactionContextType {
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined);
 
 export function TransactionProvider({ children }: { children: React.ReactNode }) {
-  const [transactions, setTransactions] = useState<Transaction[]>([...MOCK_TRANSACTIONS]);
   const [categories, setCategories] = useState<Category[]>([]);
 
   // Load categories from storage
@@ -77,45 +64,6 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
     return () => { mounted = false; };
   }, []);
   const [isLoading, setIsLoading] = useState(false);
-
-  const addTransaction = (transaction: Omit<Transaction, 'id'>) => {
-    const newTransaction = {
-      ...transaction,
-      id: Math.random().toString(36).substr(2, 9),
-    };
-    setTransactions((prev) => [newTransaction, ...prev]);
-  };
-
-  // Load real transactions from the database if available (fallback to mocks)
-  React.useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const { getDatabase } = await import('@/services/database');
-        const db = await getDatabase();
-        const rows = await db.getTransactions();
-        if (mounted && Array.isArray(rows) && rows.length > 0) {
-          // Transform database transactions to context format
-          const transformedTransactions: Transaction[] = rows.map(dbTx => ({
-            id: dbTx.id,
-            amount: dbTx.amount,
-            type: dbTx.type.toLowerCase() as TransactionType,
-            categoryId: dbTx.category,
-            date: new Date(dbTx.date).toISOString().split('T')[0], // Convert timestamp to date string
-            note: dbTx.description || '',
-          }));
-          setTransactions(transformedTransactions);
-        }
-      } catch (e) {
-        // If database isn't available or fails, keep using mock transactions
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  const deleteTransaction = (id: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
-  };
 
   const refreshCategories = async () => {
     try {
@@ -163,14 +111,113 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
   };
 
   const updateCategory = async (id: string, updates: Partial<Category>) => {
-    const updatedCategories = categories.map(cat => 
+    const existing = categories.find(cat => cat.id === id);
+    const updatedCategories = categories.map(cat =>
       cat.id === id ? { ...cat, ...updates } : cat
     );
     setCategories(updatedCategories);
-    
+
     try {
       const { StorageService } = await import('@/utils/storage');
       await StorageService.saveCategories(updatedCategories);
+
+      if (existing && updates.name && updates.name !== existing.name) {
+        const oldName = existing.name;
+        const newName = updates.name;
+
+        // 1. Cascade to Budgets (database)
+        try {
+          const { getDatabase } = await import('@/services/database');
+          const db = await getDatabase();
+          const budgets = await db.getBudgets();
+          const affectedBudgets = budgets.filter(b => b.category === oldName);
+          await Promise.all(
+            affectedBudgets.map(b => db.updateBudget({ ...b, category: newName }))
+          );
+          if (affectedBudgets.length > 0) {
+            console.log(`[TransactionContext] Cascaded category rename to ${affectedBudgets.length} budget(s)`);
+          }
+        } catch (err) {
+          console.warn('[TransactionContext] Budget cascade rename failed:', err);
+        }
+
+        // 2. Cascade to Transactions (database)
+        try {
+          const { getDatabase } = await import('@/services/database');
+          const db = await getDatabase();
+          const transactions = await db.getTransactions();
+          const affectedTxs = transactions.filter(tx => tx.category === oldName);
+          await Promise.all(
+            affectedTxs.map(tx => db.updateTransaction(tx.id, { category: newName }))
+          );
+          if (affectedTxs.length > 0) {
+            console.log(`[TransactionContext] Cascaded category rename to ${affectedTxs.length} transaction(s)`);
+          }
+        } catch (err) {
+          console.warn('[TransactionContext] Transaction cascade rename failed:', err);
+        }
+
+        // 3. Cascade to RecurringTransactions (AsyncStorage/localStorage)
+        try {
+          const { Platform } = await import('react-native');
+          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+          let loaded: any[] = [];
+          if (Platform.OS === 'web') {
+            const stored = localStorage.getItem('recurring_transactions');
+            if (stored) loaded = JSON.parse(stored);
+          } else {
+            const stored = await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
+            if (stored) loaded = JSON.parse(stored);
+          }
+
+          let modified = false;
+          const updatedRecurring = loaded.map(rt => {
+            if (rt.category === oldName) {
+              modified = true;
+              return { ...rt, category: newName };
+            }
+            return rt;
+          });
+
+          if (modified) {
+            if (Platform.OS === 'web') {
+              localStorage.setItem('recurring_transactions', JSON.stringify(updatedRecurring));
+            } else {
+              await AsyncStorage.setItem('@hisabtrack_recurring_transactions', JSON.stringify(updatedRecurring));
+            }
+            console.log('[TransactionContext] Cascaded category rename to recurring transactions');
+          }
+        } catch (err) {
+          console.warn('[TransactionContext] Recurring transactions cascade rename failed:', err);
+        }
+
+        // 4. Cascade to SMSLearningRules (AsyncStorage)
+        try {
+          const { SMSLearningService } = await import('@/services/SMSLearningService');
+          const rules = await SMSLearningService.getAllRules();
+          let modified = false;
+          for (const key in rules) {
+            if (rules[key].category === oldName) {
+              rules[key].category = newName;
+              modified = true;
+            }
+          }
+          if (modified) {
+            await SMSLearningService.saveAllRules(rules);
+            console.log('[TransactionContext] Cascaded category rename to SMS learning rules');
+          }
+        } catch (err) {
+          console.warn('[TransactionContext] SMS learning rules cascade rename failed:', err);
+        }
+
+        // Emit local change to notify UI
+        try {
+          const LocalChangeEmitter = (await import('@/services/LocalChangeEmitter')).default;
+          LocalChangeEmitter.emit();
+        } catch (err) {
+          console.warn('[TransactionContext] Failed to emit local changes:', err);
+        }
+      }
     } catch (error) {
       console.error('Error saving categories:', error);
       // Revert on error
@@ -180,14 +227,112 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
   };
 
   const deleteCategory = async (id: string) => {
+    const deletedCats = categories.filter(cat => cat.id === id || cat.parentId === id);
+    const deletedNames = deletedCats.map(cat => cat.name);
+
     const updatedCategories = categories.filter(cat => cat.id !== id && cat.parentId !== id);
     setCategories(updatedCategories);
     
     try {
       const { StorageService } = await import('@/utils/storage');
       await StorageService.saveCategories(updatedCategories);
+
+      if (deletedNames.length > 0) {
+        // 1. Cascade to Budgets (database): delete budget for the deleted categories
+        try {
+          const { getDatabase } = await import('@/services/database');
+          const db = await getDatabase();
+          const budgets = await db.getBudgets();
+          const affectedBudgets = budgets.filter(b => deletedNames.includes(b.category));
+          await Promise.all(
+            affectedBudgets.map(b => db.deleteBudget(b.id))
+          );
+          if (affectedBudgets.length > 0) {
+            console.log(`[TransactionContext] Cascaded category deletion to delete ${affectedBudgets.length} budget(s)`);
+          }
+        } catch (err) {
+          console.warn('[TransactionContext] Budget cascade delete failed:', err);
+        }
+
+        // 2. Cascade to Transactions (database): migrate to 'Other'
+        try {
+          const { getDatabase } = await import('@/services/database');
+          const db = await getDatabase();
+          const transactions = await db.getTransactions();
+          const affectedTxs = transactions.filter(tx => deletedNames.includes(tx.category));
+          await Promise.all(
+            affectedTxs.map(tx => db.updateTransaction(tx.id, { category: 'Other' }))
+          );
+          if (affectedTxs.length > 0) {
+            console.log(`[TransactionContext] Cascaded category deletion to migrate ${affectedTxs.length} transaction(s) to 'Other'`);
+          }
+        } catch (err) {
+          console.warn('[TransactionContext] Transaction cascade migrate failed:', err);
+        }
+
+        // 3. Cascade to RecurringTransactions (AsyncStorage/localStorage): migrate to 'Other'
+        try {
+          const { Platform } = await import('react-native');
+          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+          let loaded: any[] = [];
+          if (Platform.OS === 'web') {
+            const stored = localStorage.getItem('recurring_transactions');
+            if (stored) loaded = JSON.parse(stored);
+          } else {
+            const stored = await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
+            if (stored) loaded = JSON.parse(stored);
+          }
+
+          let modified = false;
+          const updatedRecurring = loaded.map(rt => {
+            if (deletedNames.includes(rt.category)) {
+              modified = true;
+              return { ...rt, category: 'Other' };
+            }
+            return rt;
+          });
+
+          if (modified) {
+            if (Platform.OS === 'web') {
+              localStorage.setItem('recurring_transactions', JSON.stringify(updatedRecurring));
+            } else {
+              await AsyncStorage.setItem('@hisabtrack_recurring_transactions', JSON.stringify(updatedRecurring));
+            }
+            console.log('[TransactionContext] Cascaded category deletion to recurring transactions');
+          }
+        } catch (err) {
+          console.warn('[TransactionContext] Recurring transactions cascade migrate failed:', err);
+        }
+
+        // 4. Cascade to SMSLearningRules (AsyncStorage): migrate to 'Other'
+        try {
+          const { SMSLearningService } = await import('@/services/SMSLearningService');
+          const rules = await SMSLearningService.getAllRules();
+          let modified = false;
+          for (const key in rules) {
+            if (deletedNames.includes(rules[key].category)) {
+              rules[key].category = 'Other';
+              modified = true;
+            }
+          }
+          if (modified) {
+            await SMSLearningService.saveAllRules(rules);
+            console.log('[TransactionContext] Cascaded category deletion to SMS learning rules');
+          }
+        } catch (err) {
+          console.warn('[TransactionContext] SMS learning rules cascade migrate failed:', err);
+        }
+
+        // Emit local change to notify UI
+        try {
+          const LocalChangeEmitter = (await import('@/services/LocalChangeEmitter')).default;
+          LocalChangeEmitter.emit();
+        } catch (err) {
+          console.warn('[TransactionContext] Failed to emit local changes:', err);
+        }
+      }
     } catch (error) {
-      console.error('Error saving categories:', error);
+      console.error('Error saving categories during deletion:', error);
       // Revert on error
       setCategories(categories);
       throw error;
@@ -197,10 +342,7 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
   return (
     <TransactionContext.Provider
       value={{
-        transactions,
         categories,
-        addTransaction,
-        deleteTransaction,
         addCategory,
         updateCategory,
         deleteCategory,

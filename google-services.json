@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "891851135453",
+    "project_id": "testing-c2bb7",
+    "storage_bucket": "testing-c2bb7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:891851135453:android:9a8c97b4bd1db24b5ffe34",
+        "android_client_info": {
+          "package_name": "com.abeltamrat.hisabtrackv1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "891851135453-injmmpfl3qncm01q9c6c78t3a2mjmjq8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEegLAVRoACzzVbwbFkOrJSG5S6Jiocbg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "891851135453-injmmpfl3qncm01q9c6c78t3a2mjmjq8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

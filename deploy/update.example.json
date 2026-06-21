@@ -1,0 +1,10 @@
+{
+  "latestVersion": "1.0.4",
+  "latestBuildNumber": 4,
+  "minimumSupportedVersion": "1.0.3",
+  "minimumSupportedBuildNumber": 3,
+  "androidDownloadUrl": "https://your-domain.example/downloads/hisabtrack-1.0.4.apk",
+  "iosDownloadUrl": "https://apps.apple.com/app/your-app-id",
+  "forceUpdate": false,
+  "releaseNotes": "Bug fixes, better sync reliability, and in-app update support."
+}

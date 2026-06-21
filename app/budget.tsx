@@ -1,6 +1,8 @@
 import { useTransactions } from '@/context/TransactionContext';
+import CategoryIcon from '@/components/CategoryIcon';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
-import { RootState } from '@/store';
+import BudgetService from '@/services/BudgetService';
+import { AppDispatch, RootState } from '@/store';
 import { deleteBudget, fetchBudgets } from '@/store/slices/budgetsSlice';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import { FontAwesome } from '@expo/vector-icons';
@@ -16,7 +18,7 @@ export default function BudgetScreen() {
   const { formatCurrency } = useAppSettings();
   const colorScheme = useColorScheme();
   const router = useRouter();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const { categories } = useTransactions();
   const { items: budgets } = useSelector((state: RootState) => state.budgets);
   const { items: transactions } = useSelector((state: RootState) => state.transactions);
@@ -24,14 +26,16 @@ export default function BudgetScreen() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
 
   const handleDelete = (id: string) => {
-    const doDelete = () => {
-      // @ts-ignore
-      dispatch(deleteBudget(id));
+    const doDelete = async () => {
+      const result = await dispatch(deleteBudget(id));
+      if (deleteBudget.rejected.match(result)) {
+        Alert.alert('Error', 'Failed to delete budget.');
+      }
     };
 
     if (Platform.OS === 'web') {
       if (confirm('Are you sure you want to delete this budget?')) {
-        doDelete();
+        void doDelete();
       }
     } else {
       Alert.alert(
@@ -54,45 +58,61 @@ export default function BudgetScreen() {
       pathname: '/budget-modal',
       params: {
         id: budget.id,
-        amount: budget.limit_amount.toString(),
+        amount: budget.baseLimit.toString(),
         category: budget.category,
+        rolloverMode: budget.rolloverMode,
+        period: budget.period,
       },
     });
   };
 
   useEffect(() => {
-    // @ts-ignore
     dispatch(fetchBudgets());
-    // @ts-ignore
     dispatch(fetchTransactions());
   }, [dispatch]);
 
-  // Calculate spent amount for each budget
-  const budgetData = budgets.map(budget => {
-    const spent = transactions
-      .filter(t => {
-        const isSameCategory = t.category === budget.category;
-        const isExpense = t.type === 'EXPENSE';
-        const tDate = new Date(t.date);
-        const bStart = new Date(budget.start_date);
-        const bEnd = new Date(budget.end_date);
-        const isInPeriod = tDate >= bStart && tDate <= bEnd;
-        return isSameCategory && isExpense && isInPeriod;
-      })
-      .reduce((sum, t) => sum + t.amount, 0);
+  const categoryByName = useMemo(() => {
+    const map = new Map<string, (typeof categories)[number]>();
+    categories.forEach((category) => {
+      map.set(category.name, category);
+    });
+    return map;
+  }, [categories]);
 
-    return {
-      ...budget,
-      spent,
-    };
-  });
+  const activeBudgets = useMemo(
+    () => {
+      const currentTime = Date.now();
+      return budgets.filter((budget) => {
+        if (budget.start_date > currentTime || budget.end_date < currentTime) {
+          return false;
+        }
+        const category = categoryByName.get(budget.category);
+        return !category || category.type === 'expense';
+      });
+    },
+    [budgets, categoryByName]
+  );
+
+  const budgetData = useMemo(
+    () =>
+      BudgetService.calculateBudgetCollectionMetrics(activeBudgets, budgets, transactions).map((metrics) => ({
+        ...metrics.budget,
+        spent: metrics.spent,
+        effectiveLimit: metrics.effectiveLimit,
+        baseLimit: metrics.baseLimit,
+        rolloverDelta: metrics.rolloverDelta,
+        rolloverMode: metrics.rolloverMode,
+        remaining: metrics.remaining,
+      })),
+    [activeBudgets, budgets, transactions]
+  );
 
   // Grouping Logic
   const groupedBudgets = useMemo(() => {
     const groups: Record<string, { items: typeof budgetData, totalLimit: number, totalSpent: number }> = {};
 
     budgetData.forEach(budget => {
-      const category = categories.find(c => c.name === budget.category);
+      const category = categoryByName.get(budget.category);
       let groupName = budget.category;
 
       if (category && category.parentId) {
@@ -107,20 +127,26 @@ export default function BudgetScreen() {
       }
 
       groups[groupName].items.push(budget);
-      groups[groupName].totalLimit += budget.limit_amount;
+      groups[groupName].totalLimit += budget.effectiveLimit;
       groups[groupName].totalSpent += budget.spent;
     });
 
     return groups;
-  }, [budgetData, categories]);
+  }, [budgetData, categories, categoryByName]);
 
   const groupNames = Object.keys(groupedBudgets).sort();
 
   const displayedBudgets = selectedGroup ? groupedBudgets[selectedGroup].items : budgetData;
-  const totalBudget = displayedBudgets.reduce((sum, b) => sum + b.limit_amount, 0);
+  const totalBudget = displayedBudgets.reduce((sum, b) => sum + b.effectiveLimit, 0);
   const totalSpent = displayedBudgets.reduce((sum, b) => sum + b.spent, 0);
   const totalRemaining = totalBudget - totalSpent;
   const totalProgress = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+
+  const summaryLabel = useMemo(() => {
+    if (displayedBudgets.length === 0) return 'Total Budget';
+    const period = (displayedBudgets[0] as any).period;
+    return period === 'WEEKLY' ? 'Total Budget This Week' : 'Total Budget This Month';
+  }, [displayedBudgets]);
 
   const getProgress = (spent: number, limit: number) => {
     if (limit === 0) return 0;
@@ -156,7 +182,7 @@ export default function BudgetScreen() {
 
         {/* Summary Card */}
         <View className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-2xl p-5">
-          <Text className="text-purple-100 text-sm font-medium mb-2">Total Budget This Month</Text>
+          <Text className="text-purple-100 text-sm font-medium mb-2">{summaryLabel}</Text>
           <Text className="text-white text-3xl font-bold mb-4">{formatCurrency(totalBudget)}</Text>
           <View className="flex-row justify-between">
             <View>
@@ -183,7 +209,9 @@ export default function BudgetScreen() {
             <>
               {groupNames.length === 0 ? (
                 <View className="bg-white dark:bg-slate-800 rounded-3xl p-8 items-center shadow-lg border border-slate-100 dark:border-slate-700">
-                  <Text className="text-slate-500 dark:text-slate-400">No budgets set yet.</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-center">
+                    No budgets are active for this period yet.
+                  </Text>
                 </View>
               ) : (
                 groupNames.map((name) => {
@@ -191,7 +219,7 @@ export default function BudgetScreen() {
                   const progress = getProgress(group.totalSpent, group.totalLimit);
                   const progressColor = getProgressColor(progress);
                   // Find parent category icon/color if possible
-                  const parentCat = categories.find(c => c.name === name);
+                  const parentCat = categoryByName.get(name);
 
                   return (
                     <TouchableOpacity
@@ -206,7 +234,7 @@ export default function BudgetScreen() {
                             className="w-12 h-12 rounded-2xl justify-center items-center mr-4"
                             style={{ backgroundColor: parentCat?.color ? parentCat.color + '20' : '#f1f5f9' }}
                           >
-                            <FontAwesome name={parentCat?.icon as any || 'folder'} size={20} color={parentCat?.color || '#94a3b8'} />
+                            <CategoryIcon icon={parentCat?.icon ?? 'folder'} size={20} color={parentCat?.color || '#94a3b8'} />
                           </View>
                           <View>
                             <Text className="text-slate-900 dark:text-white font-bold text-lg">{name}</Text>
@@ -249,8 +277,11 @@ export default function BudgetScreen() {
           ) : (
             /* BUDGET ITEMS LIST VIEW */
             displayedBudgets.map((budget) => {
-              const category = categories.find(c => c.name === budget.category);
-              const progress = getProgress(budget.spent, budget.limit_amount);
+              const category = categoryByName.get(budget.category);
+              const parentCategory = category?.parentId
+                ? categories.find((candidate) => candidate.id === category.parentId)
+                : null;
+              const progress = getProgress(budget.spent, budget.effectiveLimit);
               const progressColor = getProgressColor(progress);
 
               return (
@@ -265,13 +296,24 @@ export default function BudgetScreen() {
                       className="w-12 h-12 rounded-2xl justify-center items-center mr-4"
                       style={{ backgroundColor: category?.color ? category.color + '20' : '#f1f5f9' }}
                     >
-                      <FontAwesome name={category?.icon as any || 'question'} size={20} color={category?.color || '#94a3b8'} />
+                      <CategoryIcon icon={category?.icon ?? 'question'} size={20} color={category?.color || '#94a3b8'} />
                     </View>
                     <View className="flex-1">
                       <Text className="text-slate-900 dark:text-white font-bold text-base">{budget.category}</Text>
+                      {parentCategory && (
+                        <Text className="text-slate-400 dark:text-slate-500 text-xs mb-1">
+                          {parentCategory.name} category
+                        </Text>
+                      )}
                       <Text className="text-slate-500 dark:text-slate-400 text-sm">
-                        {formatCurrency(budget.spent)} of {formatCurrency(budget.limit_amount)}
+                        {formatCurrency(budget.spent)} of {formatCurrency(budget.effectiveLimit)}
                       </Text>
+                      {budget.rolloverDelta !== 0 && (
+                        <Text className={`text-xs mt-1 font-semibold ${budget.rolloverDelta > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {budget.rolloverDelta > 0 ? 'Carry-over +' : 'Reduction '}
+                          {formatCurrency(Math.abs(budget.rolloverDelta))}
+                        </Text>
+                      )}
                     </View>
                     <View className="items-end">
                       <View className="flex-row gap-2 mb-1">
@@ -286,7 +328,7 @@ export default function BudgetScreen() {
                         {progress.toFixed(0)}%
                       </Text>
                       <Text className={`text-xs font-semibold mt-1`} style={{ color: progressColor }}>
-                        {formatCurrency(budget.limit_amount - budget.spent)} left
+                        {formatCurrency(budget.remaining)} left
                       </Text>
                     </View>
                   </View>

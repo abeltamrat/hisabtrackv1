@@ -1,12 +1,12 @@
 import { AuthService } from '@/services/AuthService';
-import { getDatabase } from '@/services/database';
+import RemotePushService from '@/services/RemotePushService';
 import { SecureStorageService } from '@/services/SecureStorageService';
 import SyncService from '@/services/SyncService';
 import { AppDispatch } from '@/store';
-import { fetchAccounts, resetAccounts } from '@/store/slices/accountsSlice';
+import { resetAccounts } from '@/store/slices/accountsSlice';
 import { resetBudgets } from '@/store/slices/budgetsSlice';
 import { resetLoans } from '@/store/slices/loansSlice';
-import { fetchTransactions, resetTransactions } from '@/store/slices/transactionsSlice';
+import { resetTransactions } from '@/store/slices/transactionsSlice';
 import { StorageService } from '@/utils/storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
@@ -30,12 +30,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const dispatch = useDispatch<AppDispatch>();
-  const syncIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    // Check for stored user data on mount
-    checkAuth();
 
-    // Listen to auth state changes
+  useEffect(() => {
+    void SyncService.refreshLocalStore();
+
     const unsubscribe = AuthService.onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
         setUser({
@@ -43,27 +41,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
         });
-        // Trigger pull from Firestore and then refresh local store
+
         (async () => {
           try {
-            await SyncService.pullAllForUser(firebaseUser.uid);
-            // push local data to remote to ensure any local-only records are uploaded
-            await SyncService.pushAllForUser(firebaseUser.uid);
-            // refresh redux store
-            dispatch(fetchAccounts());
-            dispatch(fetchTransactions());
+            await SyncService.pullAllForUser(firebaseUser.uid, true);
+            await SyncService.pushAllForUser(firebaseUser.uid, true);
+            await SyncService.refreshLocalStore();
           } catch (err) {
             console.error('Error syncing data on sign-in', err);
+            try {
+              await SyncService.refreshLocalStore();
+            } catch (refreshError) {
+              console.error('Error refreshing local data after sign-in failure', refreshError);
+            }
           }
-          // start real-time auto-sync (local changes push, remote changes pull)
+
           try {
             SyncService.startAutoSync(firebaseUser.uid);
           } catch (e) {
             console.error('Failed to start auto-sync', e);
           }
+
+          try {
+            await RemotePushService.syncCurrentDevice(firebaseUser.uid);
+          } catch (e) {
+            console.error('Failed to register remote push device', e);
+          }
+
+          // Request key permissions after sign-in (non-blocking, delayed so UI settles first)
+          setTimeout(async () => {
+            try {
+              const { requestKeyPermissionsIfNeeded } = await import('@/services/PermissionsService');
+              await requestKeyPermissionsIfNeeded();
+            } catch (e) {
+              console.warn('Failed to request key permissions', e);
+            }
+          }, 1500);
         })();
       } else {
         setUser(null);
+        try { SyncService.stopAutoSync(); } catch (e) {}
+        void SyncService.refreshLocalStore();
       }
       setLoading(false);
     });
@@ -74,35 +92,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-
-  const checkAuth = async () => {
-    try {
-      const userData = await SecureStorageService.getUserData();
-      const token = await SecureStorageService.getToken();
-
-      if (userData && token) {
-        setUser(userData);
-      }
-    } catch (error) {
-      console.error('Error checking auth:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const signOut = async () => {
     try {
       console.log('Starting logout process...');
+
+      if (user?.uid) {
+        try {
+          await RemotePushService.unregisterCurrentDevice(user.uid);
+        } catch (e) {
+          console.error('Failed to unregister remote push device', e);
+        }
+      }
+
       await AuthService.signOut();
       console.log('Firebase signOut successful');
       await SecureStorageService.clearAll();
-      
-      // Clear all local data stores to prevent leakage
-      const db = await getDatabase();
-      await db.clearAllData();
       await StorageService.clearAll();
 
-      // Clear Redux state
+      // Clear only Redux in-memory state — local SQLite data stays on device
       dispatch(resetAccounts());
       dispatch(resetTransactions());
       dispatch(resetBudgets());

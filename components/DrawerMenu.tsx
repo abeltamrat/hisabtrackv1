@@ -7,8 +7,12 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Alert, Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
+import { UpdateService, UpdateInfo } from '@/services/UpdateService';
+import { RootState } from '@/store';
+import { fetchAccounts } from '@/store/slices/accountsSlice';
+import UpdateModal from './UpdateModal';
 
 interface DrawerMenuProps {
   visible: boolean;
@@ -30,9 +34,36 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const { actualTheme } = useTheme();
   const dispatch = useDispatch();
   const slideAnim = React.useRef(new Animated.Value(-300)).current;
-  const { formatCurrency } = useAppSettings();
+  const { formatCurrency, fontSize } = useAppSettings();
   const { t } = useI18n();
   const [notificationCount, setNotificationCount] = React.useState(0);
+  const [, setIsPasswordModalVisible] = React.useState(false);
+  const [, setPasswordInput] = React.useState('');
+  const [, setIsResetting] = React.useState(false);
+  const [, setResetError] = React.useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = React.useState<UpdateInfo | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = React.useState(false);
+  const accounts = useSelector((state: RootState) => state.accounts.items);
+  const isVerySmall = fontSize === 'V.Small';
+  const drawerWidth = isVerySmall ? 300 : 320;
+  const closeButtonClass = `absolute ${isVerySmall ? 'top-12 right-3 w-9 h-9' : 'top-14 right-4 w-10 h-10'} bg-white/20 rounded-xl justify-center items-center z-50`;
+  const headerUserCardClass = `${isVerySmall ? 'w-14 h-14 mr-3 rounded-xl' : 'w-16 h-16 mr-4 rounded-2xl'} bg-white/20 justify-center items-center`;
+  const headerInitialsClass = `text-white ${isVerySmall ? 'text-xl' : 'text-2xl'} font-bold`;
+  const headerNameClass = `text-white ${isVerySmall ? 'text-lg' : 'text-xl'} font-bold`;
+  const headerEmailClass = `text-primary-100 ${isVerySmall ? 'text-xs' : 'text-sm'}`;
+  const summaryCardClass = `bg-white/10 backdrop-blur-lg rounded-2xl ${isVerySmall ? 'p-3 mt-3' : 'p-4 mt-4'}`;
+  const summaryLabelClass = `text-primary-100 ${isVerySmall ? 'text-[10px]' : 'text-xs'} mb-1`;
+  const summaryValueClass = `text-white ${isVerySmall ? 'text-xl' : 'text-2xl'} font-bold`;
+  const sectionWrapperClass = `px-4 ${isVerySmall ? 'py-3' : 'py-4'}`;
+  const sectionWrapperMainClass = `px-4 ${isVerySmall ? 'py-4' : 'py-6'}`;
+  const sectionTitleClass = `text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} font-bold uppercase mb-3 px-2`;
+  const menuItemClass = `flex-row items-center px-4 ${isVerySmall ? 'py-3' : 'py-4'} rounded-2xl mb-2 active:bg-slate-50 dark:active:bg-slate-800`;
+  const menuIconWrapClass = `${isVerySmall ? 'w-9 h-9 mr-3' : 'w-10 h-10 mr-4'} rounded-xl justify-center items-center`;
+  const menuTitleClass = `flex-1 text-slate-900 dark:text-white font-semibold ${isVerySmall ? 'text-sm' : 'text-base'}`;
+  const menuChevronSize = isVerySmall ? 12 : 14;
+  const menuIconSize = isVerySmall ? 16 : 18;
+  const destructiveRowClass = `flex-row items-center px-4 ${isVerySmall ? 'py-3' : 'py-4'} rounded-2xl`;
+  const destructiveTextClass = `flex-1 font-bold ${isVerySmall ? 'text-sm' : 'text-base'}`;
 
   // Load notification count
   React.useEffect(() => {
@@ -46,27 +77,14 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     setNotificationCount(count);
   };
 
-  // Calculate total balance from transactions to match Dashboard
-  const transactions = useSelector((state: any) => state.transactions.items);
   const totalBalance = React.useMemo(() => {
-    const income = transactions
-      .filter((t: any) => t.type === 'INCOME')
-      .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-      
-    const expense = transactions
-      .filter((t: any) => t.type === 'EXPENSE')
-      .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-      
-    return income - expense;
-  }, [transactions]);
+    return accounts.reduce((sum, account) => sum + (account.balance || 0), 0);
+  }, [accounts]);
 
   React.useEffect(() => {
     if (visible) {
-      // Ensure transactions are fetched for accurate balance
-      if (transactions.length === 0) {
-        import('@/store/slices/transactionsSlice').then(({ fetchTransactions }) => {
-          dispatch(fetchTransactions() as any);
-        });
+      if (accounts.length === 0) {
+        dispatch(fetchAccounts() as any);
       }
 
       Animated.spring(slideAnim, {
@@ -82,7 +100,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
         useNativeDriver: true,
       }).start();
     }
-  }, [visible, dispatch, slideAnim, transactions.length]);
+  }, [visible, dispatch, slideAnim, accounts.length]);
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', title: 'Dashboard', icon: 'dashboard', route: '/(tabs)', color: '#6366f1' },
@@ -100,7 +118,8 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   ];
 
   const toolsItems: MenuItem[] = [
-    { id: 'export', title: 'Export Data', icon: 'download', color: '#06b6d4' },
+    { id: 'ai-assistant', title: 'AI Assistant', icon: 'magic', route: '/aiassistant', color: '#6366f1' },
+    { id: 'export', title: 'Export Data', icon: 'download', route: '/export', color: '#06b6d4' },
     { id: 'backup', title: 'Backup & Restore', icon: 'cloud', color: '#14b8a6' },
     { id: 'calculator', title: 'Calculator', icon: 'calculator', route: '/calculator', color: '#f97316' },
     { id: 'goals', title: 'Financial Goals', icon: 'star', route: '/goals', color: '#eab308' },
@@ -109,11 +128,13 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const moreItems: MenuItem[] = [
     { id: 'settings', title: 'Settings', icon: 'cog', color: '#64748b' },
     { id: 'notifications', title: 'Notifications', icon: 'bell', badge: notificationCount > 0 ? notificationCount : undefined, color: '#8b5cf6' },
+    { id: 'checkUpdate', title: 'Check for Updates', icon: 'refresh', color: '#10b981' },
     { id: 'help', title: 'Help & Support', icon: 'question-circle', color: '#10b981' },
-    { id: 'about', title: 'About HisabTrack', icon: 'info-circle', color: '#3b82f6' },
-    { id: 'privacy', title: 'Privacy Policy', icon: 'shield', color: '#6366f1' },
-    { id: 'terms', title: 'Terms of Service', icon: 'file-text', color: '#64748b' },
+    { id: 'about', title: 'About HisabTrack', icon: 'info-circle', color: '#6366f1' },
+    { id: 'privacy', title: 'Privacy Policy', icon: 'shield', color: '#10b981' },
+    { id: 'terms', title: 'Terms of Service', icon: 'file-text', color: '#f59e0b' },
   ];
+
 
   const handleNavigate = (route?: string) => {
     if (!route) return;
@@ -125,34 +146,34 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
 
   const handleLogout = async () => {
     console.log('Logout button clicked');
-    
+
     // Use window.confirm for web, Alert for native
     const confirmed = Platform.OS === 'web'
       ? (window as any).confirm('Are you sure you want to logout?')
       : await new Promise((resolve) => {
-          Alert.alert(
-            'Logout',
-            'Are you sure you want to logout?',
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => {
-                  console.log('Logout cancelled');
-                  resolve(false);
-                },
+        Alert.alert(
+          'Logout',
+          'Are you sure you want to logout?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                console.log('Logout cancelled');
+                resolve(false);
               },
-              {
-                text: 'Logout',
-                style: 'destructive',
-                onPress: () => {
-                  console.log('User confirmed logout');
-                  resolve(true);
-                },
+            },
+            {
+              text: 'Logout',
+              style: 'destructive',
+              onPress: () => {
+                console.log('User confirmed logout');
+                resolve(true);
               },
-            ]
-          );
-        });
+            },
+          ]
+        );
+      });
 
     if (!confirmed) {
       console.log('Logout cancelled by user');
@@ -176,79 +197,24 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     }
   };
 
-  const handleResetAccount = async () => {
-    console.log('Reset Account button clicked');
-    
-    // First confirmation
-    const firstConfirm = Platform.OS === 'web' 
-      ? (window as any).confirm('⚠️ WARNING: This will permanently delete ALL your data!\n\nThis includes:\n• All transactions\n• All categories\n• All budgets\n• All recurring payments\n• All loans and debts\n• All financial goals\n• All cards and accounts\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?')
-      : await new Promise((resolve) => {
-          Alert.alert(
-            '⚠️ WARNING',
-            'This will permanently delete ALL your data!\n\nThis includes:\n• All transactions\n• All categories\n• All budgets\n• All recurring payments\n• All loans and debts\n• All financial goals\n• All cards and accounts\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?',
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => resolve(false),
-              },
-              {
-                text: 'Continue',
-                style: 'destructive',
-                onPress: () => resolve(true),
-              },
-            ]
-          );
-        });
-
-    if (!firstConfirm) {
-      console.log('Reset cancelled by user');
-      return;
-    }
-
-    // Ask for password
-    const password = Platform.OS === 'web'
-      ? (window as any).prompt('Please enter your password to confirm:')
-      : await new Promise<string | null>((resolve) => {
-          Alert.prompt(
-            'Enter Password',
-            'Please enter your password to confirm this action:',
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => resolve(null),
-              },
-              {
-                text: 'Confirm',
-                style: 'destructive',
-                onPress: (password?: string) => resolve(password || null),
-              },
-            ],
-            'secure-text'
-          );
-        });
-
-    if (!password) {
-      console.log('Password not provided');
-      return;
-    }
-
+  const executeReset = async (password: string) => {
     try {
+      setIsResetting(true);
+      setResetError(null);
       console.log('Verifying password...');
-      
+
       // Re-authenticate user with password
       const { getAuth, EmailAuthProvider, reauthenticateWithCredential } = await import('firebase/auth');
       const auth = getAuth();
       const currentUser = auth.currentUser;
-      
+
       if (!currentUser || !currentUser.email) {
         throw new Error('No user logged in');
       }
 
       const credential = EmailAuthProvider.credential(currentUser.email, password);
       await reauthenticateWithCredential(currentUser, credential);
-      
+
       console.log('Password verified, resetting account...');
 
       // Delete remote data from Firestore
@@ -260,7 +226,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
       // Import SecureStorageService and Database
       const { SecureStorageService } = await import('@/services/SecureStorageService');
       const { getDatabase } = await import('@/services/database');
-      
+
       // Clear all data from secure storage
       await SecureStorageService.clearAll();
       console.log('Secure storage cleared');
@@ -294,13 +260,13 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
       const { resetAccounts } = await import('@/store/slices/accountsSlice');
       const { resetBudgets } = await import('@/store/slices/budgetsSlice');
       const { resetLoans } = await import('@/store/slices/loansSlice');
-      
+
       dispatch(resetTransactions());
       dispatch(resetAccounts());
       dispatch(resetBudgets());
       dispatch(resetLoans());
       console.log('Redux store reset');
-      
+
       // Success message
       if (Platform.OS === 'web') {
         (window as any).alert('Account reset successfully! You will now be logged out.');
@@ -311,25 +277,92 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
       // Sign out and redirect
       await signOut();
       router.replace('/(auth)/login');
+      setIsPasswordModalVisible(false);
       onClose();
-      
+
     } catch (error: any) {
       console.error('Reset account error:', error);
-      
+
       let errorMessage = 'Failed to reset account. ';
       if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        errorMessage += 'Incorrect password.';
+        errorMessage = 'Incorrect password. Please try again.';
       } else if (error.code === 'auth/too-many-requests') {
-        errorMessage += 'Too many attempts. Please try again later.';
+        errorMessage = 'Too many attempts. Please try again later.';
       } else {
-        errorMessage += 'Please try again.';
+        errorMessage += (error.message || 'Please try again.');
       }
-      
+
+      setResetError(errorMessage);
       if (Platform.OS === 'web') {
         (window as any).alert(errorMessage);
-      } else {
-        Alert.alert('Error', errorMessage);
       }
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleResetAccount = async () => {
+    console.log('Reset Account button clicked');
+
+    // First confirmation
+    const firstConfirm = Platform.OS === 'web'
+      ? (window as any).confirm('⚠️ WARNING: This will permanently delete ALL your data!\n\nThis includes:\n• All transactions\n• All categories\n• All budgets\n• All recurring payments\n• All loans and debts\n• All financial goals\n• All cards and accounts\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?')
+      : await new Promise((resolve) => {
+        Alert.alert(
+          '⚠️ WARNING',
+          'This will permanently delete ALL your data!\n\nThis includes:\n• All transactions\n• All categories\n• All budgets\n• All recurring payments\n• All loans and debts\n• All financial goals\n• All cards and accounts\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(false),
+            },
+            {
+              text: 'Continue',
+              style: 'destructive',
+              onPress: () => resolve(true),
+            },
+          ]
+        );
+      });
+
+    if (!firstConfirm) {
+      console.log('Reset cancelled by user');
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      const password = (window as any).prompt('Please enter your password to confirm:');
+      if (password) {
+        await executeReset(password);
+      }
+    } else {
+      setPasswordInput('');
+      setResetError(null);
+      setIsPasswordModalVisible(true);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const info = await UpdateService.checkForUpdate();
+      if (info) {
+        setUpdateInfo(info);
+        onClose(); // Close drawer to show update modal
+      } else {
+        const message = 'You are using the latest version!';
+        Platform.OS === 'web'
+          ? window.alert(message)
+          : Alert.alert('Up to Date', message);
+      }
+    } catch (error) {
+      const message = 'Failed to check for updates. Please try again later.';
+      Platform.OS === 'web'
+        ? window.alert(message)
+        : Alert.alert('Error', message);
+    } finally {
+      setIsCheckingUpdate(false);
     }
   };
 
@@ -374,7 +407,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
             left: 0,
             top: 0,
             bottom: 0,
-            width: 320,
+            width: drawerWidth,
             transform: [{ translateX: slideAnim }],
             backgroundColor: actualTheme === 'dark' ? '#0f172a' : '#ffffff',
             shadowColor: '#000',
@@ -387,12 +420,12 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
           {/* Close Button */}
           <TouchableOpacity
             onPress={onClose}
-            className="absolute top-14 right-4 w-10 h-10 bg-white/20 rounded-xl justify-center items-center z-50"
+            className={closeButtonClass}
           >
-            <FontAwesome name="times" size={18} color="#fff" />
+            <FontAwesome name="times" size={isVerySmall ? 16 : 18} color="#fff" />
           </TouchableOpacity>
 
-          <ScrollView 
+          <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={{ flexGrow: 1 }}
             showsVerticalScrollIndicator={false}
@@ -400,49 +433,49 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
             {/* Header */}
             <LinearGradient
               colors={actualTheme === 'dark' ? ['#1e293b', '#0f172a'] : ['#4f46e5', '#4338ca']}
-              className="px-6 pt-16 pb-8"
+              className={`px-6 pt-16 ${isVerySmall ? 'pb-6' : 'pb-8'}`}
             >
               <View className="flex-row items-center mb-4">
-                <View className="w-16 h-16 bg-white/20 rounded-2xl justify-center items-center mr-4">
-                  <Text className="text-white text-2xl font-bold">{getUserInitials()}</Text>
+                <View className={headerUserCardClass}>
+                  <Text className={headerInitialsClass}>{getUserInitials()}</Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-white text-xl font-bold">
+                  <Text className={headerNameClass}>
                     {user?.displayName || 'User'}
                   </Text>
-                  <Text className="text-primary-100 text-sm">
+                  <Text className={headerEmailClass}>
                     {user?.email || 'user@example.com'}
                   </Text>
                 </View>
               </View>
-              
+
               {/* Balance Summary */}
-              <View className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4">
-                <Text className="text-primary-100 text-xs mb-1">{t('totalBalance')}</Text>
-                <Text className="text-white text-2xl font-bold">
+              <View className={summaryCardClass}>
+                <Text className={summaryLabelClass}>{t('totalBalance')}</Text>
+                <Text className={summaryValueClass}>
                   {formatCurrency(totalBalance)}
                 </Text>
               </View>
             </LinearGradient>
 
             {/* Main Navigation */}
-            <View className="px-4 py-6">
-              <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase mb-3 px-2">
+            <View className={sectionWrapperMainClass}>
+              <Text className={sectionTitleClass}>
                 {t('mainMenu')}
               </Text>
               {menuItems.map((item) => (
                 <TouchableOpacity
                   key={item.id}
                   onPress={() => handleNavigate(item.route)}
-                  className="flex-row items-center px-4 py-4 rounded-2xl mb-2 active:bg-slate-50 dark:active:bg-slate-800"
+                  className={menuItemClass}
                 >
-                  <View className="w-10 h-10 rounded-xl justify-center items-center mr-4" style={{ backgroundColor: item.color + '20' }}>
-                    <FontAwesome name={item.icon as any} size={18} color={item.color} />
+                  <View className={menuIconWrapClass} style={{ backgroundColor: item.color + '20' }}>
+                    <FontAwesome name={item.icon as any} size={menuIconSize} color={item.color} />
                   </View>
-                  <Text className="flex-1 text-slate-900 dark:text-white font-semibold text-base">
+                  <Text className={menuTitleClass}>
                     {item.title}
                   </Text>
-                  <FontAwesome name="chevron-right" size={14} color="#94a3b8" />
+                  <FontAwesome name="chevron-right" size={menuChevronSize} color="#94a3b8" />
                 </TouchableOpacity>
               ))}
             </View>
@@ -451,23 +484,23 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
             <View className="h-px bg-slate-200 dark:bg-slate-800 mx-6 my-2" />
 
             {/* Finance Management */}
-            <View className="px-4 py-4">
-              <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase mb-3 px-2">
+            <View className={sectionWrapperClass}>
+              <Text className={sectionTitleClass}>
                 {t('financeManagement')}
               </Text>
               {financeItems.map((item) => (
                 <TouchableOpacity
                   key={item.id}
                   onPress={() => item.route ? handleNavigate(item.route) : null}
-                  className="flex-row items-center px-4 py-4 rounded-2xl mb-2 active:bg-slate-50 dark:active:bg-slate-800"
+                  className={menuItemClass}
                 >
-                  <View className="w-10 h-10 rounded-xl justify-center items-center mr-4" style={{ backgroundColor: item.color + '20' }}>
-                    <FontAwesome name={item.icon as any} size={18} color={item.color} />
+                  <View className={menuIconWrapClass} style={{ backgroundColor: item.color + '20' }}>
+                    <FontAwesome name={item.icon as any} size={menuIconSize} color={item.color} />
                   </View>
-                  <Text className="flex-1 text-slate-900 dark:text-white font-semibold text-base">
+                  <Text className={menuTitleClass}>
                     {item.title}
                   </Text>
-                  <FontAwesome name="chevron-right" size={14} color="#94a3b8" />
+                  <FontAwesome name="chevron-right" size={menuChevronSize} color="#94a3b8" />
                 </TouchableOpacity>
               ))}
             </View>
@@ -476,23 +509,23 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
             <View className="h-px bg-slate-200 dark:bg-slate-800 mx-6 my-2" />
 
             {/* Tools & Features */}
-            <View className="px-4 py-4">
-              <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase mb-3 px-2">
+            <View className={sectionWrapperClass}>
+              <Text className={sectionTitleClass}>
                 {t('toolsFeatures')}
               </Text>
               {toolsItems.map((item) => (
                 <TouchableOpacity
                   key={item.id}
                   onPress={() => item.route ? handleNavigate(item.route) : null}
-                  className="flex-row items-center px-4 py-4 rounded-2xl mb-2 active:bg-slate-50 dark:active:bg-slate-800"
+                  className={menuItemClass}
                 >
-                  <View className="w-10 h-10 rounded-xl justify-center items-center mr-4" style={{ backgroundColor: item.color + '20' }}>
-                    <FontAwesome name={item.icon as any} size={18} color={item.color} />
+                  <View className={menuIconWrapClass} style={{ backgroundColor: item.color + '20' }}>
+                    <FontAwesome name={item.icon as any} size={menuIconSize} color={item.color} />
                   </View>
-                  <Text className="flex-1 text-slate-900 dark:text-white font-semibold text-base">
+                  <Text className={menuTitleClass}>
                     {item.title}
                   </Text>
-                  <FontAwesome name="chevron-right" size={14} color="#94a3b8" />
+                  <FontAwesome name="chevron-right" size={menuChevronSize} color="#94a3b8" />
                 </TouchableOpacity>
               ))}
             </View>
@@ -501,8 +534,8 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
             <View className="h-px bg-slate-200 dark:bg-slate-800 mx-6 my-2" />
 
             {/* More */}
-            <View className="px-4 py-4">
-              <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase mb-3 px-2">
+            <View className={sectionWrapperClass}>
+              <Text className={sectionTitleClass}>
                 {t('more')}
               </Text>
               {moreItems.map((item) => (
@@ -513,24 +546,34 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
                       handleNavigate('/settings');
                     } else if (item.id === 'notifications') {
                       handleNavigate('/notifications');
+                    } else if (item.id === 'checkUpdate') {
+                      handleCheckForUpdates();
                     } else if (item.id === 'help') {
                       handleNavigate('/help');
+                    } else if (item.id === 'about') {
+                      handleNavigate('/about');
+                    } else if (item.id === 'privacy') {
+                      handleNavigate('/privacy');
+                    } else if (item.id === 'terms') {
+                      handleNavigate('/terms');
                     }
                   }}
-                  className="flex-row items-center px-4 py-4 rounded-2xl mb-2 active:bg-slate-50 dark:active:bg-slate-800"
+                  className={menuItemClass}
                 >
-                  <View className="w-10 h-10 rounded-xl justify-center items-center mr-4" style={{ backgroundColor: item.color + '20' }}>
-                    <FontAwesome name={item.icon as any} size={18} color={item.color} />
+                  <View className={menuIconWrapClass} style={{ backgroundColor: item.color + '20' }}>
+                    <FontAwesome name={item.icon as any} size={menuIconSize} color={item.color} />
                   </View>
-                  <Text className="flex-1 text-slate-900 dark:text-white font-semibold text-base">
+                  <Text className={menuTitleClass}>
                     {item.title}
                   </Text>
                   {item.badge ? (
-                    <View className="bg-red-500 px-2 py-1 rounded-full mr-2">
-                      <Text className="text-white text-xs font-bold">{item.badge}</Text>
+                    <View className={`bg-red-500 ${isVerySmall ? 'px-1.5 py-0.5' : 'px-2 py-1'} rounded-full mr-2`}>
+                      <Text className={`text-white font-bold ${isVerySmall ? 'text-[10px]' : 'text-xs'}`}>{item.badge}</Text>
                     </View>
+                  ) : item.id === 'checkUpdate' && isCheckingUpdate ? (
+                    <ActivityIndicator size="small" color="#10b981" />
                   ) : (
-                    <FontAwesome name="chevron-right" size={14} color="#94a3b8" />
+                    <FontAwesome name="chevron-right" size={menuChevronSize} color="#94a3b8" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -539,30 +582,16 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
             {/* Divider */}
             <View className="h-px bg-slate-200 dark:bg-slate-800 mx-6 my-2" />
 
-            {/* Reset Account & Logout */}
-            <View className="px-4 py-4 pb-8">
-              {/* Reset Account */}
-              <TouchableOpacity 
-                onPress={handleResetAccount}
-                className="flex-row items-center px-4 py-4 rounded-2xl bg-orange-50 dark:bg-orange-900/30 mb-3"
-              >
-                <View className="w-10 h-10 bg-orange-100 dark:bg-orange-900/50 rounded-xl justify-center items-center mr-4">
-                  <FontAwesome name="trash" size={18} color="#f97316" />
-                </View>
-                <Text className="flex-1 text-orange-600 dark:text-orange-400 font-bold text-base">
-                  {t('resetAccount')}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Logout */}
-              <TouchableOpacity 
+            {/* Logout */}
+            <View className={`px-4 ${isVerySmall ? 'py-3 pb-6' : 'py-4 pb-8'}`}>
+              <TouchableOpacity
                 onPress={handleLogout}
-                className="flex-row items-center px-4 py-4 rounded-2xl bg-red-50 dark:bg-red-900/30"
+                className={`${destructiveRowClass} bg-red-50 dark:bg-red-900/30`}
               >
-                <View className="w-10 h-10 bg-red-100 dark:bg-red-900/50 rounded-xl justify-center items-center mr-4">
-                  <FontAwesome name="sign-out" size={18} color="#ef4444" />
+                <View className={`${menuIconWrapClass} bg-red-100 dark:bg-red-900/50`}>
+                  <FontAwesome name="sign-out" size={menuIconSize} color="#ef4444" />
                 </View>
-                <Text className="flex-1 text-red-600 dark:text-red-400 font-bold text-base">
+                <Text className={`${destructiveTextClass} text-red-600 dark:text-red-400`}>
                   {t('logout')}
                 </Text>
               </TouchableOpacity>
@@ -570,13 +599,20 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
 
             {/* Version */}
             <View className="px-6 pb-6">
-              <Text className="text-slate-400 text-xs text-center">
+              <Text className={`text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} text-center`}>
                 HisabTrack v1.0.0
               </Text>
             </View>
           </ScrollView>
         </Animated.View>
       </View>
+
+      {/* Update Modal */}
+      <UpdateModal
+        visible={!!updateInfo}
+        updateInfo={updateInfo}
+        onClose={() => setUpdateInfo(null)}
+      />
     </Modal>
   );
 }

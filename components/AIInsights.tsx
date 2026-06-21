@@ -1,7 +1,7 @@
 import { useTheme } from '@/contexts/ThemeContext';
 import { FinancialAdvisorService, FinancialInsight } from '@/services/FinancialAdvisorService';
-import { Transaction } from '@/types/database';
-import { FontAwesome } from '@expo/vector-icons';
+import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
+import { FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -9,9 +9,18 @@ import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'rea
 interface AIInsightsProps {
   transactions: Transaction[];
   previousPeriodTransactions?: Transaction[];
+  budgets?: Budget[];
+  loans?: Loan[];
+  recurring?: RecurringTransaction[];
 }
 
-export default function AIInsights({ transactions, previousPeriodTransactions = [] }: AIInsightsProps) {
+export default function AIInsights({
+  transactions,
+  previousPeriodTransactions = [],
+  budgets = [],
+  loans = [],
+  recurring = []
+}: AIInsightsProps) {
   const { actualTheme } = useTheme();
   const [insights, setInsights] = useState<FinancialInsight[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,19 +28,22 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
 
   useEffect(() => {
     analyzeData();
-  }, [transactions, previousPeriodTransactions]);
+  }, [transactions, previousPeriodTransactions, budgets, loans, recurring]);
 
   const analyzeData = async () => {
     setLoading(true);
-    
+
     // Simulate AI thinking time for better UX
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
+    await new Promise(resolve => setTimeout(resolve, 800));
+
     const results = FinancialAdvisorService.analyzeTransactions(
       transactions,
-      previousPeriodTransactions
+      previousPeriodTransactions,
+      budgets,
+      loans,
+      recurring
     );
-    
+
     setInsights(results);
     setLoading(false);
   };
@@ -46,7 +58,7 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
         default: return ['#374151', '#1f2937'];
       }
     }
-    
+
     switch (type) {
       case 'success': return ['#10b981', '#059669'];
       case 'warning': return ['#f59e0b', '#d97706'];
@@ -56,9 +68,10 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
     }
   };
 
-  if (transactions.length === 0) {
-    return null;
-  }
+  // Removed early return to always show the section
+  // if (transactions.length === 0) {
+  //   return null;
+  // }
 
   return (
     <View className="mb-6">
@@ -69,24 +82,24 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
       >
         <View className="flex-row items-center">
           <LinearGradient
-            colors={actualTheme === 'dark' ? ['#4c1d95', '#5b21b6'] : ['#8b5cf6', '#7c3aed']}
+            colors={actualTheme === 'dark' ? ['#4c1d95', '#5b21b6'] : ['#8b5cf6', '#7c3aed'] as any}
             className="w-10 h-10 rounded-xl justify-center items-center mr-3"
           >
-            <FontAwesome name="robot" size={20} color="#fff" />
+            <FontAwesome5 name="robot" size={20} color="#fff" />
           </LinearGradient>
           <View>
             <Text className="text-slate-900 dark:text-white text-lg font-bold">
               AI Financial Insights
             </Text>
             <Text className="text-slate-500 dark:text-slate-400 text-xs">
-              {insights.length} insights • Updated just now
+              {loading ? 'Analyzing...' : transactions.length === 0 ? 'No data' : `${insights.length} insights`}
             </Text>
           </View>
         </View>
-        <FontAwesome 
-          name={expanded ? 'chevron-up' : 'chevron-down'} 
-          size={16} 
-          color={actualTheme === 'dark' ? '#94a3b8' : '#64748b'} 
+        <FontAwesome5
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={actualTheme === 'dark' ? '#94a3b8' : '#64748b'}
         />
       </TouchableOpacity>
 
@@ -94,15 +107,25 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
       {expanded && (
         <View>
           {loading ? (
-            <View className="bg-white dark:bg-slate-800 rounded-2xl p-8 items-center">
+            <View className="bg-white dark:bg-slate-800 rounded-2xl p-8 items-center border border-slate-100 dark:border-slate-700 shadow-sm">
               <ActivityIndicator size="large" color="#8b5cf6" />
               <Text className="text-slate-500 dark:text-slate-400 mt-4">
                 Analyzing your financial data...
               </Text>
             </View>
+          ) : transactions.length === 0 ? (
+            <View className="bg-white dark:bg-slate-800 rounded-2xl p-6 items-center border border-slate-100 dark:border-slate-700 shadow-sm">
+              <FontAwesome5 name="chart-line" size={48} color="#cbd5e1" />
+              <Text className="text-slate-900 dark:text-white font-bold mt-4 text-lg">
+                No Data to Analyze
+              </Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-center mt-2">
+                Add some transactions to get AI-powered financial insights.
+              </Text>
+            </View>
           ) : insights.length === 0 ? (
-            <View className="bg-white dark:bg-slate-800 rounded-2xl p-6 items-center">
-              <FontAwesome name="check-circle" size={48} color="#10b981" />
+            <View className="bg-white dark:bg-slate-800 rounded-2xl p-6 items-center border border-slate-100 dark:border-slate-700 shadow-sm">
+              <FontAwesome5 name="check-circle" size={48} color="#10b981" />
               <Text className="text-slate-900 dark:text-white font-bold mt-4 text-lg">
                 All Looking Good!
               </Text>
@@ -111,8 +134,8 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
               </Text>
             </View>
           ) : (
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               className="-mx-6 px-6"
             >
@@ -123,13 +146,13 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
                   style={{ width: 300 }}
                 >
                   <LinearGradient
-                    colors={getInsightGradient(insight.type)}
+                    colors={getInsightGradient(insight.type) as any}
                     className="rounded-2xl p-5 shadow-lg"
                     style={{ elevation: 4 }}
                   >
                     <View className="flex-row items-start mb-3">
                       <View className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center mr-3">
-                        <FontAwesome name={insight.icon as any} size={18} color="#fff" />
+                        <FontAwesome5 name={insight.icon as any} size={18} color="#fff" />
                       </View>
                       <View className="flex-1">
                         <Text className="text-white font-bold text-base">
@@ -137,7 +160,7 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
                         </Text>
                       </View>
                     </View>
-                    
+
                     <Text className="text-white/90 text-sm leading-5">
                       {insight.description}
                     </Text>
@@ -145,7 +168,7 @@ export default function AIInsights({ transactions, previousPeriodTransactions = 
                     {/* Priority indicator */}
                     <View className="mt-4 flex-row items-center">
                       <View className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
-                        <View 
+                        <View
                           className="h-full bg-white/50 rounded-full"
                           style={{ width: `${insight.priority}%` }}
                         />

@@ -9,6 +9,10 @@ export interface BackupData {
   transactions: Transaction[];
   budgets: Budget[];
   loans: Loan[];
+  categories?: any[];
+  recurringTransactions?: any[];
+  settings?: any;
+  smsLearningRules?: any;
 }
 
 export class BackupService {
@@ -21,7 +25,11 @@ export class BackupService {
     accounts: Account[],
     transactions: Transaction[],
     budgets: Budget[],
-    loans: Loan[]
+    loans: Loan[],
+    categories?: any[],
+    recurringTransactions?: any[],
+    settings?: any,
+    smsLearningRules?: any
   ): BackupData {
     return {
       version: this.BACKUP_VERSION,
@@ -30,6 +38,10 @@ export class BackupService {
       transactions,
       budgets,
       loans,
+      categories,
+      recurringTransactions,
+      settings,
+      smsLearningRules,
     };
   }
 
@@ -43,7 +55,59 @@ export class BackupService {
     loans: Loan[],
     filename: string = `hisabtrack_backup_${new Date().toISOString().split('T')[0]}.json`
   ): Promise<void> {
-    const backup = this.createBackup(accounts, transactions, budgets, loans);
+    // 1. Fetch categories
+    let categories: any[] = [];
+    try {
+      const { StorageService } = await import('@/utils/storage');
+      categories = await StorageService.loadCategories();
+    } catch (e) {
+      console.warn('[BackupService] Failed to fetch categories for backup:', e);
+    }
+
+    // 2. Fetch recurring transactions
+    let recurringTransactions: any[] = [];
+    try {
+      const { Platform } = await import('react-native');
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      if (Platform.OS === 'web') {
+        const stored = localStorage.getItem('recurring_transactions');
+        if (stored) recurringTransactions = JSON.parse(stored);
+      } else {
+        const stored = await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
+        if (stored) recurringTransactions = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.warn('[BackupService] Failed to fetch recurring transactions for backup:', e);
+    }
+
+    // 3. Fetch settings
+    let settings: any = null;
+    try {
+      const { loadStoredAppSettings } = await import('@/contexts/AppSettingsContext');
+      settings = await loadStoredAppSettings();
+    } catch (e) {
+      console.warn('[BackupService] Failed to fetch settings for backup:', e);
+    }
+
+    // 4. Fetch SMS learning rules
+    let smsLearningRules: any = null;
+    try {
+      const { SMSLearningService } = await import('@/services/SMSLearningService');
+      smsLearningRules = await SMSLearningService.getAllRules();
+    } catch (e) {
+      console.warn('[BackupService] Failed to fetch SMS learning rules for backup:', e);
+    }
+
+    const backup = this.createBackup(
+      accounts,
+      transactions,
+      budgets,
+      loans,
+      categories,
+      recurringTransactions,
+      settings,
+      smsLearningRules
+    );
     const json = JSON.stringify(backup, null, 2);
     await saveJSON(filename, json);
   }
@@ -133,6 +197,8 @@ export class BackupService {
     totalTransactions: number;
     totalBudgets: number;
     totalLoans: number;
+    totalCategories?: number;
+    totalRecurringTransactions?: number;
     backupDate: string;
     version: string;
   } {
@@ -141,6 +207,8 @@ export class BackupService {
       totalTransactions: backup.transactions.length,
       totalBudgets: backup.budgets.length,
       totalLoans: backup.loans.length,
+      totalCategories: backup.categories?.length,
+      totalRecurringTransactions: backup.recurringTransactions?.length,
       backupDate: new Date(backup.timestamp).toLocaleString(),
       version: backup.version,
     };
@@ -173,6 +241,10 @@ export class BackupService {
       transactions: mergeById(existingData.transactions, newBackup.transactions),
       budgets: mergeById(existingData.budgets, newBackup.budgets),
       loans: mergeById(existingData.loans, newBackup.loans),
+      categories: newBackup.categories || existingData.categories,
+      recurringTransactions: newBackup.recurringTransactions || existingData.recurringTransactions,
+      settings: newBackup.settings || existingData.settings,
+      smsLearningRules: newBackup.smsLearningRules || existingData.smsLearningRules,
     };
   }
 
@@ -181,7 +253,7 @@ export class BackupService {
    */
   static createBackupSummary(backup: BackupData): string {
     const stats = this.getBackupStats(backup);
-    return `
+    let summary = `
 Backup Summary
 --------------
 Version: ${stats.version}
@@ -191,9 +263,25 @@ Data:
 - Accounts: ${stats.totalAccounts}
 - Transactions: ${stats.totalTransactions}
 - Budgets: ${stats.totalBudgets}
-- Loans: ${stats.totalLoans}
+- Loans: ${stats.totalLoans}`;
 
-Total Records: ${stats.totalAccounts + stats.totalTransactions + stats.totalBudgets + stats.totalLoans}
-    `.trim();
+    if (stats.totalCategories !== undefined) {
+      summary += `\n- Categories: ${stats.totalCategories}`;
+    }
+    if (stats.totalRecurringTransactions !== undefined) {
+      summary += `\n- Recurring Rules: ${stats.totalRecurringTransactions}`;
+    }
+    if (backup.settings) {
+      summary += `\n- App Settings: Yes`;
+    }
+    if (backup.smsLearningRules) {
+      summary += `\n- SMS Learning Rules: ${Object.keys(backup.smsLearningRules).length}`;
+    }
+
+    const totalRecords = stats.totalAccounts + stats.totalTransactions + stats.totalBudgets + stats.totalLoans +
+      (stats.totalCategories || 0) + (stats.totalRecurringTransactions || 0);
+
+    summary += `\n\nTotal Records: ${totalRecords}`;
+    return summary.trim();
   }
 }

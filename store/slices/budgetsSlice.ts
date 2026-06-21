@@ -1,8 +1,6 @@
 import { getDatabase } from '@/services/database';
-import SyncService from '@/services/SyncService';
 import { Budget } from '@/types/database';
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { deleteDoc, doc } from 'firebase/firestore';
 
 interface BudgetsState {
   items: Budget[];
@@ -35,16 +33,7 @@ export const updateBudget = createAsyncThunk('budgets/updateBudget', async (budg
 export const deleteBudget = createAsyncThunk('budgets/deleteBudget', async (id: string) => {
   const db = await getDatabase();
   await db.deleteBudget(id);
-  try {
-    const uid = (SyncService as any).currentUid;
-    if (uid) {
-      const firestore = SyncService.getFirestore();
-      const ref = doc(firestore, `users/${uid}/budgets`, id);
-      await deleteDoc(ref);
-    }
-  } catch (e) {
-    console.warn('deleteBudget: failed to delete remote budget immediately', e);
-  }
+
   return id;
 });
 

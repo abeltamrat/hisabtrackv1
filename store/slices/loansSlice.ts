@@ -1,8 +1,6 @@
 import { getDatabase } from '@/services/database';
-import SyncService from '@/services/SyncService';
 import { Loan } from '@/types/database';
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { deleteDoc, doc } from 'firebase/firestore';
 
 interface LoansState {
   items: Loan[];
@@ -35,16 +33,7 @@ export const updateLoan = createAsyncThunk('loans/updateLoan', async (loan: Loan
 export const deleteLoan = createAsyncThunk('loans/deleteLoan', async (id: string) => {
   const db = await getDatabase();
   await db.deleteLoan(id);
-  try {
-    const uid = (SyncService as any).currentUid;
-    if (uid) {
-      const firestore = SyncService.getFirestore();
-      const ref = doc(firestore, `users/${uid}/loans`, id);
-      await deleteDoc(ref);
-    }
-  } catch (e) {
-    console.warn('deleteLoan: failed to delete remote loan immediately', e);
-  }
+
   return id;
 });
 

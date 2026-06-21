@@ -1,10 +1,11 @@
 import { BUNDLED_LOGOS } from '@/assets/bankLogos/et';
+import CategoryIcon from '@/components/CategoryIcon';
 import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { RootState } from '@/store';
 import { Transaction } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
 import { useSelector } from 'react-redux';
 
@@ -14,10 +15,13 @@ interface RecentTransactionsProps {
   onTransactionPress?: (transaction: Transaction) => void;
 }
 
-export default function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: RecentTransactionsProps) {
+function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: RecentTransactionsProps) {
   const { categories } = useTransactions();
   const { formatCurrency } = useAppSettings();
   const accounts = useSelector((state: RootState) => state.accounts.items);
+
+  const categoryMap = useMemo(() => new Map(categories.map(c => [c.name, c])), [categories]);
+  const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts]);
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -73,8 +77,8 @@ export default function RecentTransactions({ transactions, onSeeAll, onTransacti
       ) : (
         transactions.map((item) => {
           const isIncome = item.type === 'INCOME';
-          const category = categories.find(c => c.name === item.category);
-          const account = accounts.find(a => a.id === item.account_id);
+          const category = categoryMap.get(item.category);
+          const account = accountMap.get(item.account_id);
 
           return (
             <TouchableOpacity
@@ -89,8 +93,8 @@ export default function RecentTransactions({ transactions, onSeeAll, onTransacti
                   className="w-14 h-14 rounded-2xl justify-center items-center mr-4"
                   style={{ backgroundColor: category?.color ? category.color + '20' : (isIncome ? '#dcfce7' : '#fee2e2') }}
                 >
-                  <FontAwesome
-                    name={category?.icon as any || 'question'}
+                  <CategoryIcon
+                    icon={category?.icon ?? 'question'}
                     size={20}
                     color={category?.color || (isIncome ? '#16a34a' : '#ef4444')}
                   />
@@ -123,3 +127,5 @@ export default function RecentTransactions({ transactions, onSeeAll, onTransacti
     </View>
   );
 }
+
+export default React.memo(RecentTransactions);

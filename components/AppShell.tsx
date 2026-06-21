@@ -1,6 +1,9 @@
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { AppNotification, AppNotificationService } from '@/services/AppNotificationService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
+import NativeErrorReporter from '@/services/NativeErrorReporter';
+import RemotePushService from '@/services/RemotePushService';
 import SyncService from '@/services/SyncService';
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -8,6 +11,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DrawerMenu from './DrawerMenu';
+import FinanceAssistantOverlay from './FinanceAssistantOverlay';
 
 const HEADER_HEIGHT = 56;
 
@@ -19,6 +23,7 @@ export default function AppShell({ children }: AppShellProps) {
   const [drawerVisible, setDrawerVisible] = React.useState(false);
   const router = useRouter();
   const { user } = useAuth();
+  const { actualTheme } = useTheme();
 
   const [disabledUntil, setDisabledUntil] = useState<number>(SyncService.disableAutoSyncUntil || 0);
 
@@ -48,6 +53,18 @@ export default function AppShell({ children }: AppShellProps) {
   }, []);
 
   useEffect(() => {
+    if (!user?.uid) return;
+
+    void RemotePushService.markCurrentDeviceSeen(user.uid);
+
+    const interval = setInterval(() => {
+      void RemotePushService.markCurrentDeviceSeen(user.uid);
+    }, 15 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [user?.uid]);
+
+  useEffect(() => {
     loadNotifications();
     const unsub = LocalChangeEmitter.subscribe(() => {
       loadNotifications();
@@ -57,11 +74,22 @@ export default function AppShell({ children }: AppShellProps) {
     };
   }, []);
 
-  const retrySync = () => {
+  const retrySync = async () => {
+    NativeErrorReporter.reset();
     SyncService.disableAutoSyncUntil = 0;
     SyncService.consecutiveNativeErrors = 0;
+    SyncService.stopAutoSync(); // clear currentUid so startAutoSync sets up fresh subscriptions
     if (user?.uid) {
-      try { SyncService.startAutoSync(user.uid); } catch (e) { console.error('retrySync: startAutoSync failed', e); }
+      try {
+        await SyncService.syncNow(user.uid);
+      } catch (e) {
+        console.error('retrySync: syncNow failed', e);
+      }
+      try {
+        SyncService.startAutoSync(user.uid);
+      } catch (e) {
+        console.error('retrySync: startAutoSync failed', e);
+      }
     }
     setDisabledUntil(0);
   };
@@ -72,9 +100,10 @@ export default function AppShell({ children }: AppShellProps) {
 
     // Cast to any to avoid strict route checking errors
     if (n.actionType === 'view_loans') router.push('/loans' as any);
-    else if (n.actionType === 'view_budget') router.push('/budgets' as any);
+    else if (n.actionType === 'view_budget') router.push('/budget' as any);
     else if (n.actionType === 'view_recurring') router.push('/recurring' as any);
     else if (n.actionType === 'view_reports') router.push('/reports' as any);
+    else if (n.actionType === 'view_drafts') router.push('/draft-transactions' as any);
     else router.push('/notifications' as any);
   };
 
@@ -91,28 +120,22 @@ export default function AppShell({ children }: AppShellProps) {
     <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
       {/* Top App Bar */}
       <View
+        className="flex-row items-center justify-between px-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800"
         style={{
           height: HEADER_HEIGHT,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 12,
-          backgroundColor: '#ffffff',
-          borderBottomWidth: 1,
-          borderBottomColor: '#e6e6e6',
           zIndex: 2000,
         }}
       >
         <TouchableOpacity onPress={() => setDrawerVisible(true)} style={{ padding: 8 }}>
-          <FontAwesome name="bars" size={20} color="#111827" />
+          <FontAwesome name="bars" size={20} color={actualTheme === 'dark' ? '#fff' : '#111827'} />
         </TouchableOpacity>
 
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>Hisab Track</Text>
+          <Text className="text-base font-bold text-slate-900 dark:text-white">Hisab Track</Text>
         </View>
 
         <TouchableOpacity onPress={togglePreview} style={{ padding: 8, position: 'relative' }}>
-          <FontAwesome name="bell-o" size={20} color="#111827" />
+          <FontAwesome name="bell-o" size={20} color={actualTheme === 'dark' ? '#fff' : '#111827'} />
           {aiUnreadCount > 0 && (
             <View style={{
               position: 'absolute',
@@ -160,24 +183,16 @@ export default function AppShell({ children }: AppShellProps) {
             <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, zIndex: 2001, backgroundColor: 'transparent' }} />
           </TouchableWithoutFeedback>
 
-          <View style={{
-            position: 'absolute',
-            top: HEADER_HEIGHT + 4,
-            right: 12,
-            width: 300,
-            backgroundColor: 'white',
-            borderRadius: 16,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.15,
-            shadowRadius: 12,
-            elevation: 8,
-            zIndex: 2002, // On top of backdrop
-            borderWidth: 1,
-            borderColor: '#f1f5f9',
-          }}>
-            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
-              <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#1e293b' }}>Notifications</Text>
+          <View
+            className="absolute right-3 w-[300px] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700"
+            style={{
+              top: HEADER_HEIGHT + 4,
+              elevation: 8,
+              zIndex: 2002,
+            }}
+          >
+            <View className="p-4 border-b border-slate-100 dark:border-slate-700">
+              <Text className="font-bold text-base text-slate-900 dark:text-white">Notifications</Text>
             </View>
 
             {recentNotifications.length === 0 ? (
@@ -189,12 +204,8 @@ export default function AppShell({ children }: AppShellProps) {
                 {recentNotifications.map(notification => (
                   <TouchableOpacity
                     key={notification.id}
-                    style={{
-                      padding: 12,
-                      borderBottomWidth: 1,
-                      borderBottomColor: '#f8fafc',
-                      backgroundColor: notification.read ? 'white' : '#f8fafc'
-                    }}
+                    className={`p-3 border-b border-slate-50 dark:border-slate-700/50 ${notification.read ? 'bg-white dark:bg-slate-800' : 'bg-slate-50 dark:bg-slate-700/30'
+                      }`}
                     onPress={() => handleNotificationPress(notification)}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
@@ -210,10 +221,10 @@ export default function AppShell({ children }: AppShellProps) {
                         <FontAwesome name={notification.icon as any} size={14} color={notification.color} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: '600', color: '#334155', marginBottom: 2 }} numberOfLines={1}>
+                        <Text className="font-semibold text-slate-800 dark:text-slate-200 mb-0.5" numberOfLines={1}>
                           {notification.title}
                         </Text>
-                        <Text style={{ color: '#64748b', fontSize: 12 }} numberOfLines={2}>
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs" numberOfLines={2}>
                           {notification.message}
                         </Text>
                         <Text style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>
@@ -231,9 +242,9 @@ export default function AppShell({ children }: AppShellProps) {
 
             <TouchableOpacity
               onPress={handleSeeAll}
-              style={{ padding: 12, alignItems: 'center', backgroundColor: '#f8fafc', borderBottomLeftRadius: 16, borderBottomRightRadius: 16 }}
+              className="p-3 items-center bg-slate-50 dark:bg-slate-700/50 rounded-b-2xl"
             >
-              <Text style={{ color: '#4f46e5', fontWeight: 'bold', fontSize: 14 }}>See all notifications</Text>
+              <Text className="text-indigo-600 dark:text-indigo-400 font-bold text-sm">See all notifications</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -257,6 +268,8 @@ export default function AppShell({ children }: AppShellProps) {
       <View style={{ flex: 1, zIndex: 1 }}>
         <View style={{ marginTop: 0, flex: 1 }}>{children}</View>
       </View>
+
+      <FinanceAssistantOverlay hidden={drawerVisible} />
 
       <DrawerMenu visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>

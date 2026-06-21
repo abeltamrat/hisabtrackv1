@@ -38,6 +38,15 @@ export const updateTransaction = createAsyncThunk(
   }
 );
 
+export const deleteTransaction = createAsyncThunk(
+  'transactions/deleteTransaction',
+  async (id: string) => {
+    const db = await getDatabase();
+    await db.deleteTransaction(id);
+    return id;
+  }
+);
+
 const transactionsSlice = createSlice({
   name: 'transactions',
   initialState,
@@ -73,6 +82,10 @@ const transactionsSlice = createSlice({
         if (index !== -1) {
           state.items[index] = action.payload;
         }
+      })
+      // Delete
+      .addCase(deleteTransaction.fulfilled, (state, action: PayloadAction<string>) => {
+        state.items = state.items.filter(t => t.id !== action.payload);
       });
   },
 });

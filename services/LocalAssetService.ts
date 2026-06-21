@@ -3,6 +3,7 @@ import LocalChangeEmitter from './LocalChangeEmitter';
 import { SecureStorageService } from './SecureStorageService';
 
 const USER_ASSETS_KEY = 'local_bank_logos';
+const BUNDLED_LOGO_MAP = Object.fromEntries(BUNDLED_ET.map((logo) => [logo.name, logo.url])) as Record<string, string>;
 
 export default class LocalAssetService {
   static async getUserAssets(): Promise<Record<string, string>> {
@@ -31,7 +32,7 @@ export default class LocalAssetService {
   static async getAllLogos(): Promise<Record<string, string>> {
     // Merge bundled ET logos with user assets (user overrides bundled if same name)
     const user = await this.getUserAssets();
-    return { ...BUNDLED_ET, ...(user || {}) };
+    return { ...BUNDLED_LOGO_MAP, ...(user || {}) };
   }
 
   static async addAsset(name: string, uri: string) {

@@ -12,18 +12,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Keyboard, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
+import { ActivityIndicator, Alert, Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
+import { getDatabase } from '@/services/database';
+import { DraftTransactionService } from '@/services/DraftTransactionService';
 
 export default function Accounts() {
   const router = useRouter();
   const dispatch = useDispatch();
   const accounts = useSelector((state: RootState) => state.accounts.items);
+  const transactions = useSelector((state: RootState) => state.transactions.items);
   const { preferLocalLogos, formatCurrency } = useAppSettings();
   const [showAddModal, setShowAddModal] = useState(false);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftCounts, setDraftCounts] = useState<Record<string, number>>({});
 
   const [accountName, setAccountName] = useState('');
   const [accountType, setAccountType] = useState<AccountType>('CASH');
@@ -33,6 +36,23 @@ export default function Accounts() {
   const [fetchedSmsNumbers, setFetchedSmsNumbers] = useState<string[]>([]);
   const [loadingSms, setLoadingSms] = useState(false);
   const [showSmsList, setShowSmsList] = useState(false);
+
+  // Sync Management Modal State
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [selectedSyncAccount, setSelectedSyncAccount] = useState<Account | null>(null);
+  const [syncDays, setSyncDays] = useState('30');
+  const [syncStatus, setSyncStatus] = useState({ status: 'Idle', progress: 0 });
+
+  useEffect(() => {
+    // Listen for sync status updates
+    import('@/services/SMSSyncService').then(({ SMSSyncService }) => {
+      SMSSyncService.setSyncStatusListener((status) => {
+        if (selectedSyncAccount?.id === status.accountId) {
+          setSyncStatus({ status: status.status, progress: status.progress });
+        }
+      });
+    });
+  }, [selectedSyncAccount]);
 
   // Logo suggestions
   const [accountLogo, setAccountLogo] = useState<string | null>(null);
@@ -93,9 +113,35 @@ export default function Accounts() {
     return `https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(query)}`;
   };
 
+  const fetchJsonSafely = async <T,>(url: string): Promise<T | null> => {
+    try {
+      const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!resp.ok) return null;
+      const raw = await resp.text();
+      const trimmed = raw.trim();
+      if (!trimmed || trimmed.startsWith('<')) return null;
+      return JSON.parse(trimmed) as T;
+    } catch {
+      return null;
+    }
+  };
+
   useEffect(() => {
     BankService.getAllBanks().then(setBanks);
-  }, [showAddModal]);
+
+    // Light automatic sync on mount only
+    if (Platform.OS === 'android') {
+      const performAutoSync = async () => {
+        try {
+          const { SMSSyncService } = await import('@/services/SMSSyncService');
+          await SMSSyncService.checkAllNow(accounts, transactions);
+        } catch (e) {
+          console.error('[Accounts] Auto-sync failed:', e);
+        }
+      };
+      performAutoSync();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Helper to resolve logo source: checks if the logo URL string matches a bundled bank
   const getAccountImageSource = (logoUrl: string | null | undefined) => {
@@ -144,8 +190,8 @@ export default function Accounts() {
 
     try {
       const url = getLogoQueryUrl(text);
-      const res = await fetch(url);
-      const data = await res.json();
+      const data = await fetchJsonSafely<any[]>(url);
+      const remoteSuggestions = Array.isArray(data) ? data : [];
 
       // Get user-uploaded local logos
       const userLocalSuggestions = Object.keys(localLogos)
@@ -157,7 +203,9 @@ export default function Accounts() {
       const popularLocalSuggestions = localBanks.map(b => ({ name: b.name, domain: b.domain, logo: localLogos[b.name] }));
 
       const allLocalSuggestions = [...userLocalSuggestions, ...popularLocalSuggestions];
-      const mergedSource = preferLocalLogos ? [...allLocalSuggestions, ...data] : [...data, ...allLocalSuggestions];
+      const mergedSource = preferLocalLogos
+        ? [...allLocalSuggestions, ...remoteSuggestions]
+        : [...remoteSuggestions, ...allLocalSuggestions];
 
       const merged = mergedSource.reduce((acc: any[], cur: any) => {
         const key = (cur.domain || cur.name).toLowerCase();
@@ -178,8 +226,7 @@ export default function Accounts() {
     try {
       setImageLoading(true);
       const q = encodeURIComponent(`${text} bank logo`);
-      const resp = await fetch(`https://api.duckduckgo.com/?q=${q}&format=json&no_html=1&skip_disambig=1`);
-      const ddg = await resp.json();
+      const ddg = await fetchJsonSafely<any>(`https://api.duckduckgo.com/?q=${q}&format=json&no_html=1&skip_disambig=1`);
       const topics: any[] = ddg?.RelatedTopics || [];
       const imgs: string[] = [];
 
@@ -209,10 +256,9 @@ export default function Accounts() {
       if (imgs.length < 8) {
         try {
           const wq = encodeURIComponent(`${text} logo`);
-          const wResp = await fetch(
-            `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${wq}&gsrlimit=10&prop=imageinfo&iiprop=url&origin=*`
+          const wJson = await fetchJsonSafely<any>(
+            `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${wq}&gsrlimit=10&prop=imageinfo&iiprop=url&origin=*`
           );
-          const wJson = await wResp.json();
           const pages = wJson?.query?.pages || {};
           const commons: string[] = Object.values(pages)
             .map((p: any) => p?.imageinfo?.[0]?.url)
@@ -221,9 +267,7 @@ export default function Accounts() {
             imgs.push(u);
             if (imgs.length >= 8) break;
           }
-        } catch (e) {
-          console.log('Wikimedia fetch failed', e);
-        }
+        } catch {}
       }
       setImageSuggestions(imgs);
       setImageLoading(false);
@@ -280,7 +324,18 @@ export default function Accounts() {
   useEffect(() => {
     // @ts-ignore
     dispatch(fetchAccounts());
-  }, [dispatch]);
+    loadDraftCounts();
+  }, [dispatch, accounts.length]);
+
+  const loadDraftCounts = async () => {
+    const entries = await Promise.all(
+      accounts.map(async (acc) => {
+        const count = await DraftTransactionService.getUnrecordedCount(acc.id);
+        return [acc.id, count] as const;
+      })
+    );
+    setDraftCounts(Object.fromEntries(entries));
+  };
 
   // Load local logos and subscribe to changes
   useEffect(() => {
@@ -294,9 +349,12 @@ export default function Accounts() {
       }
     };
     load();
-    unsub = LocalChangeEmitter.subscribe(() => { load(); });
+    unsub = LocalChangeEmitter.subscribe(() => {
+      load();
+      loadDraftCounts();
+    });
     return () => { if (unsub) unsub(); };
-  }, []);
+  }, [accounts]);
 
   const resetForm = () => {
     setAccountName('');
@@ -309,43 +367,103 @@ export default function Accounts() {
     setSuggestions([]);
   };
 
+  const handleCleanupDuplicates = async () => {
+    Alert.alert(
+      'Cleanup Duplicates',
+      'This will search for and remove duplicate transactions (same amount, type, description, and time). This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Cleanup',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const db = await getDatabase();
+              if (db.removeDuplicateTransactions) {
+                let totalRemoved = 0;
+                for (const account of accounts) {
+                  const removed = await db.removeDuplicateTransactions(account.id);
+                  totalRemoved += removed;
+                }
+                // @ts-ignore
+                dispatch(fetchAccounts());
+                Alert.alert('Success', `Removed ${totalRemoved} duplicate transaction(s).`);
+              } else {
+                Alert.alert('Error', 'Database does not support deduplication.');
+              }
+            } catch (e) {
+              console.error('Cleanup failed', e);
+              Alert.alert('Error', 'Failed to cleanup duplicates.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleFixBalances = async () => {
+    Alert.alert(
+      'Fix Balances',
+      'This will recalculate all account balances based on your transaction history. This may take a moment.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Fix Now',
+          onPress: async () => {
+            try {
+              const db = await getDatabase();
+              if (db.recalculateAccountBalance) {
+                for (const account of accounts) {
+                  await db.recalculateAccountBalance(account.id);
+                }
+                // @ts-ignore
+                dispatch(fetchAccounts());
+                Alert.alert('Success', 'Balances have been recalculated.');
+              } else {
+                Alert.alert('Error', 'Database does not support recalculation.');
+              }
+            } catch (e) {
+              console.error('Fix balances failed', e);
+              Alert.alert('Error', 'Failed to recalculate balances.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleEdit = (account: Account) => {
     setEditingId(account.id);
     setAccountName(account.name);
     setAccountType(account.type);
     setInitialBalance(account.balance.toString());
-    setAccountNumber((account as any).account_number || '');
-    setSmsNumber((account as any).sms_number || '');
-    setAccountLogo((account as any).logo || null);
+    setAccountNumber(account.account_number || '');
+    setSmsNumber(account.sms_number || '');
+    setAccountLogo(account.logo || null);
     setShowAddModal(true);
   };
 
   const handleDelete = (id: string, balance: number) => {
     const doDelete = async () => {
-      try {
-        // @ts-ignore
-        await dispatch(deleteAccount(id));
-        Platform.OS === 'web' ? window.alert('Account deleted') : Alert.alert('Success', 'Account deleted');
-      } catch (e) {
-        console.error(e);
-        Platform.OS === 'web' ? window.alert('Failed to delete') : Alert.alert('Error', 'Failed to delete');
+      const result = await (dispatch as any)(deleteAccount(id));
+      if (deleteAccount.rejected.match(result)) {
+        Alert.alert('Error', result.error?.message || 'Failed to delete account.');
+        return;
       }
+      Alert.alert('Success', 'Account deleted.');
     };
 
-    if (Platform.OS === 'web') {
-      if (confirm(`Delete this account? Remaining balance ($${balance}) will be recorded as an expense.`)) {
-        doDelete();
-      }
-    } else {
-      Alert.alert(
-        'Delete Account',
-        `Are you sure? Remaining balance ($${balance}) will be recorded as an expense.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: doDelete }
-        ]
-      );
-    }
+    const balanceMsg = balance !== 0
+      ? ` The remaining balance (${formatCurrency(Math.abs(balance))}) will be recorded as an expense.`
+      : '';
+    Alert.alert(
+      'Delete Account',
+      `Are you sure you want to delete this account?${balanceMsg}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
+      ]
+    );
   };
 
   const handleSaveAccount = async () => {
@@ -354,9 +472,9 @@ export default function Accounts() {
       return;
     }
 
-    const balance = parseFloat(initialBalance);
+    const balance = initialBalance.trim() === '' ? 0 : parseFloat(initialBalance);
     if (isNaN(balance)) {
-      Platform.OS === 'web' ? window.alert('Please enter valid balance') : Alert.alert('Error', 'Please enter valid balance');
+      Platform.OS === 'web' ? window.alert('Please enter a valid balance') : Alert.alert('Error', 'Please enter a valid balance');
       return;
     }
 
@@ -379,13 +497,12 @@ export default function Accounts() {
       if (!finalLogo) {
         try {
           const url = getLogoQueryUrl(accountName);
-          const res = await fetch(url);
-          const data = await res.json();
+          const data = await fetchJsonSafely<any[]>(url);
           if (data && data.length > 0) {
             const d0 = data[0];
             const domain = d0?.domain;
             const fallback = d0?.logo;
-            finalLogo = domain ? `https://icons.duckduckgo.com/ip3/${domain}.ico` : fallback;
+            finalLogo = fallback || (domain ? `https://logo.clearbit.com/${domain}` : null);
           }
         } catch (e) {
           console.log('Auto-fetch logo failed', e);
@@ -397,11 +514,11 @@ export default function Accounts() {
     const makeDisplayName = (baseName: string, accNumber?: string | undefined, excludeId?: string | null) => {
       const sameName = accounts.filter(a => a.name.trim().toLowerCase() === baseName.trim().toLowerCase() && a.id !== excludeId);
       if (sameName.length === 0) return baseName.trim();
-      const last4 = (accNumber || '').replace(/\D/g, '').slice(-4);
-      if (last4) return `${baseName.trim()} (${last4})`;
+      const lastDigits = (accNumber || '').replace(/\D/g, '').slice(-4);
+      if (lastDigits) return `${baseName.trim()} (${lastDigits})`;
       // Append roman numerals II, III, IV... for duplicates without account number
       const numerals = ['II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
-      const idx = Math.min(sameName.length - 0, numerals.length - 1);
+      const idx = Math.min(sameName.length - 1, numerals.length - 1);
       return `${baseName.trim()} ${numerals[idx] || 'II'}`;
     };
 
@@ -409,25 +526,34 @@ export default function Accounts() {
       if (editingId) {
         // Update
         const existing = accounts.find(a => a.id === editingId);
+        if (!existing) {
+          Alert.alert('Error', 'Account not found. It may have been deleted.');
+          setShowAddModal(false);
+          resetForm();
+          return;
+        }
         if (existing) {
           const newName = makeDisplayName(accountName, accountNumber || undefined, editingId);
-          // @ts-ignore
-          await dispatch(updateAccount({
+          const updateResult = await (dispatch as any)(updateAccount({
             ...existing,
             name: newName,
             type: accountType,
-            balance: balance, // New balance
+            balance: balance,
             account_number: accountNumber || undefined,
             sms_number: smsNumber || undefined,
             logo: finalLogo || undefined,
           }));
+          if (updateAccount.rejected.match(updateResult)) {
+            const msg = updateResult.error?.message || 'Failed to update account';
+            Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
+            return;
+          }
           Platform.OS === 'web' ? window.alert('Account updated') : Alert.alert('Success', 'Account updated');
         }
       } else {
         // Create
         const newName = makeDisplayName(accountName, accountNumber || undefined, null);
-        // @ts-ignore
-        await dispatch(addAccount({
+        const addResult = await (dispatch as any)(addAccount({
           name: newName,
           type: accountType,
           balance: balance,
@@ -438,13 +564,19 @@ export default function Accounts() {
           sms_number: smsNumber || undefined,
           logo: finalLogo || undefined,
         }));
+        if (addAccount.rejected.match(addResult)) {
+          const msg = addResult.error?.message || 'Failed to save account';
+          Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
+          return;
+        }
         Platform.OS === 'web' ? window.alert('Account created') : Alert.alert('Success', 'Account created');
       }
 
       setShowAddModal(false);
       resetForm();
     } catch (error) {
-      Platform.OS === 'web' ? window.alert('Failed to save account') : Alert.alert('Error', 'Failed to save account');
+      const msg = error instanceof Error ? error.message : 'Failed to save account';
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
       console.error(error);
     }
   };
@@ -484,6 +616,8 @@ export default function Accounts() {
     }
   };
 
+
+
   const getTotalBalance = () => {
     return accounts.reduce((sum, account) => sum + account.balance, 0);
   };
@@ -493,8 +627,9 @@ export default function Accounts() {
       case 'CASH': return 'money';
       case 'BANK': return 'bank';
       case 'CARD': return 'credit-card';
-      case 'SAVINGS': return 'piggy-bank';
-      default: return 'wallet';
+      case 'SAVINGS': return 'university';
+      case 'MOBILE_MONEY': return 'mobile';
+      default: return 'credit-card';
     }
   };
 
@@ -506,6 +641,61 @@ export default function Accounts() {
       case 'SAVINGS': return '#8b5cf6';
       default: return '#64748b';
     }
+  };
+
+  const toggleSmsNumber = (num: string) => {
+    // Constraint: Only allow selecting one sender as per user request
+    setSmsNumber(num);
+  };
+
+  const openSyncModal = (account: Account) => {
+    setSelectedSyncAccount(account);
+    setSyncStatus({ status: 'Ready', progress: 0 });
+    setShowSyncModal(true);
+  };
+
+  const handleHistoricalSync = async (ignore: boolean = false) => {
+    if (!selectedSyncAccount) return;
+    const { SMSSyncService } = await import('@/services/SMSSyncService');
+    const days = parseInt(syncDays) || 30;
+
+    setSyncStatus({ status: ignore ? 'Ignoring Previous...' : 'Starting Sync...', progress: 10 });
+
+    try {
+      await SMSSyncService.syncAccountSMS(selectedSyncAccount, transactions, {
+        historicalDays: ignore ? undefined : days,
+        ignorePrevious: ignore
+      });
+      LocalChangeEmitter.emit();
+    } catch (e) {
+      console.error('[Accounts] Historical sync failed:', e);
+      setSyncStatus({ status: 'Sync Failed', progress: 0 });
+      Alert.alert('Sync Failed', 'An error occurred during SMS sync.');
+    }
+  };
+
+  const handleResetLearning = async () => {
+    if (!selectedSyncAccount) return;
+    const { SMSLearningService } = await import('@/services/SMSLearningService');
+    Alert.alert(
+      'Reset Learning',
+      'Are you sure you want to clear all learned rules for this account?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await SMSLearningService.clearRulesForAccount(selectedSyncAccount.id);
+              Alert.alert('Reset', 'Learned rules cleared.');
+            } catch {
+              Alert.alert('Error', 'Failed to reset learning rules.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const accountTypes: Array<{ value: AccountType; label: string }> = [
@@ -537,9 +727,13 @@ export default function Accounts() {
 
         {/* Total Balance */}
         <View className="bg-white/10 backdrop-blur-lg rounded-3xl p-6">
-          <Text className="text-white/80 text-sm mb-2">Total Balance</Text>
-          <Text className="text-white text-4xl font-bold">{formatCurrency(getTotalBalance())}</Text>
-          <Text className="text-white/60 text-xs mt-2">{accounts.length} Accounts</Text>
+          <View className="flex-row justify-between items-start">
+            <View>
+              <Text className="text-white/80 text-sm mb-2">Total Balance</Text>
+              <Text className="text-white text-4xl font-bold">{formatCurrency(getTotalBalance())}</Text>
+              <Text className="text-white/60 text-xs mt-2">{accounts.length} Accounts</Text>
+            </View>
+          </View>
         </View>
       </LinearGradient>
 
@@ -571,11 +765,11 @@ export default function Accounts() {
                   <View className="flex-row items-center flex-1">
                     <View
                       className="w-14 h-14 rounded-2xl justify-center items-center mr-4 overflow-hidden"
-                      style={{ backgroundColor: (account as any).logo ? '#fff' : getAccountColor(account.type) + '20' }}
+                      style={{ backgroundColor: account.logo ? '#fff' : getAccountColor(account.type) + '20' }}
                     >
-                      {(account as any).logo ? (
+                      {account.logo ? (
                         <Image
-                          source={getAccountImageSource((account as any).logo) as any}
+                          source={getAccountImageSource(account.logo) as any}
                           style={{ width: 40, height: 40 }}
                           resizeMode="contain"
                         />
@@ -594,16 +788,24 @@ export default function Accounts() {
                       </Text>
                       <Text className="text-slate-500 text-sm">{account.type}</Text>
                       {account.account_number ? (
-                        <Text className="text-slate-400 text-xs mt-1">Acct: {(account as any).account_number}</Text>
+                        <Text className="text-slate-400 text-xs mt-1">Acct: {account.account_number}</Text>
                       ) : null}
                       {account.sms_number ? (
-                        <Text className="text-slate-400 text-xs">SMS: {(account as any).sms_number}</Text>
+                        <Text className="text-slate-400 text-xs">SMS: {account.sms_number}</Text>
                       ) : null}
                     </View>
                   </View>
 
                   <View className="items-end">
                     <View className="flex-row gap-2 mb-1">
+                      {account.sms_number && (
+                        <TouchableOpacity
+                          onPress={() => openSyncModal(account)}
+                          className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg"
+                        >
+                          <FontAwesome name="envelope" size={12} color="#10b981" />
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity onPress={() => handleEdit(account)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                         <FontAwesome name="pencil" size={12} color="#3b82f6" />
                       </TouchableOpacity>
@@ -612,6 +814,17 @@ export default function Accounts() {
                       </TouchableOpacity>
                     </View>
                     <Text className="text-slate-900 dark:text-white font-bold text-xl">{formatCurrency(account.balance)}</Text>
+                    {draftCounts[account.id] > 0 && (
+                      <TouchableOpacity
+                        onPress={() => router.push(`/draft-transactions?accountId=${account.id}`)}
+                        className="flex-row items-center mt-2 bg-yellow-100 dark:bg-yellow-900/30 px-2 py-1 rounded-lg"
+                      >
+                        <FontAwesome name="history" size={10} color="#b45309" />
+                        <Text className="text-amber-700 dark:text-amber-400 text-[10px] font-bold ml-1">
+                          {draftCounts[account.id]} Pending
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -623,10 +836,26 @@ export default function Accounts() {
       </ScrollView>
 
       {/* Add/Edit Account Modal */}
-      {showAddModal && (
-        <View className="absolute inset-0 bg-black/50 justify-center items-center px-6">
-          <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl">
-            <ScrollView style={{ maxHeight: 600 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={true}>
+      <Modal
+        visible={showAddModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setShowAddModal(false)}
+          className="flex-1 bg-black/50 justify-center items-center px-6"
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl max-h-[90%]"
+          >
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+            >
               <View className="flex-row justify-between items-center mb-6">
                 <Text className="text-slate-900 dark:text-white text-xl font-bold">
                   {editingId ? 'Edit Account' : 'New Account'}
@@ -679,7 +908,7 @@ export default function Accounts() {
                     className="absolute top-[80px] left-0 right-0 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 max-h-40"
                     style={{ zIndex: 200, elevation: 20 }}
                   >
-                    <ScrollView keyboardShouldPersistTaps="always">
+                    <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled={true}>
                       {suggestions.map((s, i) => (
                         <TouchableOpacity
                           key={i}
@@ -806,16 +1035,7 @@ export default function Accounts() {
                   </TouchableOpacity>
                 </View>
 
-                {showSmsList && fetchedSmsNumbers.length > 0 && (
-                  <View className="mt-3 flex-row flex-wrap">
-                    {fetchedSmsNumbers.map((num) => (
-                      <TouchableOpacity key={num} onPress={() => { setSmsNumber(num); setShowSmsList(false); }} className="mr-2 mb-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-full">
-                        <Text className="text-slate-700 dark:text-slate-200 text-sm">{num}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2">Android only — Fetch will request SMS permission; you can also type the number manually.</Text>
+                <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2">Android only — Fetch will scan your inbox for bank sender IDs; you can also type them manually (comma separated).</Text>
               </View>
 
               {/* Buttons */}
@@ -836,9 +1056,159 @@ export default function Accounts() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </View>
-        </View>
-      )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+      {/* Sync Selection Modal */}
+      <Modal
+        visible={showSmsList}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSmsList(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setShowSmsList(false)}
+          className="flex-1 bg-black/50 justify-center items-center px-6"
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl"
+          >
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-slate-900 dark:text-white text-xl font-bold">Select Senders</Text>
+              <TouchableOpacity onPress={() => setShowSmsList(false)}>
+                <FontAwesome name="times" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <Text className="text-slate-500 text-sm mb-4">Select the sender ID used by your bank for transaction alerts.</Text>
+
+            <ScrollView
+              style={{ maxHeight: 320 }}
+              className="mb-6"
+              nestedScrollEnabled={true}
+            >
+              {fetchedSmsNumbers.length === 0 ? (
+                <Text className="text-center text-slate-400 py-4">No sender IDs found in your inbox.</Text>
+              ) : (
+                fetchedSmsNumbers.map((num: string) => {
+                  const isSelected = smsNumber === num;
+                  return (
+                    <TouchableOpacity
+                      key={num}
+                      onPress={() => toggleSmsNumber(num)}
+                      className={`flex-row items-center p-4 rounded-xl mb-2 ${isSelected ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-500' : 'bg-slate-50 dark:bg-slate-900'}`}
+                    >
+                      <View className={`w-6 h-6 rounded-md border-2 mr-3 justify-center items-center ${isSelected ? 'bg-primary-500 border-primary-500' : 'border-slate-300'}`}>
+                        {isSelected && <FontAwesome name="check" size={12} color="#fff" />}
+                      </View>
+                      <Text className={`font-medium ${isSelected ? 'text-primary-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                        {num}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => setShowSmsList(false)}
+              className="bg-primary-500 py-4 rounded-xl"
+            >
+              <Text className="text-white font-bold text-center">Done</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Sync Management Modal */}
+      <Modal
+        visible={showSyncModal && selectedSyncAccount !== null}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSyncModal(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setShowSyncModal(false)}
+          className="flex-1 bg-black/50 justify-center items-center px-6"
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl"
+          >
+            {selectedSyncAccount && (
+              <>
+                <View className="flex-row justify-between items-center mb-6">
+                  <View>
+                    <Text className="text-slate-900 dark:text-white text-xl font-bold">SMS Sync Management</Text>
+                    <Text className="text-slate-500 text-sm">{selectedSyncAccount.name}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setShowSyncModal(false)}>
+                    <FontAwesome name="times" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+
+                <View className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-4 mb-6">
+                  <View className="flex-row justify-between items-center mb-2">
+                    <Text className="text-slate-500 text-xs font-bold uppercase">Current Status</Text>
+                    <View className={`px-2 py-0.5 rounded-full ${syncStatus.progress === 100 ? 'bg-green-100' : 'bg-blue-100'}`}>
+                      <Text className={`text-[10px] font-bold ${syncStatus.progress === 100 ? 'text-green-700' : 'text-blue-700'}`}>
+                        {syncStatus.status}
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <View
+                      className={`h-full ${syncStatus.status.includes('Failed') ? 'bg-red-500' : 'bg-primary-500'}`}
+                      style={{ width: `${syncStatus.progress}%` }}
+                    />
+                  </View>
+                </View>
+
+                <View className="mb-6">
+                  <Text className="text-slate-500 text-sm font-bold mb-3">Sync History</Text>
+                  <View className="flex-row gap-2 mb-4">
+                    {['30', '60', '90'].map(d => (
+                      <TouchableOpacity
+                        key={d}
+                        onPress={() => setSyncDays(d)}
+                        className={`flex-1 py-2 rounded-xl border items-center ${syncDays === d ? 'bg-primary-500 border-primary-500' : 'border-slate-200 dark:border-slate-700'}`}
+                      >
+                        <Text className={`font-bold ${syncDays === d ? 'text-white' : 'text-slate-600 dark:text-slate-400'}`}>{d} Days</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleHistoricalSync(false)}
+                    className="bg-emerald-500 py-3 rounded-xl items-center mb-3"
+                  >
+                    <Text className="text-white font-bold">Start Historical Sync</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleHistoricalSync(true)}
+                    className="py-3 rounded-xl border border-slate-200 dark:border-slate-700 items-center"
+                  >
+                    <Text className="text-slate-600 dark:text-slate-400 font-bold">Ignore All Previous SMS</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View className="pt-4 border-t border-slate-100 dark:border-slate-700">
+                  <TouchableOpacity
+                    onPress={handleResetLearning}
+                    className="flex-row items-center justify-center p-2"
+                  >
+                    <FontAwesome name="undo" size={12} color="#ef4444" />
+                    <Text className="text-red-500 font-bold ml-2 text-sm">Reset Learning for this Account</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }

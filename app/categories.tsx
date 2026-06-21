@@ -1,12 +1,95 @@
 
 import { FontAwesome } from '@expo/vector-icons';
+import CategoryIcon from '@/components/CategoryIcon';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
 
 import { Category, useTransactions } from '../context/TransactionContext';
+
+type IconGroup = {
+  id: string;
+  title: string;
+  items: string[];
+};
+
+const iconGroups: IconGroup[] = [
+  {
+    id: 'finance',
+    title: 'Finance and Work',
+    items: [
+      'money', 'credit-card', 'bank', 'calculator', 'briefcase',
+      'pie-chart', 'bar-chart', 'line-chart', 'area-chart',
+      'usd', 'eur', 'gbp', 'jpy', 'bitcoin', 'ticket',
+    ],
+  },
+  {
+    id: 'shopping',
+    title: 'Shopping and Food',
+    items: [
+      'shopping-cart', 'shopping-bag', 'shopping-basket', 'cart-plus',
+      'cutlery', 'coffee', 'glass', 'beer', 'birthday-cake',
+      'gift', 'tag', 'tags',
+    ],
+  },
+  {
+    id: 'transport',
+    title: 'Transport and Travel',
+    items: [
+      'bus', 'taxi', 'car', 'motorcycle', 'bicycle',
+      'train', 'subway', 'truck', 'road', 'plane', 'ship',
+      'rocket', 'map-marker',
+    ],
+  },
+  {
+    id: 'home',
+    title: 'Home and Lifestyle',
+    items: [
+      'home', 'building-o', 'university', 'industry',
+      'key', 'lock', 'shield', 'leaf', 'tree', 'paw',
+      'sun-o', 'moon-o', 'fire', 'bolt',
+    ],
+  },
+  {
+    id: 'tech',
+    title: 'Tech and Media',
+    items: [
+      'phone', 'mobile', 'laptop', 'desktop', 'tablet',
+      'wifi', 'globe', 'envelope', 'camera', 'film',
+      'video-camera', 'music', 'headphones', 'gamepad', 'book', 'graduation-cap',
+    ],
+  },
+  {
+    id: 'people',
+    title: 'People and Health',
+    items: [
+      'heart', 'heartbeat', 'medkit', 'stethoscope', 'hospital-o',
+      'user-md', 'users', 'user', 'child', 'male', 'female',
+      'folder', 'bookmark', 'flag', 'star', 'trophy',
+    ],
+  },
+  {
+    id: 'emoji-money',
+    title: 'Emoji Money',
+    items: [
+      'emoji:💰', 'emoji:💸', 'emoji:💳', 'emoji:🏦', 'emoji:🧾', 'emoji:📈',
+      'emoji:📉', 'emoji:📊', 'emoji:🪙', 'emoji:💵', 'emoji:💶', 'emoji:💷',
+      'emoji:💴',
+    ],
+  },
+  {
+    id: 'emoji-life',
+    title: 'Emoji Lifestyle',
+    items: [
+      'emoji:🍔', 'emoji:🍕', 'emoji:☕', 'emoji:🛒', 'emoji:🛍️', 'emoji:🚗',
+      'emoji:⛽', 'emoji:🏠', 'emoji:📱', 'emoji:💻', 'emoji:🎓', 'emoji:🏥',
+      'emoji:🎮', 'emoji:🎵', 'emoji:🎁', 'emoji:✈️', 'emoji:🚌', 'emoji:🚕',
+      'emoji:🚆',
+    ],
+  },
+];
 
 export default function ManageCategoriesScreen() {
   const colorScheme = useColorScheme();
@@ -22,14 +105,8 @@ export default function ManageCategoriesScreen() {
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [openIconGroup, setOpenIconGroup] = useState<string>('finance');
   const [formData, setFormData] = useState<Partial<Category>>({ name: '', icon: 'folder', color: '#6366f1', type: 'expense', parentId: undefined });
-
-  const availableIcons = [
-    'cutlery', 'shopping-cart', 'car', 'home', 'film', 'heartbeat', 'plane',
-    'money', 'briefcase', 'line-chart', 'credit-card', 'gift', 'book',
-    'coffee', 'laptop', 'mobile', 'gamepad', 'music', 'shopping-bag',
-    'folder', 'star', 'bolt', 'fire', 'rocket', 'trophy'
-  ];
 
   const availableColors = [
     '#ef4444', '#f59e0b', '#eab308', '#10b981', '#14b8a6', '#06b6d4',
@@ -43,9 +120,14 @@ export default function ManageCategoriesScreen() {
   const getChildCategories = (parentId: string) => filteredCategories.filter(c => c.parentId === parentId);
 
   const handleAddCategory = async () => {
+    const trimmedName = (formData.name ?? '').trim();
+    if (!trimmedName) {
+      Alert.alert('Validation', 'Please enter a category name.');
+      return;
+    }
     try {
       await addCategory({
-        name: formData.name!,
+        name: trimmedName,
         icon: formData.icon!,
         color: formData.color!,
         type: formData.type!,
@@ -55,15 +137,20 @@ export default function ManageCategoriesScreen() {
       setFormData({ name: '', icon: 'folder', color: '#6366f1', type: 'expense', parentId: undefined });
     } catch (error) {
       console.error('Error adding category:', error);
-      // Error is already handled in the context
+      Alert.alert('Error', 'Failed to save category. Please try again.');
     }
   };
 
   const handleEditCategory = async () => {
     if (!editingCategory) return;
+    const trimmedName = (formData.name ?? '').trim();
+    if (!trimmedName) {
+      Alert.alert('Validation', 'Please enter a category name.');
+      return;
+    }
     try {
       await updateCategory(editingCategory.id, {
-        name: formData.name!,
+        name: trimmedName,
         icon: formData.icon!,
         color: formData.color!,
         type: formData.type!,
@@ -73,17 +160,30 @@ export default function ManageCategoriesScreen() {
       setFormData({ name: '', icon: 'folder', color: '#6366f1', type: 'expense', parentId: undefined });
     } catch (error) {
       console.error('Error updating category:', error);
-      // Error is already handled in the context
+      Alert.alert('Error', 'Failed to update category. Please try again.');
     }
   };
 
-  const handleDeleteCategory = async (id: string) => {
-    try {
-      await deleteCategory(id);
-    } catch (error) {
-      console.error('Error deleting category:', error);
-      // Error is already handled in the context
-    }
+  const handleDeleteCategory = (id: string) => {
+    const hasChildren = categories.some(c => c.parentId === id);
+    const msg = hasChildren
+      ? 'This will also delete all sub-categories. Are you sure?'
+      : 'Are you sure you want to delete this category?';
+    Alert.alert('Delete Category', msg, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteCategory(id);
+          } catch (error) {
+            console.error('Error deleting category:', error);
+            Alert.alert('Error', 'Failed to delete category. Please try again.');
+          }
+        },
+      },
+    ]);
   };
 
   const openEditModal = (category: Category) => {
@@ -108,7 +208,7 @@ export default function ManageCategoriesScreen() {
           className="w-14 h-14 rounded-2xl justify-center items-center mr-4"
           style={{ backgroundColor: category.color + '20' }}
         >
-          <FontAwesome name={category.icon as any} size={24} color={category.color} />
+          <CategoryIcon icon={category.icon} size={24} color={category.color} />
         </View>
         <View className="flex-1">
           <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">
@@ -299,7 +399,9 @@ export default function ManageCategoriesScreen() {
                       className={`mr-2 px-4 py-2 rounded-xl flex-row items-center border ${formData.parentId === c.id ? 'bg-primary-50 borderColor-primary-500' : 'bg-slate-50 border-slate-200'
                         }`}
                     >
-                      <FontAwesome name={c.icon as any} size={14} color={c.color} style={{ marginRight: 6 }} />
+                      <View style={{ marginRight: 6 }}>
+                        <CategoryIcon icon={c.icon} size={14} color={c.color} />
+                      </View>
                       <Text className={formData.parentId === c.id ? 'text-primary-700 font-bold' : 'text-slate-600'}>{c.name}</Text>
                     </TouchableOpacity>
                   ))}
@@ -307,21 +409,45 @@ export default function ManageCategoriesScreen() {
 
               {/* Icon Selection */}
               <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-3">Select Icon</Text>
-              <View className="flex-row flex-wrap mb-6">
-                {availableIcons.map((icon) => (
-                  <TouchableOpacity
-                    key={icon}
-                    onPress={() => setFormData({ ...formData, icon })}
-                    className={`w-14 h-14 justify-center items-center m-1 rounded-xl ${formData.icon === icon ? 'bg-primary-500' : 'bg-slate-100 dark:bg-slate-800'
-                      }`}
-                  >
-                    <FontAwesome
-                      name={icon as any}
-                      size={20}
-                      color={formData.icon === icon ? '#fff' : '#64748b'}
-                    />
-                  </TouchableOpacity>
-                ))}
+              <View className="mb-6">
+                {iconGroups.map((group) => {
+                  const isOpen = openIconGroup === group.id;
+                  return (
+                    <View key={group.id} className="mb-3 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+                      <TouchableOpacity
+                        onPress={() => setOpenIconGroup((prev) => (prev === group.id ? '' : group.id))}
+                        className="flex-row items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-800"
+                      >
+                        <Text className="text-slate-900 dark:text-white font-semibold">{group.title}</Text>
+                        <FontAwesome
+                          name={isOpen ? 'chevron-up' : 'chevron-down'}
+                          size={12}
+                          color="#64748b"
+                        />
+                      </TouchableOpacity>
+                      {isOpen && (
+                        <View className="flex-row flex-wrap p-3 bg-white dark:bg-slate-900">
+                          {group.items.map((icon) => (
+                            <TouchableOpacity
+                              key={`${group.id}-${icon}`}
+                              onPress={() => setFormData({ ...formData, icon })}
+                              className={`w-14 h-14 justify-center items-center m-1 rounded-xl border ${formData.icon === icon
+                                ? 'bg-primary-500 border-primary-500'
+                                : 'bg-slate-100 dark:bg-slate-800 border-transparent'
+                                }`}
+                            >
+                              <CategoryIcon
+                                icon={icon}
+                                size={20}
+                                color={formData.icon === icon ? '#fff' : '#64748b'}
+                              />
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
 
               {/* Color Selection */}
@@ -349,7 +475,7 @@ export default function ManageCategoriesScreen() {
                     className="w-14 h-14 rounded-2xl justify-center items-center mr-4"
                     style={{ backgroundColor: formData.color + '20' }}
                   >
-                    <FontAwesome name={formData.icon as any} size={24} color={formData.color} />
+                    <CategoryIcon icon={formData.icon} size={24} color={formData.color} />
                   </View>
                   <View>
                     <Text className="text-slate-900 dark:text-white font-bold text-lg">

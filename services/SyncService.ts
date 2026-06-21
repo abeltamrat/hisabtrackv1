@@ -6,6 +6,7 @@ import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { fetchLoans } from '@/store/slices/loansSlice';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
+import { Transaction } from '@/types/database';
 import { getApp } from 'firebase/app';
 import { collection, deleteDoc, doc, getDocs, getFirestore, onSnapshot, setDoc } from 'firebase/firestore';
 
@@ -16,12 +17,15 @@ import { collection, deleteDoc, doc, getDocs, getFirestore, onSnapshot, setDoc }
  */
 export class SyncService {
   static applyingRemote = false;
+  static isPushing = false;
+  static lastPushFinishedAt = 0;
   static localUnsub: (() => void) | null = null;
   static remoteUnsubs: Array<() => void> = [];
   static currentUid: string | null = null;
   // Timestamp of the last successful pull (ms since epoch). Used to decide whether
   // a local-only record is stale and can be removed when missing remotely.
   static lastPulledAt: number | null = null;
+
   // Proxy native error state to NativeErrorReporter for backward compatibility
   static get disableAutoSyncUntil() {
     return (NativeErrorReporter as any).disableUntil || 0;
@@ -35,6 +39,7 @@ export class SyncService {
   static set consecutiveNativeErrors(v: number) {
     try { (NativeErrorReporter as any).consecutiveNativeErrors = v; } catch (e) { /* ignore */ }
   }
+
   // Note: native DB error state is managed in NativeErrorReporter
   static getFirestore() {
     try {
@@ -46,175 +51,168 @@ export class SyncService {
     }
   }
 
-  static async pushAllForUser(uid: string) {
-    console.info('SyncService.pushAllForUser start', { uid });
-    let db: any;
-    try {
-      db = await getDatabase();
-    } catch (e) {
-      console.error('pushAllForUser: failed to get database', e);
-      NativeErrorReporter.record(e);
-      return;
-    }
-    console.debug('pushAllForUser: local DB obtained', { hasGetAccounts: typeof db.getAccounts === 'function' });
-    const firestore = this.getFirestore();
+  static async pushAllForUser(uid: string, mergeOnly = false) {
+    if (this.isPushing) return;
+    this.isPushing = true;
+    NativeErrorReporter.suppressCounting = true;
+    console.info('SyncService.pushAllForUser start', { uid, mergeOnly });
 
-    // Accounts
-    let accounts: any[] = [];
     try {
-      if (typeof db.getAccounts === 'function') accounts = await db.getAccounts();
-    } catch (e) {
-      console.error('pushAllForUser: failed to read local accounts', e);
-      NativeErrorReporter.record(e);
-      accounts = [];
-    }
-    console.info('pushAllForUser: accounts to push', accounts.length);
-    for (const acct of accounts) {
+      let db: any;
       try {
-        const ref = doc(firestore, `users/${uid}/accounts`, acct.id);
-        const sanitized = this.sanitizeForFirestore(acct as any);
-        await setDoc(ref, sanitized);
+        db = await getDatabase();
       } catch (e) {
-        console.error('pushAllForUser: failed to push account', acct?.id, e);
+        console.error('pushAllForUser: failed to get database', e);
         NativeErrorReporter.record(e);
+        return;
       }
-    }
-    // Remove any remote accounts that no longer exist locally (handle deletions)
-    try {
-      const remoteAccSnap = await getDocs(collection(firestore, `users/${uid}/accounts`));
-      const localIds = new Set(accounts.map(a => a.id));
-      for (const d of remoteAccSnap.docs) {
-        if (!localIds.has(d.id)) {
-          try {
-            await deleteDoc(d.ref);
-            console.debug('pushAllForUser: deleted remote account not present locally', d.id);
-          } catch (e) {
-            console.error('pushAllForUser: failed to delete remote account', d.id, e);
-            NativeErrorReporter.record(e);
-          }
-        }
-      }
-    } catch (e) {
-      console.error('pushAllForUser: failed to reconcile remote accounts', e);
-    }
 
-    // Transactions
-    let transactions: any[] = [];
-    try { if (typeof db.getTransactions === 'function') transactions = await db.getTransactions(); } catch (e) { console.error('pushAllForUser: failed to read transactions', e); NativeErrorReporter.record(e); transactions = []; }
-    console.info('pushAllForUser: transactions to push', transactions.length);
-    for (const tx of transactions) {
+      const firestore = this.getFirestore();
+
+      // Accounts
+      let accounts: any[] = [];
       try {
-        const ref = doc(firestore, `users/${uid}/transactions`, tx.id);
-        const sanitized = this.sanitizeForFirestore(tx as any);
-        await setDoc(ref, sanitized);
+        if (typeof db.getAccounts === 'function') accounts = await db.getAccounts();
       } catch (e) {
-        console.error('pushAllForUser: failed to push transaction', tx?.id, e);
+        console.error('pushAllForUser: failed to read local accounts', e);
+        NativeErrorReporter.record(e);
+        accounts = [];
       }
-    }
-    // Remove any remote transactions that no longer exist locally
-    try {
-      const remoteTxSnap = await getDocs(collection(firestore, `users/${uid}/transactions`));
-      const localTxIds = new Set(transactions.map(t => t.id));
-      for (const d of remoteTxSnap.docs) {
-        if (!localTxIds.has(d.id)) {
-          try {
-            await deleteDoc(d.ref);
-            console.debug('pushAllForUser: deleted remote transaction not present locally', d.id);
-          } catch (e) {
-            console.error('pushAllForUser: failed to delete remote transaction', d.id, e);
-            NativeErrorReporter.record(e);
-          }
-        }
-      }
-    } catch (e) {
-      console.error('pushAllForUser: failed to reconcile remote transactions', e);
-    }
 
-    // Budgets
-    if ((db as any).getBudgets) {
-      let budgets: any[] = [];
-      try { budgets = await (db as any).getBudgets(); } catch (e) { console.error('pushAllForUser: failed to read budgets', e); NativeErrorReporter.record(e); budgets = []; }
-      console.info('pushAllForUser: budgets to push', budgets.length);
-      for (const b of budgets) {
+      for (const acct of accounts) {
         try {
-          const ref = doc(firestore, `users/${uid}/budgets`, b.id);
-          const sanitized = this.sanitizeForFirestore(b as any);
+          const ref = doc(firestore, `users/${uid}/accounts`, acct.id);
+          const sanitized = this.sanitizeForFirestore(acct as any);
           await setDoc(ref, sanitized);
-        } catch (e) { console.error('pushAllForUser: failed to push budget', b?.id, e); }
-      }
-      // Remove any remote budgets that no longer exist locally
-      try {
-        const remoteBudSnap = await getDocs(collection(firestore, `users/${uid}/budgets`));
-        const localBudIds = new Set(budgets.map(b => b.id));
-        for (const d of remoteBudSnap.docs) {
-          if (!localBudIds.has(d.id)) {
-            try {
-              await deleteDoc(d.ref);
-              console.debug('pushAllForUser: deleted remote budget not present locally', d.id);
-            } catch (e) {
-              console.error('pushAllForUser: failed to delete remote budget', d.id, e);
-              NativeErrorReporter.record(e);
-            }
-          }
+        } catch (e) {
+          console.error('pushAllForUser: failed to push account', acct?.id, e);
         }
-      } catch (e) {
-        console.error('pushAllForUser: failed to reconcile remote budgets', e);
       }
-    }
 
-    // Loans
-    if ((db as any).getLoans) {
-      let loans: any[] = [];
-      try { loans = await (db as any).getLoans(); } catch (e) { console.error('pushAllForUser: failed to read loans', e); NativeErrorReporter.record(e); loans = []; }
-      console.info('pushAllForUser: loans to push', loans.length);
-      for (const l of loans) {
+      // Reconcile remote accounts — skip entirely in mergeOnly mode or when local is empty
+      // (empty local = fresh install / DB error; deleting remote would destroy cloud backup)
+      if (!mergeOnly && accounts.length > 0) {
         try {
-          const ref = doc(firestore, `users/${uid}/loans`, l.id);
-          const sanitized = this.sanitizeForFirestore(l as any);
-          await setDoc(ref, sanitized);
-        } catch (e) { console.error('pushAllForUser: failed to push loan', l?.id, e); }
-      }
-      // Remove any remote loans that no longer exist locally
-      try {
-        const remoteLoanSnap = await getDocs(collection(firestore, `users/${uid}/loans`));
-        const localLoanIds = new Set(loans.map(l => l.id));
-        for (const d of remoteLoanSnap.docs) {
-          if (!localLoanIds.has(d.id)) {
-            try {
-              await deleteDoc(d.ref);
-              console.debug('pushAllForUser: deleted remote loan not present locally', d.id);
-            } catch (e) {
-              console.error('pushAllForUser: failed to delete remote loan', d.id, e);
-              NativeErrorReporter.record(e);
-            }
+          const remoteAccSnap = await getDocs(collection(firestore, `users/${uid}/accounts`));
+          const localIds = new Set(accounts.map((a: any) => a.id));
+          for (const d of remoteAccSnap.docs) {
+            if (!localIds.has(d.id)) await deleteDoc(d.ref);
           }
+        } catch (e) {
+          console.error('pushAllForUser: failed to reconcile remote accounts', e);
+        }
+      }
+
+      // Transactions
+      let transactions: any[] = [];
+      try {
+        if (typeof db.getTransactions === 'function') {
+          transactions = await db.getTransactions();
         }
       } catch (e) {
-        console.error('pushAllForUser: failed to reconcile remote loans', e);
+        console.error('pushAllForUser: failed to read local transactions', e);
+        NativeErrorReporter.record(e);
+        transactions = [];
       }
+      for (const tx of transactions) {
+        try {
+          const ref = doc(firestore, `users/${uid}/transactions`, tx.id);
+          await setDoc(ref, this.sanitizeForFirestore(tx as any));
+        } catch (e) { console.error('pushAllForUser: failed to push transaction', tx?.id, e); }
+      }
+      if (!mergeOnly && transactions.length > 0) {
+        try {
+          const remoteTxSnap = await getDocs(collection(firestore, `users/${uid}/transactions`));
+          const localTxIds = new Set(transactions.map((t: any) => t.id));
+          for (const d of remoteTxSnap.docs) {
+            if (!localTxIds.has(d.id)) await deleteDoc(d.ref);
+          }
+        } catch (e) { }
+      }
+
+      // Budgets
+      if ((db as any).getBudgets) {
+        let budgets: any[] = [];
+        try {
+          budgets = await (db as any).getBudgets();
+        } catch (e) {
+          console.error('pushAllForUser: failed to read local budgets', e);
+          NativeErrorReporter.record(e);
+          budgets = [];
+        }
+        for (const b of budgets) {
+          try {
+            await setDoc(doc(firestore, `users/${uid}/budgets`, b.id), this.sanitizeForFirestore(b as any));
+          } catch (e) { }
+        }
+        if (!mergeOnly && budgets.length > 0) {
+          try {
+            const remoteBudSnap = await getDocs(collection(firestore, `users/${uid}/budgets`));
+            const localBudIds = new Set(budgets.map((b: any) => b.id));
+            for (const d of remoteBudSnap.docs) {
+              if (!localBudIds.has(d.id)) await deleteDoc(d.ref);
+            }
+          } catch (e) { }
+        }
+      }
+
+      // Loans
+      if ((db as any).getLoans) {
+        let loans: any[] = [];
+        try {
+          loans = await (db as any).getLoans();
+        } catch (e) {
+          console.error('pushAllForUser: failed to read local loans', e);
+          NativeErrorReporter.record(e);
+          loans = [];
+        }
+        for (const l of loans) {
+          try {
+            await setDoc(doc(firestore, `users/${uid}/loans`, l.id), this.sanitizeForFirestore(l as any));
+          } catch (e) { }
+        }
+        if (!mergeOnly && loans.length > 0) {
+          try {
+            const remoteLoanSnap = await getDocs(collection(firestore, `users/${uid}/loans`));
+            const localLoanIds = new Set(loans.map((l: any) => l.id));
+            for (const d of remoteLoanSnap.docs) {
+              if (!localLoanIds.has(d.id)) await deleteDoc(d.ref);
+            }
+          } catch (e) { }
+        }
+      }
+
+
+      NativeErrorReporter.reset();
+      this.lastPushFinishedAt = Date.now();
+      console.info('SyncService.pushAllForUser finished');
+    } catch (err) {
+      console.error('SyncService.pushAllForUser failed', err);
+    } finally {
+      NativeErrorReporter.suppressCounting = false;
+      this.isPushing = false;
     }
-    // success — reset native error counter
-    NativeErrorReporter.reset();
   }
 
   static startAutoSync(uid: string) {
     try {
       const now = Date.now();
-      if (NativeErrorReporter.disableUntil && NativeErrorReporter.disableUntil > now) {
-        console.warn('Auto-sync is temporarily disabled due to repeated native DB errors. Will retry after', new Date(NativeErrorReporter.disableUntil).toISOString());
-        return;
-      }
+      if (NativeErrorReporter.disableUntil && NativeErrorReporter.disableUntil > now) return;
       if (this.currentUid === uid) return;
       this.stopAutoSync();
       this.currentUid = uid;
+
       // subscribe to local DB changes
       this.localUnsub = LocalChangeEmitter.subscribe(async () => {
-        if (this.applyingRemote) return;
-        try {
+        if (this.applyingRemote || this.isPushing) return;
+        if (NativeErrorReporter.disableUntil > Date.now()) return;
+
+        // Debounce slightly
+        setTimeout(async () => {
+          if (this.applyingRemote || this.isPushing) return;
+          if (NativeErrorReporter.disableUntil > Date.now()) return;
           await this.pushAllForUser(uid);
-        } catch (e) {
-          console.error('Auto-push failed', e);
-        }
+        }, 1000);
       });
 
       // subscribe to remote changes
@@ -222,23 +220,21 @@ export class SyncService {
       const cols = ['accounts', 'transactions', 'budgets', 'loans'];
       for (const col of cols) {
         const unsub = onSnapshot(collection(firestore, `users/${uid}/${col}`), async (snap) => {
-          console.debug('onSnapshot triggered', { uid, col, size: snap?.size });
-          if (!snap || snap.empty) return;
-          
-          // Prevent multiple simultaneous syncs (race condition fix)
-          if (this.applyingRemote) {
-            console.debug('Skipping auto-sync, already syncing', { col });
+          if (!snap || snap.metadata.hasPendingWrites) return; // Ignore own writes
+
+          if (this.applyingRemote || this.isPushing) return;
+
+          // If we just pushed, wait a bit before pulling (echo check)
+          const timeSinceLastPush = Date.now() - this.lastPushFinishedAt;
+          if (timeSinceLastPush < 5000) {
+            console.debug('Skipping auto-pull, likely own push echo', { col });
             return;
           }
-          
+
           try {
-            this.applyingRemote = true;
             await this.pullAllForUser(uid);
           } catch (e) {
-            console.error('Auto-pull failed for collection', col, e);
-            NativeErrorReporter.record(e);
-          } finally {
-            this.applyingRemote = false;
+            console.error('Auto-pull failed', col, e);
           }
         });
         this.remoteUnsubs.push(unsub);
@@ -250,18 +246,17 @@ export class SyncService {
 
   static stopAutoSync() {
     if (this.localUnsub) {
-      try { this.localUnsub(); } catch (e) { /* ignore */ }
+      try { this.localUnsub(); } catch (e) { }
       this.localUnsub = null;
     }
     for (const u of this.remoteUnsubs) {
-      try { u(); } catch (e) { /* ignore */ }
+      try { u(); } catch (e) { }
     }
     this.remoteUnsubs = [];
     this.currentUid = null;
     this.applyingRemote = false;
   }
 
-  // Convert undefined fields to null (Firestore rejects undefined)
   static sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
     const out: Record<string, any> = {};
     for (const [k, v] of Object.entries(obj)) {
@@ -271,332 +266,192 @@ export class SyncService {
     return out as T;
   }
 
-  static async pullAllForUser(uid: string) {
-    console.info('SyncService.pullAllForUser start', { uid });
-    const prevPulledAt = this.lastPulledAt;
+  static async refreshLocalStore() {
+    await Promise.all([
+      (store.dispatch as AppDispatch)(fetchAccounts()),
+      (store.dispatch as AppDispatch)(fetchTransactions(undefined)),
+      (store.dispatch as AppDispatch)(fetchBudgets()),
+      (store.dispatch as AppDispatch)(fetchLoans()),
+    ]);
+  }
+
+  static async syncNow(uid?: string | null) {
+    await this.refreshLocalStore();
+
+    if (!uid) {
+      return { cloudSynced: false };
+    }
+
+    await this.pullAllForUser(uid);
+    await this.pushAllForUser(uid);
+
+    return { cloudSynced: true };
+  }
+
+  private static getAffectedAccountIds(...transactions: Array<Partial<Transaction> | undefined>) {
+    const ids = new Set<string>();
+
+    for (const transaction of transactions) {
+      if (transaction?.account_id) {
+        ids.add(transaction.account_id);
+      }
+      if (transaction?.to_account_id) {
+        ids.add(transaction.to_account_id);
+      }
+    }
+
+    return ids;
+  }
+
+  static async pullAllForUser(uid: string, mergeOnly = false) {
+    if (this.applyingRemote) return;
     this.applyingRemote = true;
+    NativeErrorReporter.suppressCounting = true;
+    console.info('SyncService.pullAllForUser start', { uid, mergeOnly });
+    const prevPulledAt = this.lastPulledAt;
+
     try {
-      let db: any;
-      try {
-        db = await getDatabase();
-        console.debug('pullAllForUser: local DB obtained', { hasGetAccounts: typeof db.getAccounts === 'function' });
-      } catch (e) {
-        console.error('pullAllForUser: failed to get database', e);
-        NativeErrorReporter.record(e);
-        // continue with firestore reads but we will not be able to upsert locally
-      }
+      let db = await getDatabase();
       const firestore = this.getFirestore();
-      // Pull accounts first (they carry balances) with timestamp-based merge
-      const accSnap = await getDocs(collection(firestore, `users/${uid}/accounts`));
-      const remoteAccounts = accSnap.docs.map((d) => d.data() as any);
-      console.info('pullAllForUser: remote accounts count', remoteAccounts.length);
-      const localAccounts = (db && db.getAccounts ? await db.getAccounts() : []) as any[];
-      const localAccountMap = new Map(localAccounts.map((a) => [a.id, a]));
 
-      for (const ra of remoteAccounts) {
-        const local = localAccountMap.get(ra.id);
-        const remoteUpdated = Number(ra.updated_at ?? 0);
-        const localUpdated = Number(local?.updated_at ?? 0);
-        console.debug('account merge', { id: ra.id, remoteUpdated, localUpdated, hasLocal: !!local });
+      const processCollection = async (colName: string, getLocal: () => Promise<any[]>, upsertLocal: (item: any) => Promise<void>, deleteLocal: (id: string) => Promise<void>) => {
+        const snap = await getDocs(collection(firestore, `users/${uid}/${colName}`));
+        const remoteItems = snap.docs.map(d => d.data() as any);
+        const localItems = await getLocal();
+        const localMap = new Map(localItems.map(i => [i.id, i]));
+        const remoteIds = new Set(remoteItems.map(i => i.id));
 
-          if (!local) {
-            if (db && db.upsertAccount) {
-              try {
-                await db.upsertAccount(ra);
-                console.debug('account merged: inserted local', ra.id);
-              } catch (e) {
-                console.error('pullAllForUser: upsertAccount failed', e);
-                NativeErrorReporter.record(e);
-              }
-            } else {
-              console.warn('account merge: cannot upsert locally, DB unavailable', ra.id);
-            }
-            continue;
+        for (const ri of remoteItems) {
+          const local = localMap.get(ri.id);
+          const remoteUpdated = Number(ri.updated_at ?? 0);
+          const localUpdated = Number(local?.updated_at ?? 0);
+
+          if (!local || remoteUpdated > localUpdated) {
+            await upsertLocal(ri);
+          } else if (localUpdated > remoteUpdated) {
+            await setDoc(doc(firestore, `users/${uid}/${colName}`, local.id), this.sanitizeForFirestore(local));
           }
+        }
 
-        if (remoteUpdated > localUpdated) {
-          if (db && db.upsertAccount) {
+        // Remove local items that were deleted remotely — but never when remote is empty
+        // or when mergeOnly is true (first login after install/update — don't destroy local data)
+        if (!mergeOnly && remoteItems.length > 0) {
+          for (const li of localItems) {
+            if (!remoteIds.has(li.id)) {
+              const localUpdated = Number(li.updated_at ?? 0);
+              const isOld = prevPulledAt && localUpdated < prevPulledAt;
+              const isNotRecent = (Date.now() - localUpdated) > 60000;
+
+              if (isOld && isNotRecent) {
+                await deleteLocal(li.id);
+                console.debug(`pullAllForUser: deleted local ${colName} missing remotely`, li.id);
+              }
+            }
+          }
+        }
+      };
+
+      const processTransactions = async () => {
+        const snap = await getDocs(collection(firestore, `users/${uid}/transactions`));
+        const remoteTransactions = snap.docs.map((docSnapshot) => docSnapshot.data() as Transaction);
+        const localTransactions = await db.getTransactions();
+        const localMap = new Map(localTransactions.map((transaction) => [transaction.id, transaction]));
+        const remoteIds = new Set(remoteTransactions.map((transaction) => transaction.id));
+        const affectedAccountIds = new Set<string>();
+
+        for (const remoteTransaction of remoteTransactions) {
+          const localTransaction = localMap.get(remoteTransaction.id);
+          const remoteUpdated = Number(remoteTransaction.updated_at ?? 0);
+          const localUpdated = Number(localTransaction?.updated_at ?? 0);
+
+          if (!localTransaction || remoteUpdated > localUpdated) {
             try {
-              await db.upsertAccount(ra);
-              console.debug('account merged: remote newer, upserted locally', ra.id);
+              await db.upsertTransaction(remoteTransaction);
+              for (const accountId of this.getAffectedAccountIds(localTransaction, remoteTransaction)) {
+                affectedAccountIds.add(accountId);
+              }
             } catch (e) {
-              console.error('pullAllForUser: upsertAccount failed', e);
-              NativeErrorReporter.record(e);
+              console.warn('pullAllForUser: failed to upsert transaction', remoteTransaction.id, e);
             }
+          } else if (localUpdated > remoteUpdated) {
+            await setDoc(
+              doc(firestore, `users/${uid}/transactions`, localTransaction.id),
+              this.sanitizeForFirestore(localTransaction as Record<string, any>)
+            );
           }
-        } else if (localUpdated > remoteUpdated) {
-          const ref = doc(firestore, `users/${uid}/accounts`, local.id);
-          await setDoc(ref, local);
-          console.debug('account merged: local newer, pushed remote', local.id);
         }
-      }
 
-      // Remove any local accounts that no longer exist remotely and haven't been
-      // modified since the previous pull. This avoids resurrecting deletions
-      // when another client removed the remote doc.
-      try {
-        if (db && db.getAccounts && db.deleteAccount) {
-          const remoteIds = new Set(remoteAccounts.map((r: any) => r.id));
-          for (const la of localAccounts) {
-            if (!remoteIds.has(la.id)) {
-              const localUpdated = Number(la.updated_at ?? 0);
-              if (prevPulledAt && localUpdated <= prevPulledAt) {
-                try {
-                  await db.deleteAccount(la.id);
-                  console.debug('pullAllForUser: deleted local account missing remotely', la.id);
-                } catch (e) {
-                  console.error('pullAllForUser: failed to delete local account missing remotely', la.id, e);
-                  NativeErrorReporter.record(e);
+        // Only reconcile deletions when Firestore has transactions and we are not in mergeOnly mode
+        if (!mergeOnly && remoteTransactions.length > 0) {
+          for (const localTransaction of localTransactions) {
+            if (!remoteIds.has(localTransaction.id)) {
+              const localUpdated = Number(localTransaction.updated_at ?? 0);
+              const isOld = prevPulledAt && localUpdated < prevPulledAt;
+              const isNotRecent = (Date.now() - localUpdated) > 60000;
+
+              if (isOld && isNotRecent) {
+                await db.deleteTransaction(localTransaction.id, true);
+                for (const accountId of this.getAffectedAccountIds(localTransaction)) {
+                  affectedAccountIds.add(accountId);
                 }
+                console.debug('pullAllForUser: deleted local transactions missing remotely', localTransaction.id);
               }
             }
           }
         }
-      } catch (e) {
-        console.error('pullAllForUser: failed to reconcile local accounts with remote', e);
-      }
 
-      // Transactions with timestamp merge
-      const txSnap = await getDocs(collection(firestore, `users/${uid}/transactions`));
-      const remoteTx = txSnap.docs.map((d) => d.data() as any);
-      console.info('pullAllForUser: remote transactions count', remoteTx.length);
-      const localTx = (db && db.getTransactions ? await db.getTransactions() : []) as any[];
-      const localTxMap = new Map(localTx.map((t) => [t.id, t]));
+        await Promise.all(
+          [...affectedAccountIds].map((accountId) => db.recalculateAccountBalance(accountId))
+        );
+      };
 
-      const accountsToPush = new Set<string>();
-      for (const rtx of remoteTx) {
-        const local = localTxMap.get(rtx.id);
-        const remoteUpdated = Number(rtx.updated_at ?? 0);
-        const localUpdated = Number(local?.updated_at ?? 0);
-        console.debug('transaction merge', { id: rtx.id, remoteUpdated, localUpdated, hasLocal: !!local });
+      await processCollection('accounts', () => db.getAccounts(), (i) => db.upsertAccount(i), (id) => db.deleteAccount(id));
+      await processTransactions();
+      await processCollection('budgets', () => db.getBudgets(), (i) => db.upsertBudget(i), (id) => db.deleteBudget(id));
+      await processCollection('loans', () => db.getLoans(), (i) => db.upsertLoan(i), (id) => db.deleteLoan(id));
 
-        if (!local) {
-          if (db && db.upsertTransaction) {
-            try {
-              await db.upsertTransaction(rtx);
-              console.debug('transaction merged: inserted local', rtx.id);
-            } catch (e) {
-              console.error('pullAllForUser: upsertTransaction failed', e);
-              NativeErrorReporter.record(e);
-            }
-          } else {
-            console.warn('transaction merge: cannot upsert locally, DB unavailable', rtx.id);
-          }
-          // apply transaction effect to account balance locally
-          try {
-            if (db && db.getAccounts) {
-              const accounts = await db.getAccounts();
-              const acct = accounts.find((a: any) => a.id === rtx.account_id);
-              if (acct) {
-                if (rtx.type === 'INCOME') acct.balance = Number(acct.balance) + Number(rtx.amount);
-                else if (rtx.type === 'EXPENSE' || rtx.type === 'TRANSFER') acct.balance = Number(acct.balance) - Number(rtx.amount);
-                acct.updated_at = Date.now();
-                if (db.updateAccount) {
-                  try {
-                    await db.updateAccount(acct);
-                    accountsToPush.add(acct.id);
-                  } catch (e) {
-                    console.error('pullAllForUser: updateAccount failed', e);
-                    NativeErrorReporter.record(e);
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Failed to apply remote transaction to local account balance', e);
-            NativeErrorReporter.record(e);
-          }
-          continue;
-        }
-
-        if (remoteUpdated > localUpdated) {
-          if (db && db.upsertTransaction) {
-            try {
-              await db.upsertTransaction(rtx);
-              console.debug('transaction merged: remote newer, upserted locally', rtx.id);
-            } catch (e) {
-              console.error('pullAllForUser: upsertTransaction failed', e);
-              NativeErrorReporter.record(e);
-            }
-          }
-        } else if (localUpdated > remoteUpdated) {
-          const ref = doc(firestore, `users/${uid}/transactions`, local.id);
-          await setDoc(ref, local);
-          console.debug('transaction merged: local newer, pushed remote', local.id);
-        }
-      }
-
-      // Remove any local transactions that no longer exist remotely and haven't
-      // been modified since the previous pull.
-      try {
-        if (db && db.getTransactions && db.deleteTransaction) {
-          const remoteTxIds = new Set(remoteTx.map((r: any) => r.id));
-          for (const ltx of localTx) {
-            if (!remoteTxIds.has(ltx.id)) {
-              const localUpdated = Number(ltx.updated_at ?? 0);
-              if (prevPulledAt && localUpdated <= prevPulledAt) {
-                try {
-                  await db.deleteTransaction(ltx.id);
-                  console.debug('pullAllForUser: deleted local transaction missing remotely', ltx.id);
-                } catch (e) {
-                  console.error('pullAllForUser: failed to delete local transaction missing remotely', ltx.id, e);
-                  NativeErrorReporter.record(e);
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error('pullAllForUser: failed to reconcile local transactions with remote', e);
-      }
-
-      // If we updated any local account balances from remote transactions, push those accounts
-      if (accountsToPush.size > 0) {
-        try {
-          await this.pushAllForUser(uid);
-        } catch (e) {
-          console.error('Failed to push updated accounts after applying remote transactions', e);
-        }
-      }
-
-      // Budgets
-      const budSnap = await getDocs(collection(firestore, `users/${uid}/budgets`));
-      const remoteBuds = budSnap.docs.map((d) => d.data() as any);
-      const localBuds = (db && db.getBudgets ? await (db as any).getBudgets() : []) as any[];
-      const localBudMap = new Map(localBuds.map((b) => [b.id, b]));
-
-      for (const rb of remoteBuds) {
-        const local = localBudMap.get(rb.id);
-        const remoteUpdated = Number(rb.updated_at ?? 0);
-        const localUpdated = Number(local?.updated_at ?? 0);
-
-        if (!local) {
-          if (db && db.upsertBudget) {
-            try { await db.upsertBudget(rb); } catch (e) { console.error('pullAllForUser: upsertBudget failed', e); NativeErrorReporter.record(e); }
-          }
-          continue;
-        }
-
-        if (remoteUpdated > localUpdated) {
-          if (db && db.upsertBudget) { try { await db.upsertBudget(rb); } catch (e) { console.error('pullAllForUser: upsertBudget failed', e); NativeErrorReporter.record(e); } }
-        } else if (localUpdated > remoteUpdated) {
-          const ref = doc(firestore, `users/${uid}/budgets`, local.id);
-          await setDoc(ref, local);
-        }
-      }
-
-      // Remove any local budgets that no longer exist remotely and haven't been
-      // modified since the previous pull.
-      try {
-        if (db && (db as any).getBudgets && (db as any).deleteBudget) {
-          const remoteBudIds = new Set(remoteBuds.map((r: any) => r.id));
-          for (const lb of localBuds) {
-            if (!remoteBudIds.has(lb.id)) {
-              const localUpdated = Number(lb.updated_at ?? 0);
-              if (prevPulledAt && localUpdated <= prevPulledAt) {
-                try {
-                  await (db as any).deleteBudget(lb.id);
-                  console.debug('pullAllForUser: deleted local budget missing remotely', lb.id);
-                } catch (e) {
-                  console.error('pullAllForUser: failed to delete local budget missing remotely', lb.id, e);
-                  NativeErrorReporter.record(e);
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error('pullAllForUser: failed to reconcile local budgets with remote', e);
-      }
-
-      // Loans
-      const loanSnap = await getDocs(collection(firestore, `users/${uid}/loans`));
-      const remoteLoans = loanSnap.docs.map((d) => d.data() as any);
-      const localLoans = (db && db.getLoans ? await (db as any).getLoans() : []) as any[];
-      const localLoanMap = new Map(localLoans.map((l) => [l.id, l]));
-
-      for (const rl of remoteLoans) {
-        const local = localLoanMap.get(rl.id);
-        const remoteUpdated = Number(rl.updated_at ?? 0);
-        const localUpdated = Number(local?.updated_at ?? 0);
-
-        if (!local) {
-          if (db && db.upsertLoan) { try { await db.upsertLoan(rl); } catch (e) { console.error('pullAllForUser: upsertLoan failed', e); NativeErrorReporter.record(e); } }
-          continue;
-        }
-
-        if (remoteUpdated > localUpdated) {
-          if (db && db.upsertLoan) { try { await db.upsertLoan(rl); } catch (e) { console.error('pullAllForUser: upsertLoan failed', e); NativeErrorReporter.record(e); } }
-        } else if (localUpdated > remoteUpdated) {
-          const ref = doc(firestore, `users/${uid}/loans`, local.id);
-          await setDoc(ref, local);
-        }
-      }
-
-      // Remove any local loans that no longer exist remotely and haven't been
-      // modified since the previous pull.
-      try {
-        if (db && (db as any).getLoans && (db as any).deleteLoan) {
-          const remoteLoanIds = new Set(remoteLoans.map((r: any) => r.id));
-          for (const ll of localLoans) {
-            if (!remoteLoanIds.has(ll.id)) {
-              const localUpdated = Number(ll.updated_at ?? 0);
-              if (prevPulledAt && localUpdated <= prevPulledAt) {
-                try {
-                  await (db as any).deleteLoan(ll.id);
-                  console.debug('pullAllForUser: deleted local loan missing remotely', ll.id);
-                } catch (e) {
-                  console.error('pullAllForUser: failed to delete local loan missing remotely', ll.id, e);
-                  NativeErrorReporter.record(e);
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error('pullAllForUser: failed to reconcile local loans with remote', e);
-      }
-      // success — reset native error reporter
+      this.lastPulledAt = Date.now();
       NativeErrorReporter.reset();
-      // mark time of this successful pull
-      try {
-        this.lastPulledAt = Date.now();
-      } catch (e) { /* ignore */ }
-      
-      // Refresh Redux Store to update UI
-      try {
-        console.debug('pullAllForUser: refreshing redux store');
-        (store.dispatch as AppDispatch)(fetchAccounts());
-        (store.dispatch as AppDispatch)(fetchTransactions(undefined));
-        (store.dispatch as AppDispatch)(fetchBudgets());
-        (store.dispatch as AppDispatch)(fetchLoans());
-      } catch (e) {
-        console.error('pullAllForUser: failed to refresh redux store', e);
-      }
 
+    } catch (e) {
+      console.error('pullAllForUser error', e);
     } finally {
+      NativeErrorReporter.suppressCounting = false;
       this.applyingRemote = false;
+      // Always refresh Redux store — even on partial failure so any data that
+      // made it into SQLite (e.g. accounts pulled before transactions failed) is visible.
+      try { await this.refreshLocalStore(); } catch (re) { console.error('refreshLocalStore failed', re); }
     }
   }
 
-  // Delete all data for a user from Firestore (for Reset Account)
+  /**
+   * Called every time the app comes to foreground while signed in.
+   * Pushes any local changes to Firestore and pulls any remote changes.
+   * Rate-limited to at most once every 5 minutes so it doesn't spam Firestore.
+   */
+  static async triggerForegroundSync(): Promise<void> {
+    if (!this.currentUid) return;
+    if (this.isPushing || this.applyingRemote) return;
+
+    const sinceLastPush = Date.now() - this.lastPushFinishedAt;
+    if (sinceLastPush < 5 * 60 * 1000) return;
+
+    try {
+      await this.pullAllForUser(this.currentUid);
+      await this.pushAllForUser(this.currentUid);
+    } catch (e) {
+      console.error('SyncService.triggerForegroundSync failed', e);
+    }
+  }
+
   static async deleteRemoteData(uid: string) {
-    console.info('SyncService.deleteRemoteData start', { uid });
     const firestore = this.getFirestore();
     const cols = ['accounts', 'transactions', 'budgets', 'loans'];
-    
     for (const col of cols) {
-      try {
-        const snapshot = await getDocs(collection(firestore, `users/${uid}/${col}`));
-        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(deletePromises);
-        console.log(`Deleted ${deletePromises.length} docs from ${col}`);
-      } catch (e) {
-        console.error(`Failed to delete collection ${col}`, e);
-      }
+      const snapshot = await getDocs(collection(firestore, `users/${uid}/${col}`));
+      await Promise.all(snapshot.docs.map(doc => deleteDoc(doc.ref)));
     }
   }
-
 }
 
 export default SyncService;

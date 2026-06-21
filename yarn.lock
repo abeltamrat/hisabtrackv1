@@ -867,6 +867,13 @@
     node-forge "^1.2.1"
     nullthrows "^1.1.1"
 
+"@expo/code-signing-certificates@^0.0.6":
+  version "0.0.6"
+  resolved "https://registry.npmjs.org/@expo/code-signing-certificates/-/code-signing-certificates-0.0.6.tgz"
+  integrity sha512-iNe0puxwBNEcuua9gmTGzq+SuMDa0iATai1FlFTMHJ/vUmKvN/V//drXoLJkVb5i5H3iE/n/qIJxyoBnXouD0w==
+  dependencies:
+    node-forge "^1.3.3"
+
 "@expo/config-plugins@~54.0.4":
   version "54.0.4"
   resolved "https://registry.npmjs.org/@expo/config-plugins/-/config-plugins-54.0.4.tgz"
@@ -892,7 +899,7 @@
   resolved "https://registry.npmjs.org/@expo/config-types/-/config-types-54.0.10.tgz"
   integrity sha512-/J16SC2an1LdtCZ67xhSkGXpALYUVUNyZws7v+PVsFZxClYehDSoKLqyRaGkpHlYrCc08bS0RF5E0JV6g50psA==
 
-"@expo/config@~12.0.12", "@expo/config@~12.0.13":
+"@expo/config@~12.0.11", "@expo/config@~12.0.12", "@expo/config@~12.0.13":
   version "12.0.13"
   resolved "https://registry.npmjs.org/@expo/config/-/config-12.0.13.tgz"
   integrity sha512-Cu52arBa4vSaupIWsF0h7F/Cg//N374nYb7HAxV0I4KceKA7x2UXpYaHOL7EEYYvp7tZdThBjvGpVmr8ScIvaQ==
@@ -1512,6 +1519,11 @@
   version "1.0.5"
   resolved "https://registry.npmjs.org/@firebase/webchannel-wrapper/-/webchannel-wrapper-1.0.5.tgz"
   integrity sha512-+uGNN7rkfn41HLO0vekTFhTxk61eKa8mTpRGLO0QSqlQdKvIoGAvLp3ppdVIWbTGYJWM6Kp0iN+PjMIOcnVqTw==
+
+"@google/generative-ai@^0.24.1":
+  version "0.24.1"
+  resolved "https://registry.npmjs.org/@google/generative-ai/-/generative-ai-0.24.1.tgz"
+  integrity sha512-MqO+MLfM6kjxcKoy0p1wRzG3b4ZZXtPI+z2IE26UogS2Cm/XHO+7gGRBh6gcJsOiIVoH93UwKvW4HdgiOZCy9Q==
 
 "@grpc/grpc-js@~1.9.0":
   version "1.9.15"
@@ -2424,6 +2436,11 @@ arg@^5.0.2:
   version "5.0.2"
   resolved "https://registry.npmjs.org/arg/-/arg-5.0.2.tgz"
   integrity sha512-PYjyFOLKQ9y57JvQ6QLo8dAgNqswh8M1RMJYdQduT6xbWSgK36P/Z/v+p888pM69jMMfS8Xd8F6I1kQ/I9HUGg==
+
+arg@4.1.0:
+  version "4.1.0"
+  resolved "https://registry.npmjs.org/arg/-/arg-4.1.0.tgz"
+  integrity sha512-ZWc51jO3qegGkVh8Hwpv636EkbesNV5ZNQPCtRa+0qytRYPEs9IYT9qITY9buezqUH5uqyzlWLcufrzU2rffdg==
 
 argparse@^1.0.7:
   version "1.0.10"
@@ -3373,7 +3390,7 @@ exec-async@^2.2.0:
   resolved "https://registry.npmjs.org/exec-async/-/exec-async-2.2.0.tgz"
   integrity sha512-87OpwcEiMia/DeiKFzaQNBNFeN3XkkpYIh9FyOqq5mS2oKv3CBE67PXoEKcr6nodWdXNogTiQ0jE2NGuoffXPw==
 
-expo-application@~7.0.8:
+expo-application@^7.0.8, expo-application@~7.0.8:
   version "7.0.8"
   resolved "https://registry.npmjs.org/expo-application/-/expo-application-7.0.8.tgz"
   integrity sha512-qFGyxk7VJbrNOQWBbE09XUuGuvkOgFS9QfToaK2FdagM2aQ+x3CvGV2DuVgl/l4ZxPgIf3b/MNh9xHpwSwn74Q==
@@ -3385,6 +3402,13 @@ expo-asset@~12.0.12:
   dependencies:
     "@expo/image-utils" "^0.8.8"
     expo-constants "~18.0.12"
+
+expo-background-fetch@^14.0.9:
+  version "14.0.9"
+  resolved "https://registry.npmjs.org/expo-background-fetch/-/expo-background-fetch-14.0.9.tgz"
+  integrity sha512-IhdbjIu9EdsYaL7mCCvf/i48Qy4a5rpRy038/4KNUoa9xmsETRwFCdsoZj4VHg4dVt2D0kiDrgqVVlPBSSWt+Q==
+  dependencies:
+    expo-task-manager "~14.0.9"
 
 expo-blur@^15.0.8:
   version "15.0.8"
@@ -3410,6 +3434,11 @@ expo-document-picker@~14.0.8:
   version "14.0.8"
   resolved "https://registry.npmjs.org/expo-document-picker/-/expo-document-picker-14.0.8.tgz"
   integrity sha512-3tyQKpPqWWFlI8p9RiMX1+T1Zge5mEKeBuXWp1h8PEItFMUDSiOJbQ112sfdC6Hxt8wSxreV9bCRl/NgBdt+fA==
+
+expo-eas-client@~1.0.8:
+  version "1.0.8"
+  resolved "https://registry.npmjs.org/expo-eas-client/-/expo-eas-client-1.0.8.tgz"
+  integrity sha512-5or11NJhSeDoHHI6zyvQDW2cz/yFyE+1Cz8NTs5NK8JzC7J0JrkUgptWtxyfB6Xs/21YRNifd3qgbBN3hfKVgA==
 
 expo-file-system@^19.0.20, expo-file-system@~19.0.21:
   version "19.0.21"
@@ -3440,6 +3469,16 @@ expo-image-picker@^17.0.10:
   dependencies:
     expo-image-loader "~6.0.0"
 
+expo-intent-launcher@~13.0.8:
+  version "13.0.8"
+  resolved "https://registry.npmjs.org/expo-intent-launcher/-/expo-intent-launcher-13.0.8.tgz"
+  integrity sha512-sgGFotttKKN6dIatjOEJT8M6Arfakus7vIxgshg5VkxarVhZBGJzOJam7rbUlB1O/gQ8em9G8vhEU9AfjEIe7A==
+
+expo-json-utils@~0.15.0:
+  version "0.15.0"
+  resolved "https://registry.npmjs.org/expo-json-utils/-/expo-json-utils-0.15.0.tgz"
+  integrity sha512-duRT6oGl80IDzH2LD2yEFWNwGIC2WkozsB6HF3cDYNoNNdUvFk6uN3YiwsTsqVM/D0z6LEAQ01/SlYvN+Fw0JQ==
+
 expo-keep-awake@~15.0.8:
   version "15.0.8"
   resolved "https://registry.npmjs.org/expo-keep-awake/-/expo-keep-awake-15.0.8.tgz"
@@ -3457,6 +3496,14 @@ expo-linking@^8.0.11, expo-linking@~8.0.11:
   dependencies:
     expo-constants "~18.0.12"
     invariant "^2.2.4"
+
+expo-manifests@~1.0.10:
+  version "1.0.10"
+  resolved "https://registry.npmjs.org/expo-manifests/-/expo-manifests-1.0.10.tgz"
+  integrity sha512-oxDUnURPcL4ZsOBY6X1DGWGuoZgVAFzp6PISWV7lPP2J0r8u1/ucuChBgpK7u1eLGFp6sDIPwXyEUCkI386XSQ==
+  dependencies:
+    "@expo/config" "~12.0.11"
+    expo-json-utils "~0.15.0"
 
 expo-modules-autolinking@3.0.23:
   version "3.0.23"
@@ -3488,6 +3535,11 @@ expo-notifications@~0.32.15:
     badgin "^1.1.5"
     expo-application "~7.0.8"
     expo-constants "~18.0.12"
+
+expo-print@^15.0.8:
+  version "15.0.8"
+  resolved "https://registry.npmjs.org/expo-print/-/expo-print-15.0.8.tgz"
+  integrity sha512-4O0Qzm0On5AmJIl9d+BT+ieTipFp658nHI4aX7vKEFPfj3dfQxG6rDJJpca+rrc9c4Ha8ZFYGvxJG5+4lFq2Pw==
 
 expo-router@*, expo-router@~6.0.21:
   version "6.0.21"
@@ -3553,6 +3605,43 @@ expo-status-bar@~3.0.9:
   integrity sha512-xyYyVg6V1/SSOZWh4Ni3U129XHCnFHBTcUo0dhWtFDrZbNp/duw5AGsQfb2sVeU0gxWHXSY1+5F0jnKYC7WuOw==
   dependencies:
     react-native-is-edge-to-edge "^1.2.1"
+
+expo-structured-headers@~5.0.0:
+  version "5.0.0"
+  resolved "https://registry.npmjs.org/expo-structured-headers/-/expo-structured-headers-5.0.0.tgz"
+  integrity sha512-RmrBtnSphk5REmZGV+lcdgdpxyzio5rJw8CXviHE6qH5pKQQ83fhMEcigvrkBdsn2Efw2EODp4Yxl1/fqMvOZw==
+
+expo-task-manager@^14.0.9, expo-task-manager@~14.0.9:
+  version "14.0.9"
+  resolved "https://registry.npmjs.org/expo-task-manager/-/expo-task-manager-14.0.9.tgz"
+  integrity sha512-GKWtXrkedr4XChHfTm5IyTcSfMtCPxzx89y4CMVqKfyfROATibrE/8UI5j7UC/pUOfFoYlQvulQEvECMreYuUA==
+  dependencies:
+    unimodules-app-loader "~6.0.8"
+
+expo-updates-interface@~2.0.0:
+  version "2.0.0"
+  resolved "https://registry.npmjs.org/expo-updates-interface/-/expo-updates-interface-2.0.0.tgz"
+  integrity sha512-pTzAIufEZdVPKql6iMi5ylVSPqV1qbEopz9G6TSECQmnNde2nwq42PxdFBaUEd8IZJ/fdJLQnOT3m6+XJ5s7jg==
+
+expo-updates@~29.0.15:
+  version "29.0.16"
+  resolved "https://registry.npmjs.org/expo-updates/-/expo-updates-29.0.16.tgz"
+  integrity sha512-E9/fxRz/Eurtc7hxeI/6ZPyHH3To9Xoccm1kXoICZTRojmuTo+dx0Xv53UHyHn4G5zGMezyaKF2Qtj3AKcT93w==
+  dependencies:
+    "@expo/code-signing-certificates" "^0.0.6"
+    "@expo/plist" "^0.4.8"
+    "@expo/spawn-async" "^1.7.2"
+    arg "4.1.0"
+    chalk "^4.1.2"
+    debug "^4.3.4"
+    expo-eas-client "~1.0.8"
+    expo-manifests "~1.0.10"
+    expo-structured-headers "~5.0.0"
+    expo-updates-interface "~2.0.0"
+    getenv "^2.0.0"
+    glob "^13.0.0"
+    ignore "^5.3.1"
+    resolve-from "^5.0.0"
 
 expo-web-browser@~15.0.9:
   version "15.0.10"
@@ -4978,7 +5067,7 @@ node-fetch@^2.7.0:
   dependencies:
     whatwg-url "^5.0.0"
 
-node-forge@^1.2.1, node-forge@^1.3.1:
+node-forge@^1.2.1, node-forge@^1.3.1, node-forge@^1.3.3:
   version "1.3.3"
   resolved "https://registry.npmjs.org/node-forge/-/node-forge-1.3.3.tgz"
   integrity sha512-rLvcdSyRCyouf6jcOIPe/BgwG/d7hKjzMKOas33/pHEr6gbq18IK9zV7DiPvzsz0oBJPme6qr6H6kGZuI9/DZg==
@@ -6356,6 +6445,11 @@ unicode-property-aliases-ecmascript@^2.0.0:
   version "2.2.0"
   resolved "https://registry.npmjs.org/unicode-property-aliases-ecmascript/-/unicode-property-aliases-ecmascript-2.2.0.tgz"
   integrity sha512-hpbDzxUY9BFwX+UeBnxv3Sh1q7HFxj48DTmXchNgRa46lO8uj3/1iEn3MiNUYTg1g9ctIqXCCERn8gYZhHC5lQ==
+
+unimodules-app-loader@~6.0.8:
+  version "6.0.8"
+  resolved "https://registry.npmjs.org/unimodules-app-loader/-/unimodules-app-loader-6.0.8.tgz"
+  integrity sha512-fqS8QwT/MC/HAmw1NKCHdzsPA6WaLm0dNmoC5Pz6lL+cDGYeYCNdHMO9fy08aL2ZD7cVkNM0pSR/AoNRe+rslA==
 
 unique-string@~2.0.0:
   version "2.0.0"

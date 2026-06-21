@@ -1,16 +1,17 @@
 import { useTransactions } from '@/context/TransactionContext';
+import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { NotificationService } from '@/services/NotificationService';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
 import { generateUUID } from '@/utils/uuid';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { createElement, useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -18,8 +19,47 @@ import { RecurringFrequency, RecurringTransaction } from '@/types/database';
 
 type ViewMode = 'LIST' | 'CALENDAR';
 
+// Shared bottom-sheet date/time picker for Android (avoids the display="default" double-fire bug)
+const SpinnerPickerSheet = ({
+  show, value, mode, label, onClose, onConfirm,
+}: {
+  show: boolean; value: Date; mode: 'date' | 'time'; label: string;
+  onClose: () => void; onConfirm: (d: Date) => void;
+}) => {
+  const pendingRef = React.useRef<Date>(value);
+  const isDark = useColorScheme() === 'dark';
+  // Reset ref to current value whenever the sheet opens
+  React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
+  if (!show) return null;
+  return (
+    <Modal transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
+        <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#e2e8f0' }}>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={{ color: '#94a3b8', fontSize: 16 }}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontWeight: '700', fontSize: 16 }}>{label}</Text>
+            <TouchableOpacity onPress={() => { onClose(); onConfirm(pendingRef.current); }}>
+              <Text style={{ color: '#6366f1', fontWeight: '700', fontSize: 16 }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <DateTimePicker
+            value={value}
+            mode={mode}
+            display="spinner"
+            style={{ height: 200, alignSelf: 'center', width: '100%' }}
+            onChange={(_, d) => { if (d) pendingRef.current = d; }}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // --- Helper Components for Cross-Platform Pickers ---
-const PlatformDatePicker = ({ value, onChange, placeholder }: { value: Date, onChange: (date: Date) => void, placeholder: string }) => {
+const PlatformDatePicker = ({ value, onChange }: { value: Date, onChange: (date: Date) => void, placeholder?: string }) => {
   const [show, setShow] = useState(false);
   if (Platform.OS === 'web') {
     return (
@@ -35,11 +75,28 @@ const PlatformDatePicker = ({ value, onChange, placeholder }: { value: Date, onC
   }
   return (
     <View>
-      <TouchableOpacity onPress={() => setShow(true)} className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl flex-row items-center justify-between border border-slate-200 dark:border-slate-700">
+      <TouchableOpacity onPress={() => {
+        if (Platform.OS === 'android') {
+          DateTimePickerAndroid.open({
+            value,
+            mode: 'date',
+            display: 'default',
+            onChange: (event: any, selectedDate?: Date) => {
+              if (event.type === 'set' && selectedDate) {
+                onChange(selectedDate);
+              }
+            },
+          });
+        } else {
+          setShow(true);
+        }
+      }} className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl flex-row items-center justify-between border border-slate-200 dark:border-slate-700">
         <Text className="text-slate-900 dark:text-white text-base">{value.toLocaleDateString()}</Text>
         <FontAwesome name="calendar" size={16} color="#64748b" />
       </TouchableOpacity>
-      {show && <DateTimePicker value={value} mode="date" display="default" onChange={(event, selectedDate) => { setShow(false); if (selectedDate) onChange(selectedDate); }} />}
+      {Platform.OS === 'ios' && (
+        <SpinnerPickerSheet show={show} value={value} mode="date" label="Select Date" onClose={() => setShow(false)} onConfirm={(d) => { setShow(false); onChange(d); }} />
+      )}
     </View>
   );
 };
@@ -67,14 +124,33 @@ const PlatformTimePicker = ({ value, onChange }: { value: Date, onChange: (date:
   }
   return (
     <View>
-      <TouchableOpacity onPress={() => setShow(true)} className="bg-white dark:bg-slate-800 p-4 rounded-xl flex-row items-center justify-between border border-slate-200 dark:border-slate-700">
+      <TouchableOpacity onPress={() => {
+        if (Platform.OS === 'android') {
+          DateTimePickerAndroid.open({
+            value,
+            mode: 'time',
+            display: 'default',
+            is24Hour: true,
+            onChange: (event: any, selectedDate?: Date) => {
+              if (event.type === 'set' && selectedDate) {
+                onChange(selectedDate);
+              }
+            },
+          });
+        } else {
+          setShow(true);
+        }
+      }} className="bg-white dark:bg-slate-800 p-4 rounded-xl flex-row items-center justify-between border border-slate-200 dark:border-slate-700">
         <Text className="text-slate-900 dark:text-white text-base font-semibold">{value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
         <FontAwesome name="clock-o" size={16} color="#64748b" />
       </TouchableOpacity>
-      {show && <DateTimePicker value={value} mode="time" display="default" onChange={(event, selectedDate) => { setShow(false); if (selectedDate) onChange(selectedDate); }} />}
+      {Platform.OS === 'ios' && (
+        <SpinnerPickerSheet show={show} value={value} mode="time" label="Select Time" onClose={() => setShow(false)} onConfirm={(d) => { setShow(false); onChange(d); }} />
+      )}
     </View>
   );
 };
+
 
 // --- Main Component ---
 
@@ -84,6 +160,7 @@ export default function RecurringTransactionsScreen() {
   // @ts-ignore
   const { items: accounts } = useSelector((state: any) => state.accounts);
   const { categories } = useTransactions();
+  const { formatCurrency } = useAppSettings();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
@@ -99,8 +176,8 @@ export default function RecurringTransactionsScreen() {
   // Form state
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
-  const [type, setType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
-  const [category, setCategory] = useState('Food & Dining');
+  const [type, setType] = useState<'INCOME' | 'EXPENSE' | 'TRANSFER'>('EXPENSE');
+  const [category, setCategory] = useState('');
   const [frequency, setFrequency] = useState<RecurringFrequency>('MONTHLY');
 
   const [startDate, setStartDate] = useState(new Date());
@@ -130,6 +207,15 @@ export default function RecurringTransactionsScreen() {
       setSelectedAccountId(accounts[0].id);
     }
   }, [accounts]);
+
+  useEffect(() => {
+    if (!showAddModal || editingId) return;
+    const filtered = categories.filter(c => c.type.toLowerCase() === type.toLowerCase());
+    if (filtered.length > 0 && !filtered.find(c => c.name === category)) {
+      setCategory(filtered[0].name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAddModal, type, categories]);
 
   // Calendar Projection Data
   const monthlyProjections = useMemo(() => {
@@ -212,13 +298,17 @@ export default function RecurringTransactionsScreen() {
 
   const loadRecurringTransactions = async () => {
     try {
+      let loaded: RecurringTransaction[] = [];
       if (Platform.OS === 'web') {
         const stored = localStorage.getItem('recurring_transactions');
-        if (stored) setRecurringTransactions(JSON.parse(stored));
+        if (stored) loaded = JSON.parse(stored);
       } else {
         const stored = await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
-        if (stored) setRecurringTransactions(JSON.parse(stored));
+        if (stored) loaded = JSON.parse(stored);
       }
+      setRecurringTransactions(loaded);
+      // Fix #4: catch up any periods missed while the app was closed
+      await processOverdueRecurring(loaded);
     } catch (error) {
       console.error('Error loading recurring transactions:', error);
     }
@@ -235,6 +325,121 @@ export default function RecurringTransactionsScreen() {
       try { (await import('@/services/LocalChangeEmitter')).default.emit(); } catch (e) { /* ignore */ }
     } catch (error) {
       console.error('Error saving recurring transactions:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * Fix #4: Catch-up processor for overdue recurring transactions.
+   *
+   * On each app open, checks every active recurring transaction.
+   * If its nextDate is in the past, creates one transaction per missed interval
+   * (capped at MAX_CATCH_UP to guard against runaway loops), then advances
+   * nextDate so it falls in the future again.
+   */
+  const processOverdueRecurring = async (items: RecurringTransaction[]) => {
+    const MAX_CATCH_UP = 12;
+    const now = Date.now();
+    let anyUpdated = false;
+
+    let dbTransactions: any[] = [];
+    try {
+      const { getDatabase } = await import('@/services/database');
+      const db = await getDatabase();
+      dbTransactions = await db.getTransactions();
+    } catch (dbErr) {
+      console.warn('[Recurring catch-up] Failed to load database transactions for duplicate checking:', dbErr);
+    }
+
+    const updated = await Promise.all(
+      items.map(async (rt) => {
+        if (!rt.isActive || rt.nextDate > now) return rt;
+
+        let current = { ...rt };
+        let catchUpCount = 0;
+
+        while (current.nextDate <= now && catchUpCount < MAX_CATCH_UP) {
+          if (current.endDate && current.nextDate > current.endDate) break;
+          if (current.totalRepetitions && current.completedRepetitions >= current.totalRepetitions) {
+            current = { ...current, isActive: false };
+            break;
+          }
+
+          // Check for existing transaction matching the recurring transaction instance
+          const isDuplicate = dbTransactions.some(tx => {
+            if (current.type === 'TRANSFER') {
+              return tx.account_id === current.accountId &&
+                     tx.to_account_id === current.toAccountId &&
+                     tx.amount === current.amount &&
+                     tx.type === 'TRANSFER' &&
+                     tx.date === current.nextDate;
+            } else {
+              return tx.account_id === current.accountId &&
+                     tx.amount === current.amount &&
+                     tx.type === current.type &&
+                     tx.date === current.nextDate;
+            }
+          });
+
+          if (!isDuplicate) {
+            try {
+              if (current.type === 'TRANSFER' && current.toAccountId) {
+                // @ts-ignore
+                await dispatch(addTransaction({
+                  account_id: current.accountId,
+                  to_account_id: current.toAccountId,
+                  type: 'TRANSFER',
+                  amount: current.amount,
+                  category: current.category,
+                  tags: current.tags,
+                  description: `${current.name} (Recurring - catch-up)`,
+                  date: current.nextDate,
+                }));
+              } else if (current.type !== 'TRANSFER') {
+                // @ts-ignore
+                await dispatch(addTransaction({
+                  account_id: current.accountId,
+                  type: current.type,
+                  amount: current.amount,
+                  category: current.category,
+                  tags: current.tags,
+                  description: `${current.name} (Recurring - catch-up)`,
+                  date: current.nextDate,
+                }));
+              }
+            } catch (err) {
+              console.warn('[Recurring catch-up] Failed to create transaction:', err);
+            }
+          } else {
+            console.log(`[Recurring catch-up] Skipping duplicate transaction for ${current.name} on ${new Date(current.nextDate).toLocaleDateString()}`);
+          }
+
+          current = {
+            ...current,
+            nextDate: incrementDate(current.frequency, current.nextDate),
+            completedRepetitions: current.completedRepetitions + 1,
+          };
+          catchUpCount++;
+          anyUpdated = true;
+        }
+
+        return current;
+      })
+    );
+
+    if (anyUpdated) {
+      const raw = JSON.stringify(updated);
+      if (Platform.OS === 'web') {
+        localStorage.setItem('recurring_transactions', raw);
+      } else {
+        await AsyncStorage.setItem('@hisabtrack_recurring_transactions', raw);
+      }
+      setRecurringTransactions(updated);
+      // @ts-ignore
+      dispatch(fetchAccounts());
+      // @ts-ignore
+      dispatch(fetchTransactions());
+      console.log('[Recurring catch-up] Processed overdue recurring transactions.');
     }
   };
 
@@ -244,8 +449,9 @@ export default function RecurringTransactionsScreen() {
       setFormError('Please fill in name and amount');
       return;
     }
-    if (isNaN(parseFloat(amount))) {
-      setFormError('Amount must be a valid number');
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setFormError('Amount must be a valid number greater than zero');
       return;
     }
     if (!selectedAccountId) {
@@ -288,7 +494,7 @@ export default function RecurringTransactionsScreen() {
 
         return await NotificationService.scheduleOneTimeReminder(
           `💰 ${data.type === 'INCOME' ? 'Income' : 'Expense'} Reminder`,
-          `[${data.category}] ${data.name}: ${data.type === 'INCOME' ? '+' : '-'}$${data.amount.toFixed(2)} due soon`,
+          `[${data.category}] ${data.name}: ${data.type === 'INCOME' ? '+' : '-'}${formatCurrency(data.amount)} due soon`,
           nextDue,
           { recurringId: data.id }
         );
@@ -313,7 +519,12 @@ export default function RecurringTransactionsScreen() {
       updatedTransactions = [...recurringTransactions, transactionData];
     }
 
-    await saveRecurringTransactions(updatedTransactions);
+    try {
+      await saveRecurringTransactions(updatedTransactions);
+    } catch {
+      Alert.alert('Error', 'Failed to save recurring transaction.');
+      return;
+    }
 
     setShowAddModal(false);
     resetForm();
@@ -350,6 +561,7 @@ export default function RecurringTransactionsScreen() {
     setEditingId(null);
     setName('');
     setAmount('');
+    setCategory('');
     setDescription('');
     setStartDate(new Date());
     setEndDate(new Date());
@@ -408,7 +620,7 @@ export default function RecurringTransactionsScreen() {
   const handleExecuteNow = async (recurring: RecurringTransaction) => {
     try {
       // @ts-ignore
-      await dispatch(addTransaction({
+      const txResult = await dispatch(addTransaction({
         account_id: recurring.accountId,
         type: recurring.type,
         amount: recurring.amount,
@@ -416,6 +628,12 @@ export default function RecurringTransactionsScreen() {
         description: `${recurring.name} (Recurring)`,
         date: Date.now(),
       }));
+      if (addTransaction.rejected.match(txResult)) {
+        Platform.OS === 'web'
+          ? window.alert('Error: Failed to create transaction')
+          : Alert.alert('Error', 'Failed to create transaction');
+        return;
+      }
 
       const updated = await Promise.all(recurringTransactions.map(async rt => {
         if (rt.id === recurring.id) {
@@ -437,7 +655,7 @@ export default function RecurringTransactionsScreen() {
             if (nextDue.getTime() > Date.now()) {
               const nid = await NotificationService.scheduleOneTimeReminder(
                 `💰 ${updatedRt.type === 'INCOME' ? 'Income' : 'Expense'} Reminder`,
-                `[${updatedRt.category}] ${updatedRt.name}: ${updatedRt.type === 'INCOME' ? '+' : '-'}$${updatedRt.amount.toFixed(2)} due soon`,
+                `[${updatedRt.category}] ${updatedRt.name}: ${updatedRt.type === 'INCOME' ? '+' : '-'}${formatCurrency(updatedRt.amount)} due soon`,
                 nextDue,
                 { recurringId: updatedRt.id }
               );
@@ -560,7 +778,7 @@ export default function RecurringTransactionsScreen() {
                         className={`font-bold text-xl ${recurring.type === 'INCOME' ? 'text-green-600' : 'text-red-600'
                           }`}
                       >
-                        {recurring.type === 'INCOME' ? '+' : '-'}${recurring.amount.toFixed(2)}
+                        {recurring.type === 'INCOME' ? '+' : '-'}{formatCurrency(recurring.amount)}
                       </Text>
                       <Text className="text-slate-500 text-xs">{recurring.frequency}</Text>
                     </View>
@@ -645,8 +863,8 @@ export default function RecurringTransactionsScreen() {
                   <View className="flex-row justify-between items-end mb-3 px-2">
                     <Text className="text-slate-600 dark:text-slate-300 font-bold text-lg uppercase">{month}</Text>
                     <View>
-                      {monthlyProjections[month].totalExpense > 0 && <Text className="text-red-500 text-xs font-bold text-right">EXP: ${monthlyProjections[month].totalExpense.toFixed(0)}</Text>}
-                      {monthlyProjections[month].totalIncome > 0 && <Text className="text-green-500 text-xs font-bold text-right">INC: ${monthlyProjections[month].totalIncome.toFixed(0)}</Text>}
+                      {monthlyProjections[month].totalExpense > 0 && <Text className="text-red-500 text-xs font-bold text-right">EXP: {formatCurrency(monthlyProjections[month].totalExpense)}</Text>}
+                      {monthlyProjections[month].totalIncome > 0 && <Text className="text-green-500 text-xs font-bold text-right">INC: {formatCurrency(monthlyProjections[month].totalIncome)}</Text>}
                     </View>
                   </View>
 
@@ -664,7 +882,7 @@ export default function RecurringTransactionsScreen() {
                         </View>
                       </View>
                       <Text className={`font-bold ${item.type === 'INCOME' ? 'text-green-600' : 'text-red-600'}`}>
-                        ${item.amount.toFixed(2)}
+                        {formatCurrency(item.amount)}
                       </Text>
                     </View>
                   ))}
@@ -722,7 +940,7 @@ export default function RecurringTransactionsScreen() {
                         <Text className={selectedAccountId === acc.id ? 'text-indigo-600 font-bold' : 'text-slate-600'}>
                           {acc.name}
                         </Text>
-                        <Text className="text-xs text-slate-400">${acc.balance}</Text>
+                        <Text className="text-xs text-slate-400">{formatCurrency(acc.balance)}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -796,7 +1014,7 @@ export default function RecurringTransactionsScreen() {
               {/* Category Selection */}
               <View className="mb-4">
                 <Text className="text-slate-500 text-sm font-bold mb-2">Category</Text>
-                <ScrollView showsVerticalScrollIndicator={false} className="max-h-40">
+                <ScrollView showsVerticalScrollIndicator={false} className="max-h-40" nestedScrollEnabled={true}>
                   {(() => {
                     const filteredCategories = categories.filter(c => c.type.toLowerCase() === type.toLowerCase());
                     const rootCategories = filteredCategories.filter(c => !c.parentId);

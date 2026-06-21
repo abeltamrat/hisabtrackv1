@@ -2,13 +2,34 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+import { AppNotification, AppNotificationService } from '@/services/AppNotificationService';
+
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-// Configure notification behavior
+type NotificationChannelId = 'default' | 'finance_alerts' | 'reminders' | 'insights' | 'transactions';
+
+export interface NotificationMetadata {
+  actionType?: AppNotification['actionType'];
+  inAppType?: AppNotification['type'];
+  icon?: string;
+  color?: string;
+  isAI?: boolean;
+  storeInApp?: boolean;
+  sourceKey?: string;
+  channelId?: NotificationChannelId;
+  notificationType?: 'RECURRING' | 'ONE_TIME' | 'IMMEDIATE';
+  recurringId?: string;
+  loanId?: string;
+  type?: string;
+  amount?: number;
+  title?: string;
+  body?: string;
+  [key: string]: unknown;
+}
+
 if (Platform.OS !== 'web') {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
       shouldShowBanner: true,
@@ -18,18 +39,145 @@ if (Platform.OS !== 'web') {
 }
 
 export class NotificationService {
-  /**
-   * Request notification permissions
-   */
-  static async requestPermissions(): Promise<boolean> {
-    if (Platform.OS === 'web') return false; // Notifications not supported on web
+  private static buildSourceKey(prefix: string) {
+    return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+  }
 
-    // In Expo Go, we can't request push permissions without triggering an error in SDK 53+
-    // We'll assume local notifications are allowed or just return true to avoid the error
-    if (isExpoGo) {
-      console.log('Skipping permission request in Expo Go to avoid remote notification errors');
-      return true;
+  private static resolveMetadata(data?: NotificationMetadata): NotificationMetadata {
+    return {
+      ...data,
+      sourceKey: typeof data?.sourceKey === 'string' ? data.sourceKey : this.buildSourceKey('notification'),
+    };
+  }
+
+  private static getDefaultInAppType(data?: NotificationMetadata): AppNotification['type'] {
+    if (data?.inAppType) return data.inAppType;
+    if (data?.actionType === 'view_budget' || data?.actionType === 'view_loans') return 'alert';
+    if (data?.actionType === 'view_drafts') return 'warning';
+    if (data?.isAI) return 'tip';
+    return 'info';
+  }
+
+  private static getDefaultIcon(data?: NotificationMetadata) {
+    if (data?.icon) return data.icon;
+    if (data?.actionType === 'view_budget') return 'pie-chart';
+    if (data?.actionType === 'view_loans') return 'bank';
+    if (data?.actionType === 'view_recurring') return 'calendar';
+    if (data?.actionType === 'view_reports') return 'line-chart';
+    if (data?.actionType === 'view_drafts') return 'inbox';
+    return 'bell';
+  }
+
+  private static getDefaultColor(data?: NotificationMetadata) {
+    if (data?.color) return data.color;
+    if (data?.actionType === 'view_budget') return '#f59e0b';
+    if (data?.actionType === 'view_loans') return '#ef4444';
+    if (data?.actionType === 'view_recurring') return '#6366f1';
+    if (data?.actionType === 'view_reports') return '#3b82f6';
+    if (data?.actionType === 'view_drafts') return '#f59e0b';
+    return '#6366f1';
+  }
+
+  private static async mirrorInAppNotification(title: string, body: string, data?: NotificationMetadata) {
+    if (data?.storeInApp === false) return;
+
+    await AppNotificationService.addNotification({
+      title,
+      message: body,
+      sourceKey: data?.sourceKey,
+      type: this.getDefaultInAppType(data),
+      icon: this.getDefaultIcon(data),
+      color: this.getDefaultColor(data),
+      isAI: !!data?.isAI,
+      actionType: data?.actionType,
+    });
+  }
+
+  private static async ensureAndroidChannel(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+
+    try {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'General',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        vibrationPattern: [0, 200, 150, 200],
+        lightColor: '#6366f1',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+
+      await Notifications.setNotificationChannelAsync('finance_alerts', {
+        name: 'Finance Alerts',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 150, 250],
+        lightColor: '#ef4444',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true,
+      });
+
+      await Notifications.setNotificationChannelAsync('reminders', {
+        name: 'Reminders',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#10b981',
+        sound: 'coin.wav',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+
+      await Notifications.setNotificationChannelAsync('insights', {
+        name: 'Insights',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        vibrationPattern: [0, 150, 100, 150],
+        lightColor: '#3b82f6',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+
+      // Keep legacy channel name for existing callers.
+      await Notifications.setNotificationChannelAsync('transactions', {
+        name: 'Transactions & Reminders',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#10b981',
+        sound: 'coin.wav',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+
+      await Notifications.setNotificationCategoryAsync('RECURRING_TRANSACTION', [
+        {
+          identifier: 'COMMIT',
+          buttonTitle: 'Commit & Save',
+          options: { opensAppToForeground: true },
+        },
+        {
+          identifier: 'SNOOZE',
+          buttonTitle: 'Snooze (1h)',
+          options: { opensAppToForeground: true },
+        },
+        {
+          identifier: 'DISMISS',
+          buttonTitle: 'Dismiss',
+          options: { opensAppToForeground: false },
+        },
+      ]);
+
+      await Notifications.setNotificationCategoryAsync('LOAN_REMINDER', [
+        {
+          identifier: 'SNOOZE',
+          buttonTitle: 'Snooze (1h)',
+          options: { opensAppToForeground: true },
+        },
+        {
+          identifier: 'DISMISS',
+          buttonTitle: 'Dismiss',
+          options: { opensAppToForeground: false },
+        },
+      ]);
+    } catch (error) {
+      console.error('Error setting Android notification channel/categories:', error);
     }
+  }
+
+  static async requestPermissions(): Promise<boolean> {
+    if (Platform.OS === 'web') return false;
 
     try {
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -45,127 +193,173 @@ export class NotificationService {
         return false;
       }
 
+      await this.ensureAndroidChannel();
       return true;
     } catch (error: any) {
-      // Ignore specific Expo Go error regarding remote notifications
-      if (error?.message?.includes('remote notifications') && error?.message?.includes('Expo Go')) {
-        console.log('Push notifications are not supported in Expo Go');
-        return false;
+      if (isExpoGo && error?.message?.includes('remote notifications')) {
+        console.log('Push notifications error in Expo Go, assuming local might work');
+        return true;
       }
       console.error('Error requesting notification permissions:', error);
       return false;
     }
   }
 
-  /**
-   * Schedule a recurring transaction reminder
-   */
+  static async hasPermission(): Promise<boolean> {
+    if (Platform.OS === 'web') return false;
+
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      return status === 'granted';
+    } catch (error) {
+      console.error('Error checking notification permissions:', error);
+      return false;
+    }
+  }
+
   static async scheduleRecurringReminder(
     id: string,
     title: string,
     amount: number,
-    type: 'INCOME' | 'EXPENSE',
+    type: 'INCOME' | 'EXPENSE' | 'TRANSFER',
     triggerDate: Date,
     frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'
   ): Promise<string | null> {
     if (Platform.OS === 'web') return null;
+
     try {
       const hasPermission = await this.requestPermissions();
-      if (!hasPermission) {
-        console.log('No notification permission');
-        return null;
-      }
+      if (!hasPermission) return null;
 
-      const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `💰 ${type === 'INCOME' ? 'Income' : 'Expense'} Reminder`,
-          body: `${title}: ${type === 'INCOME' ? '+' : '-'}$${amount.toFixed(2)}`,
-          sound: 'default', // You can add custom sound here
-          data: {
-            recurringId: id,
-            type,
-            amount,
-          },
-        },
-        trigger: {
-          date: triggerDate,
-          repeats: true,
-        } as any,
+      const seconds = Math.floor((triggerDate.getTime() - Date.now()) / 1000);
+      if (seconds <= 0) return null;
+
+      const metadata = this.resolveMetadata({
+        recurringId: id,
+        type,
+        amount,
+        title,
+        notificationType: 'RECURRING',
+        actionType: 'view_recurring',
+        inAppType: 'info',
+        icon: 'calendar',
+        color: '#6366f1',
+        channelId: 'reminders',
+        frequency,
       });
 
-      console.log('Notification scheduled:', notificationId);
-      return notificationId;
+      const content: Notifications.NotificationContentInput = {
+        title: `${type === 'INCOME' ? 'Income' : type === 'EXPENSE' ? 'Expense' : 'Transfer'} Reminder`,
+        body: `${title}: ${type === 'INCOME' ? '+' : type === 'EXPENSE' ? '-' : '->'}$${amount.toFixed(2)}`,
+        sound: true,
+        categoryIdentifier: 'RECURRING_TRANSACTION',
+        data: metadata,
+      };
+
+      if (Platform.OS === 'android') {
+        (content as any).channelId = metadata.channelId;
+      }
+
+      return await Notifications.scheduleNotificationAsync({
+        content,
+        trigger: { type: 'timeInterval', seconds, repeats: false } as any,
+      });
     } catch (error) {
-      console.error('Error scheduling notification:', error);
+      console.error('Error scheduling recurring notification:', error);
       return null;
     }
   }
 
-  /**
-   * Schedule a one-time reminder
-   */
   static async scheduleOneTimeReminder(
     title: string,
     body: string,
     triggerDate: Date,
-    data?: any
+    data?: NotificationMetadata
   ): Promise<string | null> {
     if (Platform.OS === 'web') return null;
+
     try {
       const hasPermission = await this.requestPermissions();
-      if (!hasPermission) {
-        return null;
-      }
+      if (!hasPermission) return null;
 
-      const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          sound: 'default',
-          data,
-        },
-        trigger: {
-          date: triggerDate,
-        } as any,
+      const seconds = Math.floor((triggerDate.getTime() - Date.now()) / 1000);
+      if (seconds <= 0) return null;
+
+      const metadata = this.resolveMetadata({
+        ...data,
+        title,
+        body,
+        notificationType: 'ONE_TIME',
+        actionType: data?.actionType ?? (data?.loanId ? 'view_loans' : undefined),
+        inAppType: data?.inAppType ?? (data?.type === 'LOAN_REMINDER' ? 'alert' : 'info'),
+        icon: data?.icon ?? (data?.type === 'LOAN_REMINDER' ? 'bank' : 'calendar'),
+        color: data?.color ?? (data?.type === 'LOAN_REMINDER' ? '#ef4444' : '#6366f1'),
+        channelId: data?.channelId ?? (data?.type === 'LOAN_REMINDER' ? 'reminders' : 'finance_alerts'),
       });
 
-      console.log('One-time notification scheduled:', notificationId, 'for', triggerDate.toISOString());
-      return notificationId;
+      const content: Notifications.NotificationContentInput = {
+        title,
+        body,
+        sound: true,
+        categoryIdentifier: data?.type === 'LOAN_REMINDER' ? 'LOAN_REMINDER' : undefined,
+        data: metadata,
+      };
+
+      if (Platform.OS === 'android') {
+        (content as any).channelId = metadata.channelId;
+      }
+
+      return await Notifications.scheduleNotificationAsync({
+        content,
+        trigger: { type: 'timeInterval', seconds, repeats: false } as any,
+      });
     } catch (error) {
       console.error('Error scheduling one-time notification:', error);
       return null;
     }
   }
 
-  /**
-   * Cancel a scheduled notification
-   */
+  static async snoozeNotification(response: Notifications.NotificationResponse) {
+    const data = (response.notification.request.content.data || {}) as NotificationMetadata;
+    const title = response.notification.request.content.title || 'Snoozed Reminder';
+    const body = response.notification.request.content.body || 'This reminder was snoozed.';
+    const snoozeTime = new Date(Date.now() + 60 * 60 * 1000);
+
+    if (data.notificationType === 'RECURRING' && typeof data.recurringId === 'string') {
+      return await this.scheduleRecurringReminder(
+        data.recurringId,
+        String(data.title || title),
+        Number(data.amount || 0),
+        (data.type as 'INCOME' | 'EXPENSE' | 'TRANSFER') || 'EXPENSE',
+        snoozeTime,
+        'DAILY'
+      );
+    }
+
+    return await this.scheduleOneTimeReminder(title, body, snoozeTime, {
+      ...data,
+      sourceKey: this.buildSourceKey('snooze'),
+    });
+  }
+
   static async cancelNotification(notificationId: string): Promise<void> {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web' || !notificationId) return;
     try {
       await Notifications.cancelScheduledNotificationAsync(notificationId);
-      console.log('Notification cancelled:', notificationId);
     } catch (error) {
       console.error('Error cancelling notification:', error);
     }
   }
 
-  /**
-   * Cancel all scheduled notifications
-   */
   static async cancelAllNotifications(): Promise<void> {
     if (Platform.OS === 'web') return;
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
-      console.log('All notifications cancelled');
     } catch (error) {
       console.error('Error cancelling all notifications:', error);
     }
   }
 
-  /**
-   * Get all scheduled notifications
-   */
   static async getAllScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
     try {
       return await Notifications.getAllScheduledNotificationsAsync();
@@ -175,49 +369,78 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Show immediate notification (for testing or instant alerts)
-   */
   static async showImmediateNotification(
     title: string,
     body: string,
-    data?: any
+    data?: NotificationMetadata
   ): Promise<void> {
     try {
       const hasPermission = await this.requestPermissions();
-      if (!hasPermission) {
-        return;
+      if (!hasPermission) return;
+
+      const metadata = this.resolveMetadata({
+        ...data,
+        title,
+        body,
+        notificationType: 'IMMEDIATE',
+        channelId: data?.channelId ?? 'finance_alerts',
+      });
+
+      const content: Notifications.NotificationContentInput = {
+        title,
+        body,
+        sound: true,
+        data: metadata,
+      };
+
+      if (Platform.OS === 'android') {
+        (content as any).channelId = metadata.channelId;
       }
 
+      await this.mirrorInAppNotification(title, body, metadata);
+
       await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          sound: 'default',
-          data,
-        },
-        trigger: null, // Show immediately
+        content,
+        trigger: null,
       });
     } catch (error) {
       console.error('Error showing immediate notification:', error);
     }
   }
 
-  /**
-   * Add notification listener
-   */
+  static async syncReceivedNotification(notification: Notifications.Notification): Promise<void> {
+    const title = notification.request.content.title || 'Notification';
+    const body = notification.request.content.body || '';
+    const data = (notification.request.content.data || {}) as NotificationMetadata;
+    await this.mirrorInAppNotification(title, body, data);
+  }
+
+  static async syncPresentedNotifications(): Promise<void> {
+    if (Platform.OS === 'web') return;
+
+    try {
+      const presented = await Notifications.getPresentedNotificationsAsync();
+      await Promise.all(presented.map((notification) => this.syncReceivedNotification(notification)));
+    } catch (error) {
+      console.error('Error syncing presented notifications:', error);
+    }
+  }
+
+  static async syncNotificationResponse(response: Notifications.NotificationResponse): Promise<void> {
+    await this.syncReceivedNotification(response.notification);
+  }
+
   static addNotificationReceivedListener(
     callback: (notification: Notifications.Notification) => void
   ): Notifications.Subscription {
     return Notifications.addNotificationReceivedListener(callback);
   }
 
-  /**
-   * Add notification response listener (when user taps notification)
-   */
   static addNotificationResponseListener(
     callback: (response: Notifications.NotificationResponse) => void
   ): Notifications.Subscription {
     return Notifications.addNotificationResponseReceivedListener(callback);
   }
 }
+
+export default NotificationService;

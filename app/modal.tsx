@@ -1,27 +1,74 @@
 import { useTransactions } from '@/context/TransactionContext';
+import CategoryIcon from '@/components/CategoryIcon';
+import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 
 import { AppDispatch } from '@/store';
+import BudgetService from '@/services/BudgetService';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addTransaction, updateTransaction } from '@/store/slices/transactionsSlice';
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
-import { AppNotificationService } from '@/services/AppNotificationService';
 import { NotificationService } from '@/services/NotificationService';
+import { formatTagInput, parseTagInput } from '@/utils/tags';
 import { useDispatch, useSelector } from 'react-redux';
+
+const SpinnerPickerSheet = ({
+  show, value, mode, label, onClose, onConfirm, maximumDate,
+}: {
+  show: boolean; value: Date; mode: 'date' | 'time'; label: string;
+  onClose: () => void; onConfirm: (d: Date) => void; maximumDate?: Date;
+}) => {
+  const pendingRef = React.useRef<Date>(value);
+  const isDark = useColorScheme() === 'dark';
+  React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
+  if (!show) return null;
+  return (
+    <Modal transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
+        <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#e2e8f0' }}>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={{ color: '#94a3b8', fontSize: 16 }}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontWeight: '700', fontSize: 16 }}>{label}</Text>
+            <TouchableOpacity onPress={() => { onClose(); onConfirm(pendingRef.current); }}>
+              <Text style={{ color: '#6366f1', fontWeight: '700', fontSize: 16 }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <DateTimePicker
+            value={value}
+            mode={mode}
+            display="spinner"
+            maximumDate={maximumDate}
+            style={{ height: 200, alignSelf: 'center', width: '100%' }}
+            onChange={(_, d) => { if (d) pendingRef.current = d; }}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 export default function AddTransactionScreen() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
+  const { formatCurrency, currency } = useAppSettings();
   const accounts = useSelector((state: any) => state.accounts.items);
   const transactions = useSelector((state: any) => state.transactions.items);
   const budgets = useSelector((state: any) => state.budgets.items);
   const accountsStatus = useSelector((state: any) => state.accounts.status);
   const { categories } = useTransactions();
+
+  const currencySymbol = useMemo(() => {
+    return formatCurrency(0).replace(/[\d,.\s]/g, '').trim() || currency;
+  }, [currency, formatCurrency]);
 
   // Robust parameter handling for expo-router versions
   const Router = require('expo-router');
@@ -36,6 +83,9 @@ export default function AddTransactionScreen() {
   const [type, setType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [note, setNote] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
+  const [transactionDate, setTransactionDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Ensure accounts and budgets are loaded
   useEffect(() => {
@@ -56,6 +106,8 @@ export default function AddTransactionScreen() {
       setType(editingTransaction.type);
       setSelectedCategory(editingTransaction.category);
       setNote(editingTransaction.description !== editingTransaction.category ? editingTransaction.description : '');
+      setTagsInput(formatTagInput(editingTransaction.tags));
+      setTransactionDate(new Date(editingTransaction.date));
     }
   }, [isEditing, editingTransaction]);
 
@@ -86,74 +138,80 @@ export default function AddTransactionScreen() {
   }, [accounts, selectedAccountId, accountsStatus]);
 
   const handleSave = async () => {
-    if (!amount) return;
+    const numericAmount = parseFloat(amount);
+    if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount greater than 0.');
+      return;
+    }
     if (!selectedAccountId) {
-      if (accounts.length > 0) setSelectedAccountId(accounts[0].id);
+      Alert.alert('No Account', 'Please select an account.');
+      return;
+    }
+    if (!selectedCategory) {
+      Alert.alert('No Category', 'Please select a category.');
       return;
     }
 
-    const numericAmount = parseFloat(amount);
     const transactionData = {
       account_id: selectedAccountId,
       amount: numericAmount,
-      type: type, // 'INCOME' | 'EXPENSE'
+      type,
       category: selectedCategory,
       description: note || selectedCategory,
-      date: isEditing ? editingTransaction.date : Date.now(),
+      tags: parseTagInput(tagsInput),
+      date: transactionDate.getTime(),
     };
 
-    // Check budget if it's an expense
+    // Check budget if it's an expense (non-blocking — just notify)
     if (type === 'EXPENSE') {
       const budget = budgets.find((b: any) => b.category === selectedCategory);
       if (budget) {
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getTime();
+        const metrics = BudgetService.calculateBudgetMetrics(
+          budget,
+          budgets,
+          transactions,
+          isEditing ? { excludeTransactionId: edit } : undefined
+        );
 
-        const currentSpent = transactions
-          .filter((t: any) =>
-            t.type === 'EXPENSE' &&
-            t.category === selectedCategory &&
-            t.date >= startOfMonth &&
-            t.date <= endOfMonth &&
-            (isEditing ? t.id !== edit : true) // Exclude current transaction if editing
-          )
-          .reduce((sum: number, t: any) => sum + t.amount, 0);
-
-        const newTotal = currentSpent + numericAmount;
-        const limit = budget.limit_amount;
-        const percentage = newTotal / limit;
+        const newTotal = metrics.spent + numericAmount;
+        const limit = metrics.effectiveLimit;
+        const percentage = limit > 0 ? newTotal / limit : 0;
 
         if (newTotal > limit) {
-          const message = `You've exceeded your ${selectedCategory} budget by $${(newTotal - limit).toFixed(0)}!`;
-          await NotificationService.showImmediateNotification('🚨 Budget Exceeded', message);
-          await AppNotificationService.addNotification({
-            title: '🚨 Budget Exceeded',
-            message,
-            type: 'alert',
+          const message = `You've exceeded your ${selectedCategory} budget by ${formatCurrency(newTotal - limit)}!`;
+          await NotificationService.showImmediateNotification('Budget Exceeded', message, {
+            actionType: 'view_budget',
+            inAppType: 'alert',
             icon: 'exclamation-circle',
             color: '#ef4444',
-            actionType: 'view_budget'
+            channelId: 'finance_alerts',
           });
         } else if (percentage >= 0.9) {
           const message = `You're at ${(percentage * 100).toFixed(0)}% of your ${selectedCategory} budget.`;
-          await NotificationService.showImmediateNotification('⚠️ Budget Alert', message);
-          await AppNotificationService.addNotification({
-            title: '⚠️ Budget Alert',
-            message,
-            type: 'warning',
+          await NotificationService.showImmediateNotification('Budget Alert', message, {
+            actionType: 'view_budget',
+            inAppType: 'warning',
             icon: 'exclamation-triangle',
             color: '#f59e0b',
-            actionType: 'view_budget'
+            channelId: 'finance_alerts',
           });
         }
       }
     }
 
+    let result: any;
     if (isEditing) {
-      dispatch(updateTransaction({ id: edit, ...transactionData }));
+      result = await dispatch(updateTransaction({ id: edit!, ...transactionData }));
+      if (updateTransaction.rejected.match(result)) {
+        Alert.alert('Error', result.error?.message || 'Failed to update transaction.');
+        return;
+      }
     } else {
-      dispatch(addTransaction(transactionData));
+      result = await dispatch(addTransaction(transactionData as any));
+      if (addTransaction.rejected.match(result)) {
+        Alert.alert('Error', result.error?.message || 'Failed to save transaction.');
+        return;
+      }
     }
     router.back();
   };
@@ -173,6 +231,26 @@ export default function AddTransactionScreen() {
       setSelectedCategory(allSelectableCategories[0].name);
     }
   }, [allSelectableCategories, selectedCategory]);
+
+  const selectedBudgetMetrics = useMemo(() => {
+    if (type !== 'EXPENSE' || !selectedCategory) {
+      return null;
+    }
+
+    const budget = budgets.find((item: any) => item.category === selectedCategory);
+    if (!budget) {
+      return null;
+    }
+
+    return BudgetService.calculateBudgetMetrics(
+      budget,
+      budgets,
+      transactions,
+      isEditing ? { excludeTransactionId: edit } : undefined
+    );
+  }, [budgets, edit, isEditing, selectedCategory, transactions, type]);
+
+  const parsedTags = useMemo(() => parseTagInput(tagsInput) || [], [tagsInput]);
 
   return (
     <KeyboardAvoidingView
@@ -203,7 +281,7 @@ export default function AddTransactionScreen() {
         <View className="items-center mb-6">
           <Text className="text-primary-100 text-sm mb-2">How much?</Text>
           <View className="flex-row items-center">
-            <Text className="text-white text-5xl font-bold mr-2">$</Text>
+            <Text className="text-white text-5xl font-bold mr-2">{currencySymbol}</Text>
             <TextInput
               className="text-white text-6xl font-bold min-w-[150px] text-center"
               placeholder="0"
@@ -266,7 +344,7 @@ export default function AddTransactionScreen() {
                   />
                 </View>
                 <Text className="text-slate-900 dark:text-white text-xs font-bold mb-1">{account.name}</Text>
-                <Text className="text-slate-500 text-[10px]">{account.currency} {account.balance}</Text>
+                <Text className="text-slate-500 text-[10px]">{formatCurrency(account.balance)}</Text>
               </TouchableOpacity>
             ))}
             {accounts.length === 0 && (
@@ -284,33 +362,57 @@ export default function AddTransactionScreen() {
           </ScrollView>
         </View>
 
+        {/* Date Picker */}
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">Date</Text>
+          <TouchableOpacity
+            onPress={() => {
+              if (Platform.OS === 'android') {
+                DateTimePickerAndroid.open({
+                  value: transactionDate,
+                  mode: 'date',
+                  display: 'default',
+                  maximumDate: new Date(),
+                  onChange: (event: any, selectedDate?: Date) => {
+                    if (event.type === 'set' && selectedDate) {
+                      setTransactionDate(selectedDate);
+                    }
+                  },
+                });
+              } else {
+                setShowDatePicker(true);
+              }
+            }}
+            className="flex-row items-center bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl"
+          >
+            <FontAwesome name="calendar" size={18} color="#6366f1" />
+            <Text className="text-slate-900 dark:text-white text-base font-medium ml-3">
+              {transactionDate.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+            </Text>
+          </TouchableOpacity>
+          {showDatePicker && Platform.OS === 'ios' && (
+            <DateTimePicker
+              value={transactionDate}
+              mode="date"
+              display="spinner"
+              maximumDate={new Date()}
+              onChange={(_, selected) => { if (selected) setTransactionDate(selected); }}
+            />
+          )}
+        </View>
+
         {/* Category Selection */}
         <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
           <View className="flex-row justify-between items-center mb-4">
             <Text className="text-slate-900 dark:text-white text-base font-bold">Category</Text>
             {(() => {
-              if (type !== 'EXPENSE' || !selectedCategory) return null;
-              const budget = budgets.find((b: any) => b.category === selectedCategory);
-              if (!budget) return null;
-
-              const now = new Date();
-              const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-              const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getTime();
-
-              const currentSpent = transactions
-                .filter((t: any) =>
-                  t.type === 'EXPENSE' &&
-                  t.category === selectedCategory &&
-                  t.date >= startOfMonth &&
-                  t.date <= endOfMonth &&
-                  (isEditing ? t.id !== edit : true)
-                )
-                .reduce((sum: number, t: any) => sum + t.amount, 0);
-
+              if (!selectedBudgetMetrics) return null;
               const currentAmount = parseFloat(amount) || 0;
-              const total = currentSpent + currentAmount;
-              const percent = Math.min((total / budget.limit_amount) * 100, 100);
-              const isOver = total > budget.limit_amount;
+              const total = selectedBudgetMetrics.spent + currentAmount;
+              const percent = selectedBudgetMetrics.effectiveLimit > 0
+                ? Math.min((total / selectedBudgetMetrics.effectiveLimit) * 100, 100)
+                : 0;
+              const isOver = total > selectedBudgetMetrics.effectiveLimit;
 
               return (
                 <View className="flex-row items-center">
@@ -323,6 +425,12 @@ export default function AddTransactionScreen() {
                       style={{ width: `${percent}%` }}
                     />
                   </View>
+                  {selectedBudgetMetrics.rolloverDelta !== 0 && (
+                    <Text className={`ml-2 text-[10px] font-semibold ${selectedBudgetMetrics.rolloverDelta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {selectedBudgetMetrics.rolloverDelta > 0 ? '+' : ''}
+                      {selectedBudgetMetrics.rolloverDelta.toFixed(0)}
+                    </Text>
+                  )}
                 </View>
               );
             })()}
@@ -343,7 +451,7 @@ export default function AddTransactionScreen() {
                       className="w-10 h-10 rounded-2xl justify-center items-center mr-3"
                       style={{ backgroundColor: category.color + '20' }}
                     >
-                      <FontAwesome name={category.icon as any} size={18} color={category.color} />
+                      <CategoryIcon icon={category.icon} size={18} color={category.color} />
                     </View>
                     <View className="flex-1">
                       <Text className="text-slate-900 dark:text-white text-sm font-semibold text-left">
@@ -372,7 +480,7 @@ export default function AddTransactionScreen() {
                         className="w-8 h-8 rounded-xl justify-center items-center mr-3"
                         style={{ backgroundColor: childCategory.color + '20' }}
                       >
-                        <FontAwesome name={childCategory.icon as any} size={14} color={childCategory.color} />
+                        <CategoryIcon icon={childCategory.icon} size={14} color={childCategory.color} />
                       </View>
                       <View className="flex-1">
                         <Text className="text-slate-700 dark:text-slate-300 text-xs font-medium text-left">
@@ -388,6 +496,32 @@ export default function AddTransactionScreen() {
               </View>
             ))}
           </ScrollView>
+        </View>
+
+        {/* Note Input */}
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">Tags (Optional)</Text>
+          <View className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl">
+            <TextInput
+              className="text-slate-900 dark:text-white text-base"
+              placeholder="project-alpha, wedding, https://payment.link"
+              placeholderTextColor="#94a3b8"
+              value={tagsInput}
+              onChangeText={setTagsInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+          <Text className="text-slate-400 text-xs mt-2">Use comma-separated tags. Great for projects, events, or links.</Text>
+          {parsedTags.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3 -mx-1 px-1">
+              {parsedTags.map((tag) => (
+                <View key={tag} className="mr-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
+                  <Text className="text-indigo-700 dark:text-indigo-300 text-xs font-semibold">#{tag}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* Note Input */}

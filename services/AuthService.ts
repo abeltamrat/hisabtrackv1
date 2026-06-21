@@ -1,17 +1,31 @@
 import { firebaseConfig } from '@/config/firebase';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeApp } from 'firebase/app';
 import {
-    createUserWithEmailAndPassword,
-    getAuth,
-    sendPasswordResetEmail,
-    signInWithEmailAndPassword,
-    updateProfile,
-    User
+  createUserWithEmailAndPassword,
+  getAuth,
+  // @ts-ignore
+  getReactNativePersistence,
+  initializeAuth,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  updateProfile,
+  User
 } from 'firebase/auth';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+
+let auth: any;
+try {
+  auth = initializeAuth(app, {
+    // @ts-ignore
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+  });
+} catch (e) {
+  // logic to handle if auth is already initialized or other errors
+  auth = getAuth(app);
+}
 
 export class AuthService {
   /**
@@ -53,7 +67,7 @@ export class AuthService {
   static async signUp(email: string, password: string, displayName?: string): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
+
       // Update display name if provided
       if (displayName && userCredential.user) {
         await updateProfile(userCredential.user, { displayName });

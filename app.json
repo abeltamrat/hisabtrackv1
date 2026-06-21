@@ -1,52 +1,93 @@
 {
   "expo": {
-    "name": "hisabtrackv1",
+    "name": "Hisab Track",
     "slug": "hisabtrackv1",
-    "version": "1.0.0",
+    "version": "1.0.3",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/Ethiopia-Coin-1-Birr-Weighing-Scale-Lion-KM78-2010-2016-removebg-preview.png",
     "scheme": "hisabtrackv1",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/Ethiopia-Coin-1-Birr-Weighing-Scale-Lion-KM78-2010-2016-removebg-preview.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "buildNumber": "1.0.3",
+      "bundleIdentifier": "com.abeltamrat.hisabtrackv1"
     },
     "android": {
+      "versionCode": 3,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/Ethiopia-Coin-1-Birr-Weighing-Scale-Lion-KM78-2010-2016-removebg-preview.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "READ_SMS"
+        "WAKE_LOCK",
+        "RECEIVE_BOOT_COMPLETED",
+        "REQUEST_INSTALL_PACKAGES",
+        "READ_SMS",
+        "RECEIVE_SMS",
+        "SEND_SMS",
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR",
+        "READ_CONTACTS",
+        "WRITE_CONTACTS"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.abeltamrat.hisabtrackv1"
+      "package": "com.abeltamrat.hisabtrackv1",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/5655ab27-5678-493b-812a-fef473382b1b"
+    },
     "plugins": [
       "expo-router",
-      "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-updates",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/Ethiopia-Coin-1-Birr-Weighing-Scale-Lion-KM78-2010-2016-removebg-preview.png",
+          "color": "#ffffff",
+          "sounds": [
+            "./assets/sounds/coin.wav"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
     },
+    "owner": "andriondsystems",
     "extra": {
       "router": {},
+      "updateManifestUrl": "http://www.hisab.nonstopplc.com/update.json",
       "eas": {
-        "projectId": "0ff04fb0-3c5a-4847-bb4d-21f5db9ee497"
+        "projectId": "5655ab27-5678-493b-812a-fef473382b1b"
       }
-    },
-    "owner": "abeltamratms-organization"
+    }
   }
 }

@@ -32,8 +32,11 @@ export default function NotificationsScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadNotifications();
-    setRefreshing(false);
+    try {
+      await loadNotifications();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleMarkAsRead = async (id: string) => {
@@ -51,8 +54,12 @@ export default function NotificationsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await AppNotificationService.deleteNotification(id);
-            await loadNotifications();
+            try {
+              await AppNotificationService.deleteNotification(id);
+              await loadNotifications();
+            } catch {
+              Alert.alert('Error', 'Failed to delete notification.');
+            }
           },
         },
       ]
@@ -74,8 +81,12 @@ export default function NotificationsScreen() {
           text: 'Clear All',
           style: 'destructive',
           onPress: async () => {
-            await AppNotificationService.clearAll();
-            await loadNotifications();
+            try {
+              await AppNotificationService.clearAll();
+              await loadNotifications();
+            } catch {
+              Alert.alert('Error', 'Failed to clear notifications.');
+            }
           },
         },
       ]
@@ -95,6 +106,8 @@ export default function NotificationsScreen() {
       router.push('/loans');
     } else if (notification.actionType === 'view_recurring') {
       router.push('/recurring');
+    } else if (notification.actionType === 'view_drafts') {
+      router.push('/draft-transactions');
     }
   };
 
@@ -205,8 +218,6 @@ export default function NotificationsScreen() {
                       color={notification.color}
                     />
                   </View>
-
-                  {/* Content */}
                   <View className="flex-1">
                     <View className="flex-row items-center justify-between mb-1">
                       <Text className="text-slate-900 dark:text-white font-bold text-base flex-1">
