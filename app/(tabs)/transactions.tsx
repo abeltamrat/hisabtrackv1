@@ -25,10 +25,9 @@ function getAccountImageSource(logoUrl: string | null | undefined) {
     if (typeof bundled.src === 'number') return bundled.src;
     if (typeof bundled.src === 'string') return { uri: bundled.src };
     if (typeof bundled.src === 'object') {
-      // @ts-ignore
-      if (bundled.src.uri) return bundled.src;
-      // @ts-ignore
-      if (bundled.src.default) return { uri: bundled.src.default };
+      const src = bundled.src as { uri?: string; default?: string };
+      if (src.uri) return bundled.src;
+      if (src.default) return { uri: src.default };
       return bundled.src;
     }
   }

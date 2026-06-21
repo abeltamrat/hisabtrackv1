@@ -116,7 +116,6 @@ export default function AddTransactionScreen() {
       dispatch(fetchAccounts());
     }
     if (budgets.length === 0) {
-      // @ts-ignore
       dispatch(fetchBudgets());
     }
     if (transactions.length === 0) {

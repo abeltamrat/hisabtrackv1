@@ -480,7 +480,6 @@ export default function LoansDebtsScreen() {
 
       // 2. Add Loan Record and wait for completion
       console.log('[Loans] Dispatching addLoan...');
-      // @ts-ignore
       const loanResult = await dispatch(addLoan({
         type: activeTab,
         lender_borrower_name: formData.personName.trim(),
@@ -514,7 +513,6 @@ export default function LoansDebtsScreen() {
         cat.name === 'Other'
       ) || categories.find(cat => cat.type === (isLent ? 'expense' : 'income')) || categories[0];
 
-      // @ts-ignore
       await dispatch(addTransaction({
         account_id: formData.accountId,
         type: isLent ? 'EXPENSE' : 'INCOME',
@@ -530,7 +528,6 @@ export default function LoansDebtsScreen() {
       // updates the Redux state. Calling fetchLoans() can cause a race condition
       // where we fetch old data before the database write completes.
       console.log('[Loans] Refreshing accounts...');
-      // @ts-ignore
       await dispatch(fetchAccounts());
 
       console.log('[Loans] Loan and transaction saved successfully');
@@ -571,7 +568,6 @@ export default function LoansDebtsScreen() {
       reminderTime: formData.reminderTime.getTime(),
     })) || undefined;
 
-    // @ts-ignore
     const result = await dispatch(updateLoan({
       ...editingItem,
       lender_borrower_name: formData.personName.trim(),
@@ -645,7 +641,6 @@ export default function LoansDebtsScreen() {
 
     // 1. Update Loan
     const newRemaining = Math.max(0, loan.remaining_balance - amount);
-    // @ts-ignore
     const updateResult = await dispatch(updateLoan({
       ...loan,
       remaining_balance: newRemaining,
@@ -664,7 +659,6 @@ export default function LoansDebtsScreen() {
       cat.name === 'Other'
     ) || categories.find(cat => cat.type === (isLent ? 'income' : 'expense')) || categories[0];
 
-    // @ts-ignore
     const txResult = await dispatch(addTransaction({
       account_id: paymentAccountId,
       type: isLent ? 'INCOME' : 'EXPENSE',

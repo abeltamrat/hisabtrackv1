@@ -36,9 +36,7 @@ export default function AccountDetail() {
     if (!id) return;
     try {
       if (showLoading) setLoading(true);
-      // dispatch typings can be complex for createAsyncThunk results — coerce safely
-      // @ts-ignore
-      const res = await (dispatch as any)(fetchTransactions({ account_id: id }));
+      const res = await dispatch(fetchTransactions({ account_id: id }));
       const payload = Array.isArray(res?.payload) ? res.payload : [];
       setTransactions(payload as any[]);
     } catch (e) {
@@ -105,10 +103,7 @@ export default function AccountDetail() {
   const handleDeleteAccount = async () => {
     if (!id) return;
     try {
-      // @ts-ignore
       await dispatch(deleteAccount(id));
-      // refresh accounts list
-      // @ts-ignore
       await dispatch(fetchAccounts());
       router.back();
     } catch (e) {
@@ -124,10 +119,9 @@ export default function AccountDetail() {
       if (typeof bundled.src === 'number') return bundled.src;
       if (typeof bundled.src === 'string') return { uri: bundled.src };
       if (typeof bundled.src === 'object') {
-        // @ts-ignore
-        if (bundled.src.uri) return bundled.src;
-        // @ts-ignore
-        if (bundled.src.default) return { uri: bundled.src.default };
+        const src = bundled.src as { uri?: string; default?: string };
+        if (src.uri) return bundled.src;
+        if (src.default) return { uri: src.default };
         return bundled.src;
       }
     }
