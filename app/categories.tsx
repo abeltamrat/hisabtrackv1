@@ -94,13 +94,7 @@ const iconGroups: IconGroup[] = [
 export default function ManageCategoriesScreen() {
   const colorScheme = useColorScheme();
   const router = useRouter();
-  const { categories: contextCategories, addCategory, updateCategory, deleteCategory } = useTransactions();
-  const [categories, setCategories] = useState<Category[]>(contextCategories);
-
-  // Sync with context categories
-  React.useEffect(() => {
-    setCategories(contextCategories);
-  }, [contextCategories]);
+  const { categories, addCategory, updateCategory, deleteCategory } = useTransactions();
 
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
