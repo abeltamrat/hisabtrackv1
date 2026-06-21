@@ -1,46 +1,42 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { SMSSyncService } from '@/services/SMSSyncService';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 
 /**
- * Global component to handle automatic SMS syncing on app start
+ * Global headless component: auto-syncs SMS on app start and foreground resume.
+ * Uses syncAllAccountsBackground() so it always reads fresh data from the DB
+ * rather than capturing potentially stale Redux state in a closure.
  */
 export const SMSAutoSync: React.FC = () => {
-    const accounts = useSelector((state: RootState) => state.accounts.items);
-    const transactions = useSelector((state: RootState) => state.transactions.items);
     const accountsLoaded = useSelector((state: RootState) => state.accounts.status === 'succeeded');
+    const hasSmsAccounts = useSelector((state: RootState) =>
+        state.accounts.items.some(a => !!a.sms_number)
+    );
+
+    // Keep a ref so performSync always reads the latest value without re-triggering the effect.
+    const hasSmsRef = useRef(hasSmsAccounts);
+    useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
 
     useEffect(() => {
         if (Platform.OS !== 'android') return;
-        if (!accountsLoaded || accounts.length === 0) return;
+        if (!accountsLoaded) return;
 
         const performSync = async () => {
+            if (!hasSmsRef.current) return;
             try {
-                // Only sync if there are accounts with SMS numbers
-                const smsAccounts = accounts.filter(a => a.sms_number);
-                if (smsAccounts.length === 0) return;
-
-                console.log('[SMSAutoSync] Checking for new SMS...');
-                await SMSSyncService.checkAllNow(accounts, transactions);
+                await SMSSyncService.syncAllAccountsBackground();
             } catch (err) {
                 console.error('[SMSAutoSync] Auto-sync failed:', err);
             }
         };
 
-        // Initial sync
         const timer = setTimeout(performSync, 3000);
-
-        // Periodic check every 5 minutes
         const interval = setInterval(performSync, 5 * 60 * 1000);
 
-        // Also check when app comes to foreground
-        const { AppState } = require('react-native');
         const subscription = AppState.addEventListener('change', (nextState: string) => {
-            if (nextState === 'active') {
-                performSync();
-            }
+            if (nextState === 'active') performSync();
         });
 
         return () => {
@@ -48,9 +44,9 @@ export const SMSAutoSync: React.FC = () => {
             clearInterval(interval);
             subscription.remove();
         };
-    }, [accountsLoaded, accounts.length]);
+    }, [accountsLoaded]);
 
-    return null; // This component doesn't render anything
+    return null;
 };
 
 export default SMSAutoSync;
