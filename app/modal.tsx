@@ -3,7 +3,7 @@ import CategoryIcon from '@/components/CategoryIcon';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -70,10 +70,7 @@ export default function AddTransactionScreen() {
     return formatCurrency(0).replace(/[\d,.\s]/g, '').trim() || currency;
   }, [currency, formatCurrency]);
 
-  // Robust parameter handling for expo-router versions
-  const Router = require('expo-router');
-  const useParamsHook = (Router as any).useLocalSearchParams ?? (Router as any).useSearchParams ?? (() => ({}));
-  const { edit } = useParamsHook() as { edit?: string };
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
 
   const isEditing = !!edit;
   const editingTransaction = transactions.find((t: any) => t.id === edit);
