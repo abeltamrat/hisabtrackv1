@@ -10,7 +10,7 @@ import React from 'react';
 import { ActivityIndicator, Alert, Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { UpdateService, UpdateInfo } from '@/services/UpdateService';
-import { RootState } from '@/store';
+import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import UpdateModal from './UpdateModal';
 
@@ -32,7 +32,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { actualTheme } = useTheme();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const slideAnim = React.useRef(new Animated.Value(-300)).current;
   const { formatCurrency, fontSize } = useAppSettings();
   const { t } = useI18n();
@@ -84,7 +84,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   React.useEffect(() => {
     if (visible) {
       if (accounts.length === 0) {
-        dispatch(fetchAccounts() as any);
+        dispatch(fetchAccounts());
       }
 
       Animated.spring(slideAnim, {
