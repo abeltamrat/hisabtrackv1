@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { AuthService } from '@/services/AuthService';
+import { AuthService, validatePhone } from '@/services/AuthService';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +21,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [email, setEmail] = useState(''); // signup-only email field
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
   const [loading, setLoading] = useState(false);
@@ -73,8 +74,14 @@ export default function LoginScreen() {
 
     let loginEmail = identifier.trim();
 
-    // Phone number path: look up the associated email
+    // Phone number path: validate format then look up the associated email
     if (isPhoneNumber(loginEmail)) {
+      const phoneErr = validatePhone(loginEmail);
+      if (phoneErr) {
+        setLoading(false);
+        Alert.alert('Invalid phone number', phoneErr);
+        return;
+      }
       const found = await AuthService.lookupEmailByPhone(loginEmail);
       if (!found) {
         setLoading(false);
@@ -109,6 +116,15 @@ export default function LoginScreen() {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
+
+    if (phone.trim()) {
+      const phoneErr = validatePhone(phone.trim());
+      if (phoneErr) {
+        setPhoneError(phoneErr);
+        return;
+      }
+    }
+    setPhoneError(null);
 
     setLoading(true);
     const result = await AuthService.signUp(
@@ -275,16 +291,20 @@ export default function LoginScreen() {
                   <View className="mb-4">
                     <Text className="text-slate-500 text-sm font-bold mb-2">Phone Number (Optional)</Text>
                     <TextInput
-                      className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
-                      placeholder="+251912345678"
+                      className={`bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 ${phoneError ? 'border-red-400' : 'border-slate-200'}`}
+                      placeholder="09 or +251 or just 9..."
                       value={phone}
-                      onChangeText={setPhone}
+                      onChangeText={(v) => { setPhone(v); setPhoneError(null); }}
                       keyboardType="phone-pad"
                       autoComplete="tel"
                     />
-                    <Text className="text-slate-400 text-xs mt-1">
-                      Allows you to sign in with your phone number
-                    </Text>
+                    {phoneError ? (
+                      <Text className="text-red-500 text-xs mt-1">{phoneError}</Text>
+                    ) : (
+                      <Text className="text-slate-400 text-xs mt-1">
+                        Accepts 09…, 9…, or +251… — allows sign-in with phone
+                      </Text>
+                    )}
                   </View>
 
                   {/* Email */}

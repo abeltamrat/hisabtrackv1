@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { AuthService } from '@/services/AuthService';
+import { AuthService, validatePhone } from '@/services/AuthService';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useRef, useState } from 'react';
@@ -26,6 +26,7 @@ export default function PhonePromptManager() {
   const { user } = useAuth();
   const [visible, setVisible] = useState(false);
   const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const checkedRef = useRef(false);
 
@@ -78,9 +79,15 @@ export default function PhonePromptManager() {
 
   const handleSave = async () => {
     if (!phone.trim()) {
-      Alert.alert('Error', 'Please enter a phone number');
+      setPhoneError('Please enter a phone number');
       return;
     }
+    const err = validatePhone(phone.trim());
+    if (err) {
+      setPhoneError(err);
+      return;
+    }
+    setPhoneError(null);
     if (!user?.uid || !user?.email) return;
 
     setSaving(true);
@@ -154,21 +161,24 @@ export default function PhonePromptManager() {
               style={{
                 backgroundColor: '#f8fafc',
                 borderWidth: 1.5,
-                borderColor: '#e2e8f0',
+                borderColor: phoneError ? '#ef4444' : '#e2e8f0',
                 borderRadius: 12,
                 padding: 14,
                 fontSize: 16,
                 color: '#0f172a',
-                marginBottom: 20,
+                marginBottom: phoneError ? 4 : 20,
               }}
-              placeholder="+251912345678"
+              placeholder="09… or +251… or 9…"
               placeholderTextColor="#94a3b8"
               value={phone}
-              onChangeText={setPhone}
+              onChangeText={(v) => { setPhone(v); setPhoneError(null); }}
               keyboardType="phone-pad"
               autoComplete="tel"
               autoFocus
             />
+            {phoneError && (
+              <Text style={{ color: '#ef4444', fontSize: 12, marginBottom: 16 }}>{phoneError}</Text>
+            )}
 
             <TouchableOpacity
               onPress={handleSave}

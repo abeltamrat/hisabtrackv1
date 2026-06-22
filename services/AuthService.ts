@@ -32,13 +32,28 @@ function getFirestoreInstance() {
   return getFirestore(app);
 }
 
-/** Strip all non-digit chars; preserve a leading '+' for E.164 numbers. */
+/**
+ * Normalize an Ethiopian phone number to E.164 (+2519XXXXXXXX / +2517XXXXXXXX).
+ * Accepts: +251XXXXXXXXX, 251XXXXXXXXX, 09XXXXXXXX, 07XXXXXXXX, 9XXXXXXXX, 7XXXXXXXX
+ */
 export function normalizePhone(phone: string): string {
-  const s = phone.trim();
-  if (s.startsWith('+')) {
-    return '+' + s.slice(1).replace(/\D/g, '');
-  }
-  return s.replace(/\D/g, '');
+  // Strip whitespace, dashes, parentheses, dots
+  const s = phone.trim().replace(/[\s\-().]/g, '');
+  if (s.startsWith('+251')) return s;
+  if (s.startsWith('251')) return '+' + s;
+  if (s.startsWith('0')) return '+251' + s.slice(1); // 09... → +2519...
+  return '+251' + s; // 9... → +2519...
+}
+
+/**
+ * Returns an error string if invalid, or null if the phone is valid (or empty).
+ * Ethiopian mobile numbers are +251 followed by 9 digits starting with 9 or 7.
+ */
+export function validatePhone(phone: string): string | null {
+  if (!phone.trim()) return null; // optional — empty is fine
+  const normalized = normalizePhone(phone);
+  if (/^\+251[79]\d{8}$/.test(normalized)) return null;
+  return 'Enter a valid phone number (e.g. 0912345678 or +251912345678)';
 }
 
 export class AuthService {
