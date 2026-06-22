@@ -12,6 +12,7 @@ import {
   updateProfile,
   User
 } from 'firebase/auth';
+import { doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -25,6 +26,19 @@ try {
 } catch (e) {
   // logic to handle if auth is already initialized or other errors
   auth = getAuth(app);
+}
+
+function getFirestoreInstance() {
+  return getFirestore(app);
+}
+
+/** Strip all non-digit chars; preserve a leading '+' for E.164 numbers. */
+function normalizePhone(phone: string): string {
+  const s = phone.trim();
+  if (s.startsWith('+')) {
+    return '+' + s.slice(1).replace(/\D/g, '');
+  }
+  return s.replace(/\D/g, '');
 }
 
 export class AuthService {
@@ -62,15 +76,57 @@ export class AuthService {
   }
 
   /**
+   * Look up a user's email by their phone number.
+   * Returns null if no account is associated with that phone number.
+   */
+  static async lookupEmailByPhone(phone: string): Promise<string | null> {
+    try {
+      const normalized = normalizePhone(phone);
+      if (!normalized) return null;
+      const firestore = getFirestoreInstance();
+      const snap = await getDoc(doc(firestore, 'phoneIndex', normalized));
+      if (snap.exists()) {
+        return (snap.data() as { email: string }).email ?? null;
+      }
+      return null;
+    } catch (err) {
+      console.warn('[AuthService] lookupEmailByPhone failed:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Write (or update) the phoneIndex entry so the phone number can be used to sign in.
+   */
+  static async savePhoneIndex(uid: string, email: string, phone: string): Promise<void> {
+    try {
+      const normalized = normalizePhone(phone);
+      if (!normalized) return;
+      const firestore = getFirestoreInstance();
+      await setDoc(doc(firestore, 'phoneIndex', normalized), { uid, email }, { merge: true });
+    } catch (err) {
+      console.warn('[AuthService] savePhoneIndex failed:', err);
+    }
+  }
+
+  /**
    * Create new account with email and password
    */
-  static async signUp(email: string, password: string, displayName?: string): Promise<{ success: boolean; user?: User; error?: string }> {
+  static async signUp(
+    email: string,
+    password: string,
+    displayName?: string,
+    phoneNumber?: string,
+  ): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
-      // Update display name if provided
       if (displayName && userCredential.user) {
         await updateProfile(userCredential.user, { displayName });
+      }
+
+      if (phoneNumber && userCredential.user) {
+        await AuthService.savePhoneIndex(userCredential.user.uid, email, phoneNumber);
       }
 
       return { success: true, user: userCredential.user };

@@ -9,75 +9,90 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+/** Returns true when the string looks like a phone number (no @ sign). */
+function isPhoneNumber(value: string): boolean {
+  return !value.includes('@');
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState(''); // email or phone
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState(''); // signup-only email field
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // Load saved email on mount
   useEffect(() => {
-    loadSavedEmail();
+    loadSavedIdentifier();
   }, []);
 
-  const loadSavedEmail = async () => {
+  const loadSavedIdentifier = async () => {
     try {
-      const savedEmail = await AsyncStorage.getItem('rememberedEmail');
-      if (savedEmail) {
-        setEmail(savedEmail);
+      const saved = await AsyncStorage.getItem('rememberedEmail');
+      if (saved) {
+        setIdentifier(saved);
         setRememberMe(true);
       }
     } catch (error) {
-      console.error('Error loading saved email:', error);
+      console.error('Error loading saved identifier:', error);
     }
   };
 
-  const saveEmail = async (emailToSave: string) => {
+  const saveIdentifier = async (value: string) => {
     try {
-      await AsyncStorage.setItem('rememberedEmail', emailToSave);
+      await AsyncStorage.setItem('rememberedEmail', value);
     } catch (error) {
-      console.error('Error saving email:', error);
+      console.error('Error saving identifier:', error);
     }
   };
 
-  const clearSavedEmail = async () => {
+  const clearSavedIdentifier = async () => {
     try {
       await AsyncStorage.removeItem('rememberedEmail');
     } catch (error) {
-      console.error('Error clearing email:', error);
+      console.error('Error clearing identifier:', error);
     }
   };
 
-  // Redirect to dashboard if already authenticated
   if (!authLoading && user) {
     return <Redirect href="/(tabs)" />;
   }
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter email and password');
+    if (!identifier.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please enter your email or phone number and password');
       return;
     }
 
     setLoading(true);
-    const result = await AuthService.signIn(email, password);
+
+    let loginEmail = identifier.trim();
+
+    // Phone number path: look up the associated email
+    if (isPhoneNumber(loginEmail)) {
+      const found = await AuthService.lookupEmailByPhone(loginEmail);
+      if (!found) {
+        setLoading(false);
+        Alert.alert('Error', 'No account found for this phone number');
+        return;
+      }
+      loginEmail = found;
+    }
+
+    const result = await AuthService.signIn(loginEmail, password);
     setLoading(false);
 
     if (result.success && result.user) {
-      // Save email if remember me is checked
       if (rememberMe) {
-        await saveEmail(email);
+        await saveIdentifier(identifier.trim());
       } else {
-        await clearSavedEmail();
+        await clearSavedIdentifier();
       }
-
-      // Sign in successful - navigate to app
-      // The AuthContext will handle user state automatically
       router.replace('/(tabs)');
     } else {
       Alert.alert('Error', result.error || 'Failed to sign in');
@@ -96,12 +111,15 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    const result = await AuthService.signUp(email, password, name.trim() || undefined);
+    const result = await AuthService.signUp(
+      email.trim(),
+      password,
+      name.trim() || undefined,
+      phone.trim() || undefined,
+    );
     setLoading(false);
 
     if (result.success && result.user) {
-      // Account created successfully - navigate to app
-      // The AuthContext will handle user state automatically
       router.replace('/(tabs)');
     } else {
       Alert.alert('Error', result.error || 'Failed to create account');
@@ -109,21 +127,24 @@ export default function LoginScreen() {
   };
 
   const handleResetPassword = async () => {
-    if (!email.trim()) {
+    if (!identifier.trim()) {
       Alert.alert('Error', 'Please enter your email address');
       return;
     }
 
+    // Reset by email only — if they entered a phone, ask for email
+    if (isPhoneNumber(identifier.trim())) {
+      Alert.alert('Error', 'Please enter your email address to reset your password');
+      return;
+    }
+
     setLoading(true);
-    const result = await AuthService.resetPassword(email);
+    const result = await AuthService.resetPassword(identifier.trim());
     setLoading(false);
 
     if (result.success) {
       Alert.alert('Success', 'Password reset email sent! Check your inbox.', [
-        {
-          text: 'OK',
-          onPress: () => setMode('signin'),
-        },
+        { text: 'OK', onPress: () => setMode('signin') },
       ]);
     } else {
       Alert.alert('Error', result.error || 'Failed to send reset email');
@@ -164,14 +185,14 @@ export default function LoginScreen() {
                   <Text className="text-slate-900 text-2xl font-bold mb-2">Sign In</Text>
                   <Text className="text-slate-500 mb-8">Enter your credentials to continue</Text>
 
-                  {/* Email */}
+                  {/* Email or Phone */}
                   <View className="mb-4">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Email</Text>
+                    <Text className="text-slate-500 text-sm font-bold mb-2">Email or Phone Number</Text>
                     <TextInput
                       className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
-                      placeholder="your@email.com"
-                      value={email}
-                      onChangeText={setEmail}
+                      placeholder="your@email.com or +251912345678"
+                      value={identifier}
+                      onChangeText={setIdentifier}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoComplete="email"
@@ -208,11 +229,8 @@ export default function LoginScreen() {
                     onPress={() => setRememberMe(!rememberMe)}
                     className="flex-row items-center mb-6"
                   >
-                    <View className={`w-6 h-6 rounded-md border-2 ${rememberMe ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'
-                      } justify-center items-center mr-3`}>
-                      {rememberMe && (
-                        <FontAwesome name="check" size={14} color="#fff" />
-                      )}
+                    <View className={`w-6 h-6 rounded-md border-2 ${rememberMe ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'} justify-center items-center mr-3`}>
+                      {rememberMe && <FontAwesome name="check" size={14} color="#fff" />}
                     </View>
                     <Text className="text-slate-600 text-sm">Remember me</Text>
                   </TouchableOpacity>
@@ -220,8 +238,7 @@ export default function LoginScreen() {
                   <TouchableOpacity
                     onPress={handleSignIn}
                     disabled={loading}
-                    className={`bg-blue-600 h-14 rounded-xl justify-center items-center shadow-lg mb-4 ${loading ? 'opacity-50' : ''
-                      }`}
+                    className={`bg-blue-600 h-14 rounded-xl justify-center items-center shadow-lg mb-4 ${loading ? 'opacity-50' : ''}`}
                   >
                     <Text className="text-white font-bold text-base">
                       {loading ? 'Signing in...' : 'Sign In'}
@@ -252,6 +269,22 @@ export default function LoginScreen() {
                       onChangeText={setName}
                       autoComplete="name"
                     />
+                  </View>
+
+                  {/* Phone Number */}
+                  <View className="mb-4">
+                    <Text className="text-slate-500 text-sm font-bold mb-2">Phone Number (Optional)</Text>
+                    <TextInput
+                      className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
+                      placeholder="+251912345678"
+                      value={phone}
+                      onChangeText={setPhone}
+                      keyboardType="phone-pad"
+                      autoComplete="tel"
+                    />
+                    <Text className="text-slate-400 text-xs mt-1">
+                      Allows you to sign in with your phone number
+                    </Text>
                   </View>
 
                   {/* Email */}
@@ -295,8 +328,7 @@ export default function LoginScreen() {
                   <TouchableOpacity
                     onPress={handleSignUp}
                     disabled={loading}
-                    className={`bg-blue-600 h-14 rounded-xl justify-center items-center shadow-lg mb-4 ${loading ? 'opacity-50' : ''
-                      }`}
+                    className={`bg-blue-600 h-14 rounded-xl justify-center items-center shadow-lg mb-4 ${loading ? 'opacity-50' : ''}`}
                   >
                     <Text className="text-white font-bold text-base">
                       {loading ? 'Creating account...' : 'Create Account'}
@@ -327,14 +359,13 @@ export default function LoginScreen() {
                     Enter your email and we'll send you a reset link
                   </Text>
 
-                  {/* Email */}
                   <View className="mb-6">
                     <Text className="text-slate-500 text-sm font-bold mb-2">Email</Text>
                     <TextInput
                       className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
                       placeholder="your@email.com"
-                      value={email}
-                      onChangeText={setEmail}
+                      value={identifier}
+                      onChangeText={setIdentifier}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoComplete="email"
@@ -345,8 +376,7 @@ export default function LoginScreen() {
                   <TouchableOpacity
                     onPress={handleResetPassword}
                     disabled={loading}
-                    className={`bg-blue-600 h-14 rounded-xl justify-center items-center shadow-lg ${loading ? 'opacity-50' : ''
-                      }`}
+                    className={`bg-blue-600 h-14 rounded-xl justify-center items-center shadow-lg ${loading ? 'opacity-50' : ''}`}
                   >
                     <Text className="text-white font-bold text-base">
                       {loading ? 'Sending...' : 'Send Reset Link'}
