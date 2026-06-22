@@ -2,6 +2,7 @@ import { AuthService } from '@/services/AuthService';
 import RemotePushService from '@/services/RemotePushService';
 import { SecureStorageService } from '@/services/SecureStorageService';
 import SyncService from '@/services/SyncService';
+import { getDatabase } from '@/services/database';
 import { AppDispatch } from '@/store';
 import { resetAccounts } from '@/store/slices/accountsSlice';
 import { resetBudgets } from '@/store/slices/budgetsSlice';
@@ -81,6 +82,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setUser(null);
         try { SyncService.stopAutoSync(); } catch (e) {}
+        // Wipe local data so a subsequent user on the same device starts clean
+        try {
+          const db = await getDatabase();
+          await db.clearAllData();
+        } catch (e) {
+          console.error('Error clearing local database on auth state change', e);
+        }
         void SyncService.refreshLocalStore();
       }
       setLoading(false);
@@ -109,7 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await SecureStorageService.clearAll();
       await StorageService.clearAll();
 
-      // Clear only Redux in-memory state — local SQLite data stays on device
+      // Wipe local SQLite so the next user cannot see this user's data
+      try {
+        const db = await getDatabase();
+        await db.clearAllData();
+      } catch (e) {
+        console.error('Error clearing local database on sign-out', e);
+      }
+
       dispatch(resetAccounts());
       dispatch(resetTransactions());
       dispatch(resetBudgets());
