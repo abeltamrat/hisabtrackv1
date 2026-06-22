@@ -33,7 +33,7 @@ function getFirestoreInstance() {
 }
 
 /** Strip all non-digit chars; preserve a leading '+' for E.164 numbers. */
-function normalizePhone(phone: string): string {
+export function normalizePhone(phone: string): string {
   const s = phone.trim();
   if (s.startsWith('+')) {
     return '+' + s.slice(1).replace(/\D/g, '');
@@ -97,6 +97,7 @@ export class AuthService {
 
   /**
    * Write (or update) the phoneIndex entry so the phone number can be used to sign in.
+   * Also stores the phone number on the user's profile document.
    */
   static async savePhoneIndex(uid: string, email: string, phone: string): Promise<void> {
     try {
@@ -104,8 +105,26 @@ export class AuthService {
       if (!normalized) return;
       const firestore = getFirestoreInstance();
       await setDoc(doc(firestore, 'phoneIndex', normalized), { uid, email }, { merge: true });
+      await setDoc(doc(firestore, 'users', uid, 'meta', 'profile'), { phoneNumber: normalized }, { merge: true });
     } catch (err) {
       console.warn('[AuthService] savePhoneIndex failed:', err);
+    }
+  }
+
+  /**
+   * Returns the phone number stored on the user's profile, or null if none set.
+   */
+  static async getUserPhone(uid: string): Promise<string | null> {
+    try {
+      const firestore = getFirestoreInstance();
+      const snap = await getDoc(doc(firestore, 'users', uid, 'meta', 'profile'));
+      if (snap.exists()) {
+        return (snap.data() as { phoneNumber?: string }).phoneNumber ?? null;
+      }
+      return null;
+    } catch (err) {
+      console.warn('[AuthService] getUserPhone failed:', err);
+      return null;
     }
   }
 

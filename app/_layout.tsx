@@ -60,6 +60,7 @@ import { NotificationService } from '@/services/NotificationService';
 import SyncService from '@/services/SyncService';
 import { useRouter } from 'expo-router';
 import SMSAutoSync from '@/components/SMSAutoSync';
+import PhonePromptManager from '@/components/PhonePromptManager';
 import UpdateModal from '@/components/UpdateModal';
 import { UpdateInfo, UpdateService } from '@/services/UpdateService';
 import OnboardingScreen from '@/components/OnboardingScreen';
@@ -244,6 +245,7 @@ function RootLayoutNav() {
               <I18nProvider>
                 <View style={{ flex: 1 }}>
                   <SMSAutoSync />
+                  <PhonePromptManager />
                   <UpdateModal
                     visible={!!updateInfo}
                     updateInfo={updateInfo}
