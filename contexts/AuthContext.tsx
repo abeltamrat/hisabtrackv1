@@ -83,13 +83,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         try { SyncService.stopAutoSync(); } catch (e) {}
         // Wipe local data so a subsequent user on the same device starts clean
-        try {
-          const db = await getDatabase();
-          await db.clearAllData();
-        } catch (e) {
-          console.error('Error clearing local database on auth state change', e);
-        }
-        void SyncService.refreshLocalStore();
+        void (async () => {
+          try {
+            const db = await getDatabase();
+            await db.clearAllData();
+          } catch (e) {
+            console.error('Error clearing local database on auth state change', e);
+          }
+          void SyncService.refreshLocalStore();
+        })();
       }
       setLoading(false);
     });
