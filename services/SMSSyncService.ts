@@ -323,7 +323,11 @@ export class SMSSyncService {
       }
 
       this.emitStatus(account.id, 'Sync Complete', 100);
-      await this.setLastSuccessfulSync(account.id, Date.now());
+      // Only advance lastSync when SMS were actually found; if 0 were read,
+      // keep the old timestamp so the next sync re-scans the same window.
+      if (result.totalSMS > 0) {
+        await this.setLastSuccessfulSync(account.id, Date.now());
+      }
       return result;
     } catch (error) {
       this.emitStatus(account.id, 'Sync Failed', 0);

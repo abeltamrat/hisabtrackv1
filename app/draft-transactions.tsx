@@ -161,12 +161,12 @@ export default function DraftTransactionsScreen() {
     }
   };
 
-  const handleSync = async (historical: boolean = false) => {
+  const handleSync = async (historical: boolean = false, historicalDays?: number) => {
     setRefreshing(true);
     try {
       if (account) {
         await SMSSyncService.syncAccountSMS(account, transactions, {
-          historicalDays: historical ? 90 : undefined
+          historicalDays: historicalDays ?? (historical ? 90 : undefined)
         });
       } else {
         await SMSSyncService.checkAllNow(accounts, transactions);
@@ -179,6 +179,21 @@ export default function DraftTransactionsScreen() {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const handleResyncWithHistory = () => {
+    if (!account) return;
+    Alert.alert(
+      'Resync History',
+      'How far back should the app scan for SMS transactions?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: '30 days', onPress: () => handleSync(false, 30) },
+        { text: '90 days', onPress: () => handleSync(false, 90) },
+        { text: '180 days', onPress: () => handleSync(false, 180) },
+        { text: '1 year', onPress: () => handleSync(false, 365) },
+      ]
+    );
   };
 
   const handleReject = async (draftId: string) => {
@@ -578,7 +593,7 @@ export default function DraftTransactionsScreen() {
             </View>
           </View>
 
-          <View>
+          <View className="mb-4">
             <Text className="text-slate-500 text-[10px] font-bold uppercase mb-2">Group By</Text>
             <View className="flex-row flex-wrap gap-2">
               {(['none', 'date', 'month', 'year', 'type'] as const).map(g => (
@@ -592,6 +607,25 @@ export default function DraftTransactionsScreen() {
               ))}
             </View>
           </View>
+
+          {account && (
+            <View>
+              <Text className="text-slate-500 text-[10px] font-bold uppercase mb-2">Resync History</Text>
+              <TouchableOpacity
+                onPress={handleResyncWithHistory}
+                disabled={refreshing}
+                className="flex-row items-center px-4 py-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20"
+              >
+                <FontAwesome name="history" size={14} color="#6366f1" />
+                <Text className="text-indigo-600 dark:text-indigo-400 text-xs font-semibold ml-2">
+                  Scan older SMS (choose range)
+                </Text>
+              </TouchableOpacity>
+              <Text className="text-[10px] text-slate-400 mt-1">
+                Use this if your bank SMS are not showing up
+              </Text>
+            </View>
+          )}
         </View>
       )}
 

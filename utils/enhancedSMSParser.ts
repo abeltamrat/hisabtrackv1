@@ -285,7 +285,7 @@ export class EnhancedSMSParser {
     // Telebirr: sender or message mentions telebirr, or ethiotelecom receipt URL
     if (s.includes('telebirr') || s.includes('ethiotelecom') || m.includes('telebirr') || m.includes('transactioninfo.ethiotelecom')) return 'telebirr';
     // BOA: "8397" shortcode, bankofabyssinia URL, or message text
-    if (s.includes('abyssinia') || s === '8397' || m.includes('bank of abyssinia') || m.includes('bankofabyssinia.com')) return 'boa';
+    if (s.includes('abyssinia') || s === 'boa' || s === '8397' || s.includes('8397') || m.includes('bank of abyssinia') || m.includes('bankofabyssinia.com')) return 'boa';
     if (s.includes('awash') || m.includes('awash bank') || m.includes('awashpay') || m.includes('awashbank')) return 'awash';
     if (s.includes('dashen') || m.includes('dashen bank')) return 'dashen';
     // Other Ethiopian banks → generic (still use improved generic patterns)
