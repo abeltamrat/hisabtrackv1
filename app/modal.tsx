@@ -83,15 +83,14 @@ export default function AddTransactionScreen() {
   const [tagsInput, setTagsInput] = useState('');
   const [transactionDate, setTransactionDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
   const uniqueTags = useMemo(() => {
     const tagsSet = new Set<string>();
     transactions.forEach((t: any) => {
       if (t.tags && Array.isArray(t.tags)) {
         t.tags.forEach((tag: any) => {
-          if (tag && typeof tag === 'string') {
-            tagsSet.add(tag.trim().toLowerCase());
-          }
+          if (tag && typeof tag === 'string') tagsSet.add(tag.trim().toLowerCase());
         });
       }
     });
@@ -101,29 +100,26 @@ export default function AddTransactionScreen() {
   const handleToggleTag = (tagToToggle: string) => {
     const currentTags = parseTagInput(tagsInput) || [];
     const exists = currentTags.some(t => t.toLowerCase() === tagToToggle.toLowerCase());
-    let newTags: string[];
-    if (exists) {
-      newTags = currentTags.filter(t => t.toLowerCase() !== tagToToggle.toLowerCase());
-    } else {
-      newTags = [...currentTags, tagToToggle];
-    }
+    const newTags = exists
+      ? currentTags.filter(t => t.toLowerCase() !== tagToToggle.toLowerCase())
+      : [...currentTags, tagToToggle];
     setTagsInput(newTags.join(', '));
   };
 
-  // Ensure accounts, budgets, and transactions are loaded
+  const toggleCollapse = (id: string) => {
+    setCollapsedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   useEffect(() => {
-    if (accounts.length === 0) {
-      dispatch(fetchAccounts());
-    }
-    if (budgets.length === 0) {
-      dispatch(fetchBudgets());
-    }
-    if (transactions.length === 0) {
-      dispatch(fetchTransactions());
-    }
+    if (accounts.length === 0) dispatch(fetchAccounts());
+    if (budgets.length === 0) dispatch(fetchBudgets());
+    if (transactions.length === 0) dispatch(fetchTransactions());
   }, [dispatch, accounts.length, budgets.length, transactions.length]);
 
-  // Load transaction data for editing
   useEffect(() => {
     if (isEditing && editingTransaction) {
       setSelectedAccountId(editingTransaction.account_id);
@@ -141,7 +137,6 @@ export default function AddTransactionScreen() {
       setSelectedAccountId(accounts[0].id);
     } else if (accountsStatus === 'succeeded' && accounts.length === 0) {
       if (Platform.OS === 'web') {
-        // Use timeout to let UI render first
         setTimeout(() => {
           if (confirm("No Accounts Found. You need an account to create a transaction. Would you like to create one?")) {
             router.replace('/accounts');
@@ -187,39 +182,29 @@ export default function AddTransactionScreen() {
       date: transactionDate.getTime(),
     };
 
-    // Check budget if it's an expense (non-blocking — just notify)
     if (type === 'EXPENSE') {
       const budget = budgets.find((b: any) => b.category === selectedCategory);
       if (budget) {
         const metrics = BudgetService.calculateBudgetMetrics(
-          budget,
-          budgets,
-          transactions,
+          budget, budgets, transactions,
           isEditing ? { excludeTransactionId: edit } : undefined
         );
-
         const newTotal = metrics.spent + numericAmount;
         const limit = metrics.effectiveLimit;
         const percentage = limit > 0 ? newTotal / limit : 0;
 
         if (newTotal > limit) {
-          const message = `You've exceeded your ${selectedCategory} budget by ${formatCurrency(newTotal - limit)}!`;
-          await NotificationService.showImmediateNotification('Budget Exceeded', message, {
-            actionType: 'view_budget',
-            inAppType: 'alert',
-            icon: 'exclamation-circle',
-            color: '#ef4444',
-            channelId: 'finance_alerts',
-          });
+          await NotificationService.showImmediateNotification(
+            'Budget Exceeded',
+            `You've exceeded your ${selectedCategory} budget by ${formatCurrency(newTotal - limit)}!`,
+            { actionType: 'view_budget', inAppType: 'alert', icon: 'exclamation-circle', color: '#ef4444', channelId: 'finance_alerts' }
+          );
         } else if (percentage >= 0.9) {
-          const message = `You're at ${(percentage * 100).toFixed(0)}% of your ${selectedCategory} budget.`;
-          await NotificationService.showImmediateNotification('Budget Alert', message, {
-            actionType: 'view_budget',
-            inAppType: 'warning',
-            icon: 'exclamation-triangle',
-            color: '#f59e0b',
-            channelId: 'finance_alerts',
-          });
+          await NotificationService.showImmediateNotification(
+            'Budget Alert',
+            `You're at ${(percentage * 100).toFixed(0)}% of your ${selectedCategory} budget.`,
+            { actionType: 'view_budget', inAppType: 'warning', icon: 'exclamation-triangle', color: '#f59e0b', channelId: 'finance_alerts' }
+          );
         }
       }
     }
@@ -243,14 +228,8 @@ export default function AddTransactionScreen() {
 
   const filteredCategories = categories.filter(c => c.type === type.toLowerCase());
 
-  // Organize categories into hierarchy
-  const rootCategories = filteredCategories.filter(c => !c.parentId);
-  const getChildCategories = (parentId: string) => filteredCategories.filter(c => c.parentId === parentId);
-
-  // Flatten categories for selection (include both parents and children)
   const allSelectableCategories = filteredCategories;
 
-  // Set default category when categories change
   useEffect(() => {
     if (!selectedCategory && allSelectableCategories.length > 0) {
       setSelectedCategory(allSelectableCategories[0].name);
@@ -258,24 +237,72 @@ export default function AddTransactionScreen() {
   }, [allSelectableCategories, selectedCategory]);
 
   const selectedBudgetMetrics = useMemo(() => {
-    if (type !== 'EXPENSE' || !selectedCategory) {
-      return null;
-    }
-
+    if (type !== 'EXPENSE' || !selectedCategory) return null;
     const budget = budgets.find((item: any) => item.category === selectedCategory);
-    if (!budget) {
-      return null;
-    }
-
+    if (!budget) return null;
     return BudgetService.calculateBudgetMetrics(
-      budget,
-      budgets,
-      transactions,
+      budget, budgets, transactions,
       isEditing ? { excludeTransactionId: edit } : undefined
     );
   }, [budgets, edit, isEditing, selectedCategory, transactions, type]);
 
   const parsedTags = useMemo(() => parseTagInput(tagsInput) || [], [tagsInput]);
+
+  const renderCategoryTree = (parentId: string | undefined, depth: number): React.ReactNode => {
+    const cats = filteredCategories.filter(c => (c.parentId ?? undefined) === parentId);
+    return cats.map(category => {
+      const children = filteredCategories.filter(c => c.parentId === category.id);
+      const hasChildren = children.length > 0;
+      const isCollapsed = collapsedCategories.has(category.id);
+      const indentLeft = depth * 14;
+      const iconSize = depth === 0 ? 32 : 26;
+      const iconInnerSize = depth === 0 ? 15 : 12;
+
+      return (
+        <View key={category.id}>
+          <TouchableOpacity
+            className={`flex-row items-center py-2 px-3 rounded-xl mb-1 border ${
+              selectedCategory === category.name
+                ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
+                : 'bg-slate-50 dark:bg-slate-900 border-transparent'
+            }`}
+            style={{ marginLeft: indentLeft }}
+            onPress={() => setSelectedCategory(category.name)}
+          >
+            {depth > 0 && (
+              <View className="w-0.5 h-3 bg-slate-300 dark:bg-slate-600 mr-2 rounded-full" />
+            )}
+            <View
+              className="rounded-xl justify-center items-center mr-2"
+              style={{ width: iconSize, height: iconSize, backgroundColor: category.color + '20' }}
+            >
+              <CategoryIcon icon={category.icon} size={iconInnerSize} color={category.color} />
+            </View>
+            <Text
+              className={`flex-1 text-slate-900 dark:text-white font-semibold ${depth === 0 ? 'text-sm' : 'text-xs'}`}
+              numberOfLines={1}
+            >
+              {category.name}
+            </Text>
+            {hasChildren && (
+              <TouchableOpacity
+                onPress={() => toggleCollapse(category.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                className="flex-row items-center px-1"
+              >
+                <Text className="text-slate-400 text-[10px] mr-1">{children.length}</Text>
+                <FontAwesome name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={9} color="#94a3b8" />
+              </TouchableOpacity>
+            )}
+            {selectedCategory === category.name && (
+              <FontAwesome name="check" size={11} color="#6366f1" style={{ marginLeft: 4 }} />
+            )}
+          </TouchableOpacity>
+          {hasChildren && !isCollapsed && renderCategoryTree(category.id, depth + 1)}
+        </View>
+      );
+    });
+  };
 
   return (
     <KeyboardAvoidingView
@@ -289,26 +316,26 @@ export default function AddTransactionScreen() {
       {/* Header */}
       <LinearGradient
         colors={['#4f46e5', '#4338ca']}
-        className="px-6 pt-6 pb-8 rounded-b-[32px]"
+        className="px-6 pt-6 pb-6 rounded-b-[28px]"
         style={{ elevation: 4 }}
       >
-        <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
-            <FontAwesome name="close" size={18} color="#fff" />
+        <View className="flex-row justify-between items-center mb-4">
+          <TouchableOpacity onPress={() => router.back()} className="w-9 h-9 bg-white/20 rounded-xl justify-center items-center">
+            <FontAwesome name="close" size={16} color="#fff" />
           </TouchableOpacity>
-          <Text className="text-white text-xl font-bold">{isEditing ? 'Edit Transaction' : 'Add Transaction'}</Text>
-          <TouchableOpacity onPress={handleSave} className="w-10 h-10 bg-secondary-500 rounded-xl justify-center items-center">
-            <FontAwesome name="check" size={18} color="#fff" />
+          <Text className="text-white text-lg font-bold">{isEditing ? 'Edit Transaction' : 'Add Transaction'}</Text>
+          <TouchableOpacity onPress={handleSave} className="w-9 h-9 bg-secondary-500 rounded-xl justify-center items-center">
+            <FontAwesome name="check" size={16} color="#fff" />
           </TouchableOpacity>
         </View>
 
         {/* Amount Input */}
-        <View className="items-center mb-6">
-          <Text className="text-primary-100 text-sm mb-2">How much?</Text>
+        <View className="items-center mb-2">
+          <Text className="text-primary-100 text-xs mb-1">How much?</Text>
           <View className="flex-row items-center">
-            <Text className="text-white text-5xl font-bold mr-2">{currencySymbol}</Text>
+            <Text className="text-white text-4xl font-bold mr-1">{currencySymbol}</Text>
             <TextInput
-              className="text-white text-6xl font-bold min-w-[150px] text-center"
+              className="text-white text-5xl font-bold min-w-[120px] text-center"
               placeholder="0"
               placeholderTextColor="rgba(255,255,255,0.5)"
               keyboardType="decimal-pad"
@@ -320,76 +347,75 @@ export default function AddTransactionScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView className="flex-1 px-6 -mt-6" showsVerticalScrollIndicator={false} nestedScrollEnabled={true}>
-        {/* Type Selector Card */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">Transaction Type</Text>
-          <View className="flex-row bg-slate-50 dark:bg-slate-900 p-1.5 rounded-2xl">
+      <ScrollView className="flex-1 px-4 -mt-4" showsVerticalScrollIndicator={false} nestedScrollEnabled={true}>
+        {/* Type Selector */}
+        <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+          <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Transaction Type</Text>
+          <View className="flex-row bg-slate-50 dark:bg-slate-900 p-1 rounded-xl">
             <TouchableOpacity
-              className={`flex-1 py-4 rounded-xl items-center ${type === 'EXPENSE' ? 'bg-white dark:bg-slate-700' : ''}`}
+              className={`flex-1 py-2.5 rounded-lg items-center ${type === 'EXPENSE' ? 'bg-white dark:bg-slate-700' : ''}`}
               style={type === 'EXPENSE' ? { elevation: 2 } : {}}
               onPress={() => setType('EXPENSE')}
             >
               <View className="flex-row items-center">
-                <FontAwesome name="arrow-up" size={16} color={type === 'EXPENSE' ? '#ef4444' : '#94a3b8'} />
-                <Text className={`ml-2 text-sm font-bold ${type === 'EXPENSE' ? 'text-red-500' : 'text-slate-400'}`}>Expense</Text>
+                <FontAwesome name="arrow-up" size={13} color={type === 'EXPENSE' ? '#ef4444' : '#94a3b8'} />
+                <Text className={`ml-1.5 text-xs font-bold ${type === 'EXPENSE' ? 'text-red-500' : 'text-slate-400'}`}>Expense</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-1 py-4 rounded-xl items-center ${type === 'INCOME' ? 'bg-white dark:bg-slate-700' : ''}`}
+              className={`flex-1 py-2.5 rounded-lg items-center ${type === 'INCOME' ? 'bg-white dark:bg-slate-700' : ''}`}
               style={type === 'INCOME' ? { elevation: 2 } : {}}
               onPress={() => setType('INCOME')}
             >
               <View className="flex-row items-center">
-                <FontAwesome name="arrow-down" size={16} color={type === 'INCOME' ? '#10b981' : '#94a3b8'} />
-                <Text className={`ml-2 text-sm font-bold ${type === 'INCOME' ? 'text-green-600' : 'text-slate-400'}`}>Income</Text>
+                <FontAwesome name="arrow-down" size={13} color={type === 'INCOME' ? '#10b981' : '#94a3b8'} />
+                <Text className={`ml-1.5 text-xs font-bold ${type === 'INCOME' ? 'text-green-600' : 'text-slate-400'}`}>Income</Text>
               </View>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Account Selection */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">Account</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-2">
+        <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+          <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Account</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
             {accounts.map((account: any) => (
               <TouchableOpacity
                 key={account.id}
                 onPress={() => setSelectedAccountId(account.id)}
-                className={`mx-2 p-4 rounded-2xl border-2 min-w-[120px] items-center ${selectedAccountId === account.id
-                  ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
-                  : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                  }`}
+                className={`mx-1 p-3 rounded-xl border-2 min-w-[90px] items-center ${
+                  selectedAccountId === account.id
+                    ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
+                    : 'bg-slate-50 dark:bg-slate-900 border-transparent'
+                }`}
               >
-                <View className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 justify-center items-center mb-2">
+                <View className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 justify-center items-center mb-1.5">
                   <FontAwesome
                     name={account.type === 'CASH' ? 'money' : account.type === 'MOBILE_MONEY' ? 'mobile' : 'bank'}
-                    size={18}
+                    size={15}
                     color={selectedAccountId === account.id ? '#6366f1' : '#94a3b8'}
                   />
                 </View>
-                <Text className="text-slate-900 dark:text-white text-xs font-bold mb-1">{account.name}</Text>
-                <Text className="text-slate-500 text-[10px]">{formatCurrency(account.balance)}</Text>
+                <Text className="text-slate-900 dark:text-white text-[11px] font-bold mb-0.5" numberOfLines={1}>{account.name}</Text>
+                <Text className="text-slate-500 text-[9px]">{formatCurrency(account.balance)}</Text>
               </TouchableOpacity>
             ))}
             {accounts.length === 0 && (
               <TouchableOpacity
                 onPress={() => router.replace('/accounts')}
-                className="p-4 items-center justify-center bg-slate-50 dark:bg-slate-900 rounded-xl mt-2 border border-slate-200 dark:border-slate-700 dashed"
+                className="p-3 items-center justify-center bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700"
               >
-                <FontAwesome name="plus-circle" size={24} color="#6366f1" />
-                <Text className="text-slate-900 dark:text-white font-bold mt-2">No Accounts Found</Text>
-                <Text className="text-slate-500 text-xs text-center mt-1">
-                  You need an account to track transactions.{'\n'}Tap here to create one.
-                </Text>
+                <FontAwesome name="plus-circle" size={20} color="#6366f1" />
+                <Text className="text-slate-900 dark:text-white font-bold mt-1 text-xs">No Accounts</Text>
+                <Text className="text-slate-500 text-[10px] text-center mt-0.5">Tap to create one.</Text>
               </TouchableOpacity>
             )}
           </ScrollView>
         </View>
 
         {/* Date Picker */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">Date</Text>
+        <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+          <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Date</Text>
           <TouchableOpacity
             onPress={() => {
               if (Platform.OS === 'android') {
@@ -399,19 +425,17 @@ export default function AddTransactionScreen() {
                   display: 'default',
                   maximumDate: new Date(),
                   onChange: (event: any, selectedDate?: Date) => {
-                    if (event.type === 'set' && selectedDate) {
-                      setTransactionDate(selectedDate);
-                    }
+                    if (event.type === 'set' && selectedDate) setTransactionDate(selectedDate);
                   },
                 });
               } else {
                 setShowDatePicker(true);
               }
             }}
-            className="flex-row items-center bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl"
+            className="flex-row items-center bg-slate-50 dark:bg-slate-900 p-3 rounded-xl"
           >
-            <FontAwesome name="calendar" size={18} color="#6366f1" />
-            <Text className="text-slate-900 dark:text-white text-base font-medium ml-3">
+            <FontAwesome name="calendar" size={15} color="#6366f1" />
+            <Text className="text-slate-900 dark:text-white text-sm font-medium ml-2.5">
               {transactionDate.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
             </Text>
           </TouchableOpacity>
@@ -427,9 +451,9 @@ export default function AddTransactionScreen() {
         </View>
 
         {/* Category Selection */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-          <View className="flex-row justify-between items-center mb-4">
-            <Text className="text-slate-900 dark:text-white text-base font-bold">Category</Text>
+        <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+          <View className="flex-row justify-between items-center mb-2">
+            <Text className="text-slate-900 dark:text-white text-xs font-bold">Category</Text>
             {(() => {
               if (!selectedBudgetMetrics) return null;
               const currentAmount = parseFloat(amount) || 0;
@@ -438,97 +462,37 @@ export default function AddTransactionScreen() {
                 ? Math.min((total / selectedBudgetMetrics.effectiveLimit) * 100, 100)
                 : 0;
               const isOver = total > selectedBudgetMetrics.effectiveLimit;
-
               return (
                 <View className="flex-row items-center">
-                  <Text className={`text-xs font-medium mr-2 ${isOver ? 'text-red-500' : percent > 90 ? 'text-amber-500' : 'text-slate-500'}`}>
+                  <Text className={`text-[10px] font-medium mr-2 ${isOver ? 'text-red-500' : percent > 90 ? 'text-amber-500' : 'text-slate-500'}`}>
                     {percent.toFixed(0)}% used
                   </Text>
-                  <View className="w-16 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <View className="w-12 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                     <View
                       className={`h-full rounded-full ${isOver ? 'bg-red-500' : percent > 90 ? 'bg-amber-500' : 'bg-green-500'}`}
                       style={{ width: `${percent}%` }}
                     />
                   </View>
                   {selectedBudgetMetrics.rolloverDelta !== 0 && (
-                    <Text className={`ml-2 text-[10px] font-semibold ${selectedBudgetMetrics.rolloverDelta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {selectedBudgetMetrics.rolloverDelta > 0 ? '+' : ''}
-                      {selectedBudgetMetrics.rolloverDelta.toFixed(0)}
+                    <Text className={`ml-1.5 text-[9px] font-semibold ${selectedBudgetMetrics.rolloverDelta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {selectedBudgetMetrics.rolloverDelta > 0 ? '+' : ''}{selectedBudgetMetrics.rolloverDelta.toFixed(0)}
                     </Text>
                   )}
                 </View>
               );
             })()}
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} className="max-h-60" nestedScrollEnabled={true}>
-            {rootCategories.map((category) => (
-              <View key={category.id} className="mb-4">
-                {/* Parent Category */}
-                <TouchableOpacity
-                  className={`w-full items-center p-4 rounded-2xl mb-2 border-2 ${selectedCategory === category.name
-                    ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
-                    : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                    }`}
-                  onPress={() => setSelectedCategory(category.name)}
-                >
-                  <View className="flex-row items-center w-full">
-                    <View
-                      className="w-10 h-10 rounded-2xl justify-center items-center mr-3"
-                      style={{ backgroundColor: category.color + '20' }}
-                    >
-                      <CategoryIcon icon={category.icon} size={18} color={category.color} />
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-slate-900 dark:text-white text-sm font-semibold text-left">
-                        {category.name}
-                      </Text>
-                    </View>
-                    {selectedCategory === category.name && (
-                      <FontAwesome name="check" size={16} color="#6366f1" />
-                    )}
-                  </View>
-                </TouchableOpacity>
-
-                {/* Child Categories */}
-                {getChildCategories(category.id).map((childCategory) => (
-                  <TouchableOpacity
-                    key={childCategory.id}
-                    className={`w-full items-center p-3 rounded-xl ml-8 mb-2 border-2 ${selectedCategory === childCategory.name
-                      ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
-                      : 'bg-slate-100 dark:bg-slate-700 border-transparent'
-                      }`}
-                    onPress={() => setSelectedCategory(childCategory.name)}
-                  >
-                    <View className="flex-row items-center w-full">
-                      <View className="w-1 h-4 bg-slate-300 dark:bg-slate-600 mr-2 rounded-full" />
-                      <View
-                        className="w-8 h-8 rounded-xl justify-center items-center mr-3"
-                        style={{ backgroundColor: childCategory.color + '20' }}
-                      >
-                        <CategoryIcon icon={childCategory.icon} size={14} color={childCategory.color} />
-                      </View>
-                      <View className="flex-1">
-                        <Text className="text-slate-700 dark:text-slate-300 text-xs font-medium text-left">
-                          {childCategory.name}
-                        </Text>
-                      </View>
-                      {selectedCategory === childCategory.name && (
-                        <FontAwesome name="check" size={12} color="#6366f1" />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ))}
+          <ScrollView showsVerticalScrollIndicator={false} className="max-h-52" nestedScrollEnabled={true}>
+            {renderCategoryTree(undefined, 0)}
           </ScrollView>
         </View>
 
-        {/* Note Input */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">Tags (Optional)</Text>
-          <View className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl">
+        {/* Tags Input */}
+        <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+          <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Tags (Optional)</Text>
+          <View className="bg-slate-50 dark:bg-slate-900 px-3 py-2 rounded-xl">
             <TextInput
-              className="text-slate-900 dark:text-white text-base"
+              className="text-slate-900 dark:text-white text-sm"
               placeholder="project-alpha, wedding, https://payment.link"
               placeholderTextColor="#94a3b8"
               value={tagsInput}
@@ -537,19 +501,19 @@ export default function AddTransactionScreen() {
               autoCorrect={false}
             />
           </View>
-          <Text className="text-slate-400 text-xs mt-2">Use comma-separated tags. Great for projects, events, or links.</Text>
+          <Text className="text-slate-400 text-[10px] mt-1.5">Comma-separated. Great for projects, events, or links.</Text>
           {parsedTags.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3 -mx-1 px-1">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2 -mx-1 px-1">
               {parsedTags.map((tag) => (
-                <View key={tag} className="mr-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
-                  <Text className="text-indigo-700 dark:text-indigo-300 text-xs font-semibold">#{tag}</Text>
+                <View key={tag} className="mr-1.5 px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
+                  <Text className="text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold">#{tag}</Text>
                 </View>
               ))}
             </ScrollView>
           )}
           {uniqueTags.length > 0 && (
-            <View className="mt-3">
-              <Text className="text-[10px] text-slate-400 font-bold mb-1.5 uppercase">Suggested / Used Tags</Text>
+            <View className="mt-2">
+              <Text className="text-[9px] text-slate-400 font-bold mb-1 uppercase">Suggested Tags</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1 px-1">
                 {uniqueTags.map((tag) => {
                   const currentTags = parseTagInput(tagsInput) || [];
@@ -558,17 +522,13 @@ export default function AddTransactionScreen() {
                     <TouchableOpacity
                       key={tag}
                       onPress={() => handleToggleTag(tag)}
-                      className={`mr-2 px-3 py-1 rounded-full border ${
+                      className={`mr-1.5 px-2.5 py-1 rounded-full border ${
                         isSelected
                           ? 'bg-indigo-600 border-indigo-600'
                           : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800'
                       }`}
                     >
-                      <Text
-                        className={`text-xs font-medium ${
-                          isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-400'
-                        }`}
-                      >
+                      <Text className={`text-[11px] font-medium ${isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-400'}`}>
                         #{tag}
                       </Text>
                     </TouchableOpacity>
@@ -580,11 +540,11 @@ export default function AddTransactionScreen() {
         </View>
 
         {/* Note Input */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-8 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">Note (Optional)</Text>
-          <View className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl">
+        <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-8 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+          <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Note (Optional)</Text>
+          <View className="bg-slate-50 dark:bg-slate-900 px-3 py-2 rounded-xl">
             <TextInput
-              className="text-slate-900 dark:text-white text-base min-h-[80px]"
+              className="text-slate-900 dark:text-white text-sm min-h-[60px]"
               placeholder="Add a note about this transaction..."
               placeholderTextColor="#94a3b8"
               value={note}
