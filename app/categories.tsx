@@ -119,7 +119,7 @@ function SwipeableRow({ onDelete, onMerge, activeRef, children }: SwipeableRowPr
   ).current;
 
   return (
-    <View style={{ overflow: 'hidden', marginBottom: 8 }}>
+    <View style={{ overflow: 'hidden', marginBottom: 6 }}>
       {/* Revealed action buttons */}
       <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, flexDirection: 'row', width: SWIPE_REVEAL }}>
         <TouchableOpacity
@@ -375,82 +375,75 @@ export default function ManageCategoriesScreen() {
         >
           <View style={{
             backgroundColor: isDark ? '#1e293b' : '#fff',
-            borderRadius: 18,
-            padding: 14,
+            borderRadius: 16,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
             borderWidth: 1,
             borderColor: isDark ? '#334155' : '#f1f5f9',
-            shadowColor: '#000',
-            shadowOpacity: 0.04,
-            shadowRadius: 6,
-            elevation: 2,
+            elevation: 1,
           }}>
             {/* Main row */}
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {/* Icon */}
-              <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                <CategoryIcon icon={cat.icon} size={22} color={cat.color} />
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                <CategoryIcon icon={cat.icon} size={19} color={cat.color} />
               </View>
 
               {/* Info */}
               <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }} numberOfLines={1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }} numberOfLines={1}>
                     {cat.name}
                   </Text>
                   {stat?.isUnused && (
-                    <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#92400e' }}>UNUSED</Text>
+                    <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: '#92400e' }}>UNUSED</Text>
                     </View>
                   )}
                 </View>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3, gap: 8 }}>
-                  <View style={{ backgroundColor: cat.type === 'income' ? '#dcfce7' : '#fee2e2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: cat.type === 'income' ? '#166534' : '#991b1b' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 6 }}>
+                  <View style={{ backgroundColor: cat.type === 'income' ? '#dcfce7' : '#fee2e2', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: cat.type === 'income' ? '#166534' : '#991b1b' }}>
                       {cat.type.toUpperCase()}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 12, color: '#94a3b8' }}>
+                  <Text style={{ fontSize: 11, color: '#94a3b8' }}>
                     {stat?.count ?? 0} txns · {formatLastUsed(stat?.lastUsed ?? null)}
                   </Text>
                 </View>
               </View>
 
               {/* Actions */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 {isRoot && (
                   <TouchableOpacity
                     onPress={() => openAdd(cat.id)}
-                    style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center' }}
+                    style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center' }}
                   >
-                    <FontAwesome name="plus" size={13} color={cat.color} />
+                    <FontAwesome name="plus" size={11} color={cat.color} />
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
                   onPress={() => openEdit(cat)}
-                  style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center' }}
+                  style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center' }}
                 >
-                  <FontAwesome name="edit" size={13} color="#3b82f6" />
+                  <FontAwesome name="edit" size={11} color="#3b82f6" />
                 </TouchableOpacity>
               </View>
             </View>
 
             {/* Spend bar — only if used this month */}
             {(stat?.sharePercent ?? 0) > 0 && (
-              <View style={{ marginTop: 10 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={{ fontSize: 11, color: '#94a3b8' }}>This month</Text>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: cat.color }}>
+              <View style={{ marginTop: 7 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
+                  <Text style={{ fontSize: 10, color: '#94a3b8' }}>This month</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: cat.color }}>
                     {stat.sharePercent.toFixed(1)}%
                   </Text>
                 </View>
-                <View style={{ height: 5, backgroundColor: isDark ? '#334155' : '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-                  <View style={{
-                    height: '100%',
-                    width: `${Math.min(100, stat.sharePercent)}%`,
-                    backgroundColor: cat.color,
-                    borderRadius: 3,
-                  }} />
+                <View style={{ height: 4, backgroundColor: isDark ? '#334155' : '#f1f5f9', borderRadius: 2, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${Math.min(100, stat.sharePercent)}%`, backgroundColor: cat.color, borderRadius: 2 }} />
                 </View>
               </View>
             )}
@@ -480,40 +473,40 @@ export default function ManageCategoriesScreen() {
       {/* Header */}
       <LinearGradient
         colors={isDark ? ['#334155', '#1e293b'] : ['#9333ea', '#6d28d9']}
-        style={{ paddingHorizontal: 20, paddingTop: 52, paddingBottom: 24, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }}
+        style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 }}
       >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <TouchableOpacity onPress={() => router.back()} style={{ width: 40, height: 40, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}>
-            <FontAwesome name="arrow-left" size={16} color="#fff" />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ width: 36, height: 36, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, justifyContent: 'center', alignItems: 'center' }}>
+            <FontAwesome name="arrow-left" size={14} color="#fff" />
           </TouchableOpacity>
-          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Manage Categories</Text>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Manage Categories</Text>
           <TouchableOpacity
             onPress={() => openAdd()}
-            style={{ width: 40, height: 40, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, justifyContent: 'center', alignItems: 'center' }}
+            style={{ width: 36, height: 36, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, justifyContent: 'center', alignItems: 'center' }}
           >
-            <FontAwesome name="plus" size={16} color="#fff" />
+            <FontAwesome name="plus" size={14} color="#fff" />
           </TouchableOpacity>
         </View>
 
         {/* Stats */}
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 7 }}>
           {[
             { label: 'Total', value: categories.length, color: '#c084fc' },
             { label: 'Income', value: categories.filter(c => c.type === 'income').length, color: '#86efac' },
             { label: 'Expense', value: categories.filter(c => c.type === 'expense').length, color: '#fca5a5' },
             { label: 'Unused', value: Object.values(categoryStats).filter(s => s.isUnused).length, color: '#fcd34d' },
           ].map(s => (
-            <View key={s.label} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: 10 }}>
-              <Text style={{ color: s.color, fontSize: 10, fontWeight: '600', marginBottom: 2 }}>{s.label}</Text>
-              <Text style={{ color: '#fff', fontSize: 22, fontWeight: '800' }}>{s.value}</Text>
+            <View key={s.label} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, paddingVertical: 7, paddingHorizontal: 8 }}>
+              <Text style={{ color: s.color, fontSize: 9, fontWeight: '600', marginBottom: 1 }}>{s.label}</Text>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '800' }}>{s.value}</Text>
             </View>
           ))}
         </View>
       </LinearGradient>
 
       {/* Search + Sort */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6, gap: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 14, paddingHorizontal: 14, height: 46, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
+      <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4, gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 12, paddingHorizontal: 12, height: 40, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
           <FontAwesome name="search" size={15} color="#94a3b8" />
           <TextInput
             style={{ flex: 1, marginLeft: 10, fontSize: 15, color: isDark ? '#f1f5f9' : '#0f172a' }}
@@ -531,13 +524,13 @@ export default function ManageCategoriesScreen() {
         </View>
 
         {/* Filter tabs + Sort */}
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1, flexDirection: 'row', backgroundColor: isDark ? '#1e293b' : '#fff', padding: 4, borderRadius: 14, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
+        <View style={{ flexDirection: 'row', gap: 7 }}>
+          <View style={{ flex: 1, flexDirection: 'row', backgroundColor: isDark ? '#1e293b' : '#fff', padding: 3, borderRadius: 12, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
             {(['all', 'income', 'expense'] as FilterMode[]).map(f => (
               <TouchableOpacity
                 key={f}
                 onPress={() => setFilter(f)}
-                style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center', backgroundColor: filter === f ? '#9333ea' : 'transparent' }}
+                style={{ flex: 1, paddingVertical: 6, borderRadius: 9, alignItems: 'center', backgroundColor: filter === f ? '#9333ea' : 'transparent' }}
               >
                 <Text style={{ fontSize: 12, fontWeight: '700', textTransform: 'capitalize', color: filter === f ? '#fff' : '#94a3b8' }}>{f}</Text>
               </TouchableOpacity>
@@ -548,19 +541,19 @@ export default function ManageCategoriesScreen() {
           <View>
             <TouchableOpacity
               onPress={() => setShowSortMenu(v => !v)}
-              style={{ width: 46, height: 46, backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
+              style={{ width: 40, height: 40, backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
             >
-              <FontAwesome name="sort-amount-desc" size={15} color="#9333ea" />
+              <FontAwesome name="sort-amount-desc" size={14} color="#9333ea" />
             </TouchableOpacity>
             {showSortMenu && (
-              <View style={{ position: 'absolute', top: 50, right: 0, backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 14, padding: 6, zIndex: 100, minWidth: 150, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, elevation: 10, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
+              <View style={{ position: 'absolute', top: 44, right: 0, backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 12, padding: 5, zIndex: 100, minWidth: 148, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, elevation: 10, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
                 {([['name', 'A–Z Name'], ['usage', 'Most Used'], ['amount', 'Highest Spend']] as [SortMode, string][]).map(([mode, label]) => (
                   <TouchableOpacity
                     key={mode}
                     onPress={() => { setSort(mode); setShowSortMenu(false); }}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: sort === mode ? '#f3e8ff' : 'transparent' }}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingHorizontal: 10, borderRadius: 9, backgroundColor: sort === mode ? '#f3e8ff' : 'transparent' }}
                   >
-                    <FontAwesome name={sort === mode ? 'check' : 'circle-o'} size={13} color={sort === mode ? '#9333ea' : '#94a3b8'} style={{ marginRight: 10 }} />
+                    <FontAwesome name={sort === mode ? 'check' : 'circle-o'} size={12} color={sort === mode ? '#9333ea' : '#94a3b8'} style={{ marginRight: 9 }} />
                     <Text style={{ fontSize: 13, fontWeight: '600', color: sort === mode ? '#9333ea' : (isDark ? '#f1f5f9' : '#0f172a') }}>{label}</Text>
                   </TouchableOpacity>
                 ))}
@@ -570,15 +563,10 @@ export default function ManageCategoriesScreen() {
         </View>
       </View>
 
-      {/* Hint */}
-      <Text style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
-        Swipe left on any category to merge or delete
-      </Text>
-
       {/* List */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 32 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 28 }}
         showsVerticalScrollIndicator={false}
         onScrollBeginDrag={() => { activeSwipeClose.current?.(); }}
       >
