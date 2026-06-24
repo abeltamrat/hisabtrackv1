@@ -259,15 +259,16 @@ export class SMSSyncService {
 
         result.parsedTransactions++;
 
-        // Account Identification Logic: 
-        // If the SMS contains an account number, it must match this account.
-        // If the SMS doesn't mention an account number, we assume it's for this account if it's the only one 
-        // or if it matches the account's configured digits.
-        if (parsed.accountNumber && account.account_number) {
-          const accLast4 = account.account_number.slice(-4);
-          const smsLastDigits = parsed.accountNumber.slice(-4);
-          if (!accLast4.endsWith(smsLastDigits) && !smsLastDigits.endsWith(accLast4)) {
-            // This SMS belongs to a different account (shared sender)
+        // Account Identification Logic:
+        // Only filter by account number when the SMS exposes ≥ 4 visible digits —
+        // shorter masked tails (e.g. "1*49" → "49") are too ambiguous to route reliably.
+        // When the filter applies, the digits must match as a suffix of the stored account number.
+        if (parsed.accountNumber && account.account_number && parsed.accountNumber.length >= 4) {
+          const accNum = account.account_number.replace(/\D/g, '');
+          const smsDigits = parsed.accountNumber.replace(/\D/g, '');
+          const minLen = Math.min(accNum.length, smsDigits.length);
+          if (minLen >= 4 && !accNum.endsWith(smsDigits.slice(-minLen)) && !smsDigits.endsWith(accNum.slice(-minLen))) {
+            // SMS clearly belongs to a different account (shared sender, ≥4 digits differ)
             continue;
           }
         }
