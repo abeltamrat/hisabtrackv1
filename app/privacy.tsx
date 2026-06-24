@@ -12,7 +12,7 @@ export default function PrivacyPolicyScreen() {
             {/* Header */}
             <LinearGradient
                 colors={['#10b981', '#059669']}
-                className="pt-12 pb-6 px-6"
+                className="pt-3 pb-6 px-6"
             >
                 <TouchableOpacity onPress={() => router.back()} className="mb-4">
                     <FontAwesome name="arrow-left" size={24} color="#fff" />

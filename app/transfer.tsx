@@ -121,7 +121,7 @@ export default function TransferScreen() {
       <StatusBar style={Platform.OS === 'ios' ? 'light' : 'auto'} />
 
       {/* Header */}
-      <LinearGradient colors={['#2563eb', '#1d4ed8']} className="px-6 pt-16 pb-8 rounded-b-[32px]" style={{ elevation: 4 }}>
+      <LinearGradient colors={['#2563eb', '#1d4ed8']} className="px-6 pt-3 pb-8 rounded-b-[32px]" style={{ elevation: 4 }}>
         <View className="flex-row justify-between items-center mb-6">
           <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="close" size={18} color="#fff" />

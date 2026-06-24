@@ -546,7 +546,7 @@ export default function ReportsScreen() {
       {/* Header */}
       <LinearGradient
         colors={['#6366f1', '#4f46e5']}
-        className="px-6 pt-12 pb-8 rounded-b-[32px]"
+        className="px-6 pt-3 pb-8 rounded-b-[32px]"
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-6">

@@ -289,7 +289,7 @@ export default function AddTransactionScreen() {
       {/* Header */}
       <LinearGradient
         colors={['#4f46e5', '#4338ca']}
-        className="px-6 pt-16 pb-8 rounded-b-[32px]"
+        className="px-6 pt-6 pb-8 rounded-b-[32px]"
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-6">

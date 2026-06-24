@@ -178,7 +178,7 @@ export default function AIAssistantScreen() {
             {/* Header */}
             <LinearGradient
                 colors={['#6366f1', '#8b5cf6']}
-                className="pt-12 pb-6 px-6"
+                className="pt-3 pb-6 px-6"
             >
                 <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center flex-1">

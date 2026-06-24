@@ -120,7 +120,7 @@ export default function AddBudgetScreen() {
       {/* Header */}
       <LinearGradient
         colors={['#9333ea', '#7e22ce']}
-        className="px-6 pt-16 pb-8 rounded-b-[32px]"
+        className="px-6 pt-6 pb-8 rounded-b-[32px]"
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-6">

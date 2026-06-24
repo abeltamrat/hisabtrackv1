@@ -122,7 +122,7 @@ export default function LoanDetailsScreen() {
             {/* Header Section */}
             <LinearGradient
                 colors={gradientColors as any}
-                className="px-6 pt-12 pb-8 rounded-b-[32px]"
+                className="px-6 pt-3 pb-8 rounded-b-[32px]"
                 style={{ elevation: 4 }}
             >
                 <View className="flex-row justify-between items-center mb-6">
