@@ -1006,23 +1006,6 @@ export default function Accounts() {
 
                   <View className="items-end">
                     <View className="flex-row gap-2 mb-1">
-                      {account.sms_number && (
-                        <>
-                          <TouchableOpacity
-                            onPress={() => handleDirectSync(account)}
-                            className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg"
-                            disabled={loadingSms}
-                          >
-                            <FontAwesome name="refresh" size={12} color="#10b981" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => openSyncModal(account)}
-                            className="p-2 bg-slate-100 dark:bg-slate-700/50 rounded-lg"
-                          >
-                            <FontAwesome name="envelope" size={12} color="#64748b" />
-                          </TouchableOpacity>
-                        </>
-                      )}
                       <TouchableOpacity onPress={() => handleEdit(account)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                         <FontAwesome name="pencil" size={12} color="#3b82f6" />
                       </TouchableOpacity>
@@ -1034,7 +1017,51 @@ export default function Accounts() {
                   </View>
                 </View>
               </TouchableOpacity>
-              {draftCounts[account.id] > 0 && (
+
+              {/* SMS footer — always visible for SMS-enabled accounts */}
+              {account.sms_number && (
+                <View className="border-t border-slate-100 dark:border-slate-700 flex-row">
+                  {/* Read SMS button */}
+                  <TouchableOpacity
+                    onPress={() => openSyncModal(account)}
+                    disabled={loadingSms}
+                    className="flex-1 flex-row items-center justify-center py-3 gap-2 border-r border-slate-100 dark:border-slate-700"
+                  >
+                    <FontAwesome name="envelope-open-o" size={13} color="#6366f1" />
+                    <Text className="text-indigo-600 dark:text-indigo-400 text-xs font-bold">Read SMS</Text>
+                  </TouchableOpacity>
+
+                  {/* Quick 30-day sync */}
+                  <TouchableOpacity
+                    onPress={() => handleDirectSync(account)}
+                    disabled={loadingSms}
+                    className="flex-1 flex-row items-center justify-center py-3 gap-2 border-r border-slate-100 dark:border-slate-700"
+                  >
+                    <FontAwesome name="refresh" size={13} color="#10b981" />
+                    <Text className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">Sync (30d)</Text>
+                  </TouchableOpacity>
+
+                  {/* View drafts — shows count badge, still works even with 0 */}
+                  <TouchableOpacity
+                    onPress={() => router.push(`/draft-transactions?accountId=${account.id}`)}
+                    className="flex-1 flex-row items-center justify-center py-3 gap-2"
+                  >
+                    {draftCounts[account.id] > 0 ? (
+                      <View className="w-5 h-5 rounded-full bg-amber-500 justify-center items-center">
+                        <Text className="text-white text-[9px] font-black">{draftCounts[account.id]}</Text>
+                      </View>
+                    ) : (
+                      <FontAwesome name="list-alt" size={13} color="#64748b" />
+                    )}
+                    <Text className={`text-xs font-bold ${draftCounts[account.id] > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`}>
+                      {draftCounts[account.id] > 0 ? 'Review' : 'Drafts'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Non-SMS accounts still show a pending badge if somehow they have drafts */}
+              {!account.sms_number && draftCounts[account.id] > 0 && (
                 <TouchableOpacity
                   onPress={() => router.push(`/draft-transactions?accountId=${account.id}`)}
                   className="bg-amber-50 dark:bg-amber-900/20 border-t border-slate-100 dark:border-slate-700 py-3.5 px-6 flex-row items-center justify-between"
