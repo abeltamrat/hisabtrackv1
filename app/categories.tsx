@@ -166,8 +166,9 @@ function MergeModal({ source, candidates, onConfirm, onClose }: MergeModalProps)
               <FontAwesome name="times" size={22} color="#64748b" />
             </TouchableOpacity>
           </View>
-          <Text style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>
-            All transactions in <Text style={{ fontWeight: '700', color: '#0f172a' }}>"{source.name}"</Text> will move to the selected category, then "{source.name}" will be deleted.
+          <Text style={{ color: '#64748b', fontSize: 13, marginBottom: 20, lineHeight: 19 }}>
+            All transactions in <Text style={{ fontWeight: '700', color: '#0f172a' }}>"{source.name}"</Text> will be moved to the selected category.
+            {'\n'}<Text style={{ color: '#9333ea', fontWeight: '600' }}>"{source.name}"</Text> will then be deleted. Budgets and recurring transactions update automatically.
           </Text>
           <ScrollView showsVerticalScrollIndicator={false}>
             {candidates.map(cat => (
@@ -235,9 +236,25 @@ export default function ManageCategoriesScreen() {
   const [openIconGroup, setOpenIconGroup] = useState<string>('finance');
   const [formData, setFormData] = useState<Partial<Category>>({ name: '', icon: 'folder', color: '#6366f1', type: 'expense', parentId: undefined });
   const [merging, setMerging] = useState(false);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
 
   // Ref shared across all swipeable rows — tracks which row is open
   const activeSwipeClose = useRef<(() => void) | null>(null);
+
+  // ── Tree helpers ─────────────────────────────────────────────────────────
+  // Returns IDs of all descendants of a given category (any depth)
+  const getAllDescendantIds = useCallback((parentId: string, cats: Category[] = categories): string[] => {
+    const direct = cats.filter(c => c.parentId === parentId);
+    return direct.flatMap(c => [c.id, ...getAllDescendantIds(c.id, cats)]);
+  }, [categories]);
+
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
 
   // ── Stats computation ─────────────────────────────────────────────────────
   const categoryStats = useMemo<Record<string, CategoryStat>>(() => {
@@ -313,15 +330,21 @@ export default function ManageCategoriesScreen() {
   };
 
   const handleDelete = (cat: Category) => {
-    const hasChildren = categories.some(c => c.parentId === cat.id);
-    Alert.alert(
-      'Delete Category',
-      hasChildren ? 'This will also delete all sub-categories. Continue?' : `Delete "${cat.name}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: async () => { try { await deleteCategory(cat.id); } catch { Alert.alert('Error', 'Failed to delete.'); } } },
-      ]
-    );
+    const descendantIds = getAllDescendantIds(cat.id);
+    const allIds = [cat.id, ...descendantIds];
+    const allNames = new Set(categories.filter(c => allIds.includes(c.id)).map(c => c.name));
+    const txCount = transactions.filter(t => allNames.has(t.category)).length;
+    const childCount = descendantIds.length;
+
+    const lines: string[] = [];
+    if (childCount > 0) lines.push(`This will also delete ${childCount} sub-categor${childCount === 1 ? 'y' : 'ies'}.`);
+    if (txCount > 0) lines.push(`${txCount} transaction${txCount === 1 ? '' : 's'} will be reassigned to "Other".`);
+    if (lines.length === 0) lines.push(`Are you sure you want to delete "${cat.name}"?`);
+
+    Alert.alert('Delete Category', lines.join('\n'), [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => { try { await deleteCategory(cat.id); } catch { Alert.alert('Error', 'Failed to delete.'); } } },
+    ]);
   };
 
   const handleMergeConfirm = async (target: Category) => {
@@ -363,11 +386,15 @@ export default function ManageCategoriesScreen() {
   // ── Category Row Renderer ─────────────────────────────────────────────────
   const renderRow = useCallback((cat: Category, level = 0) => {
     const stat = categoryStats[cat.id];
-    const children = getChildren(cat.id);
-    const isRoot = level === 0;
+    // Use full category list for child detection (not filtered list)
+    const directChildren = categories.filter(c => c.parentId === cat.id);
+    const hasChildren = directChildren.length > 0;
+    const isCollapsed = collapsedIds.has(cat.id);
+    // Only show visible (filtered) children
+    const visibleChildren = isCollapsed ? [] : getChildren(cat.id);
 
     return (
-      <View key={cat.id} style={{ marginLeft: level * 20 }}>
+      <View key={cat.id} style={{ marginLeft: level * 16 }}>
         <SwipeableRow
           activeRef={activeSwipeClose}
           onDelete={() => handleDelete(cat)}
@@ -384,17 +411,36 @@ export default function ManageCategoriesScreen() {
           }}>
             {/* Main row */}
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {/* Icon */}
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                <CategoryIcon icon={cat.icon} size={19} color={cat.color} />
-              </View>
+              {/* Collapse toggle (only when has children) */}
+              {hasChildren ? (
+                <TouchableOpacity
+                  onPress={() => toggleCollapse(cat.id)}
+                  style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}
+                >
+                  <CategoryIcon icon={cat.icon} size={17} color={cat.color} />
+                  <View style={{ position: 'absolute', bottom: -1, right: -1, width: 14, height: 14, borderRadius: 7, backgroundColor: cat.color, justifyContent: 'center', alignItems: 'center' }}>
+                    <FontAwesome name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={7} color="#fff" />
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                  <CategoryIcon icon={cat.icon} size={19} color={cat.color} />
+                </View>
+              )}
 
               {/* Info */}
               <View style={{ flex: 1, minWidth: 0 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }} numberOfLines={1}>
                     {cat.name}
                   </Text>
+                  {hasChildren && (
+                    <View style={{ backgroundColor: cat.color + '22', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: cat.color }}>
+                        {directChildren.length} sub
+                      </Text>
+                    </View>
+                  )}
                   {stat?.isUnused && (
                     <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5 }}>
                       <Text style={{ fontSize: 9, fontWeight: '700', color: '#92400e' }}>UNUSED</Text>
@@ -416,14 +462,12 @@ export default function ManageCategoriesScreen() {
 
               {/* Actions */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                {isRoot && (
-                  <TouchableOpacity
-                    onPress={() => openAdd(cat.id)}
-                    style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center' }}
-                  >
-                    <FontAwesome name="plus" size={11} color={cat.color} />
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  onPress={() => openAdd(cat.id)}
+                  style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center' }}
+                >
+                  <FontAwesome name="plus" size={11} color={cat.color} />
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => openEdit(cat)}
                   style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center' }}
@@ -450,11 +494,12 @@ export default function ManageCategoriesScreen() {
           </View>
         </SwipeableRow>
 
-        {children.map(child => renderRow(child, level + 1))}
+        {/* Children — only rendered when not collapsed */}
+        {visibleChildren.map(child => renderRow(child, level + 1))}
       </View>
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryStats, isDark, categories]);
+  }, [categoryStats, isDark, categories, collapsedIds]);
 
   // ─── Merge candidates ────────────────────────────────────────────────────
   const mergeCandidates = mergingCategory
@@ -652,7 +697,13 @@ export default function ManageCategoriesScreen() {
                 >
                   <Text style={{ fontWeight: '600', color: !formData.parentId ? '#9333ea' : '#94a3b8' }}>None</Text>
                 </TouchableOpacity>
-                {categories.filter(c => c.type === formData.type && c.id !== editingCategory?.id && !c.parentId).map(c => (
+                {categories.filter(c => {
+                  if (c.type !== formData.type) return false;
+                  if (!editingCategory) return true;
+                  // Exclude self and all descendants to prevent circular refs
+                  const excluded = new Set([editingCategory.id, ...getAllDescendantIds(editingCategory.id)]);
+                  return !excluded.has(c.id);
+                }).map(c => (
                   <TouchableOpacity
                     key={c.id}
                     onPress={() => setFormData(prev => ({ ...prev, parentId: c.id }))}

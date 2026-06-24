@@ -227,10 +227,16 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
   };
 
   const deleteCategory = async (id: string) => {
-    const deletedCats = categories.filter(cat => cat.id === id || cat.parentId === id);
+    // Recursively collect the target + all descendants at any depth
+    const collectDescendantIds = (rootId: string, cats: Category[]): string[] => {
+      const direct = cats.filter(c => c.parentId === rootId);
+      return [rootId, ...direct.flatMap(c => collectDescendantIds(c.id, cats))];
+    };
+    const allIds = new Set(collectDescendantIds(id, categories));
+    const deletedCats = categories.filter(cat => allIds.has(cat.id));
     const deletedNames = deletedCats.map(cat => cat.name);
 
-    const updatedCategories = categories.filter(cat => cat.id !== id && cat.parentId !== id);
+    const updatedCategories = categories.filter(cat => !allIds.has(cat.id));
     setCategories(updatedCategories);
     
     try {
