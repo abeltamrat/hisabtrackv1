@@ -67,7 +67,7 @@ const ENHANCED_SMS_PATTERNS: Record<string, any> = {
     reference: /(?:by\s+)?transaction\s+number\s+(?:is\s+)?([A-Z0-9]{6,})/i,
     merchant: [
       // "to WENDIMU DAMISE (2519****9356)" — name before phone in parens
-      new RegExp(`(?:to|from)\\s+([A-Za-z][A-Za-z\\s&.'\\-]+?)\\s*(?:\\(\\d|${MERCHANT_END.slice(1)}`, 'i'),
+      new RegExp(`(?:to|from)\\s+([A-Za-z][A-Za-z\\s&.'\\-]+?)\\s*(?:\\(\\d|${MERCHANT_END})`, 'i'),
       // "for package Monthly Internet Package" (bill payment)
       /for\s+package\s+([^.]+?)\s+(?:purchase|for\s+\d)/i,
     ],

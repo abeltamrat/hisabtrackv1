@@ -67,6 +67,13 @@ export default function DraftTransactionsScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [syncStatus, setSyncStatus] = useState({ status: 'Idle', progress: 0 });
 
+  // Bulk selection
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'record' | 'reject' | null>(null);
+  const [showBulkReviewModal, setShowBulkReviewModal] = useState(false);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+
   // Filter & Grouping States
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [groupingMode, setGroupingMode] = useState<'none' | 'date' | 'month' | 'year' | 'type'>('date');
@@ -338,6 +345,86 @@ export default function DraftTransactionsScreen() {
     );
   };
 
+  // ── Bulk selection helpers ──────────────────────────────────────────────────
+  const pendingDrafts = filteredDrafts.filter(d => d.status === 'PENDING');
+  const selectedDrafts = pendingDrafts.filter(d => selectedIds.has(d.id));
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedIds(new Set(pendingDrafts.map(d => d.id)));
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const openBulkReview = (action: 'record' | 'reject') => {
+    setBulkAction(action);
+    setShowBulkReviewModal(true);
+  };
+
+  const handleBulkRecord = async () => {
+    setIsBulkProcessing(true);
+    let successCount = 0;
+    for (const draft of selectedDrafts) {
+      try {
+        const result = await dispatch(addTransaction({
+          account_id: draft.account_id,
+          type: draft.type,
+          amount: draft.amount,
+          category: draft.category,
+          description: draft.description,
+          tags: [],
+          date: draft.date,
+          sender_receiver: draft.sender_receiver,
+          reference_number: draft.reference_number,
+          sms_id: draft.sms_id,
+          fees: draft.fees,
+          tax: draft.tax,
+        }));
+        if (!addTransaction.rejected.match(result)) {
+          const transactionId = (result.payload as any)?.id;
+          if (transactionId) {
+            await DraftTransactionService.markAsRecorded(draft.id, transactionId);
+          }
+          successCount++;
+        }
+      } catch {}
+    }
+    await dispatch(fetchAccounts());
+    await BackgroundService.markReconciliationReview();
+    setIsBulkProcessing(false);
+    setShowBulkReviewModal(false);
+    exitSelectionMode();
+    await loadDrafts();
+    Alert.alert('Done', `Recorded ${successCount} of ${selectedDrafts.length} transactions.`);
+  };
+
+  const handleBulkReject = async () => {
+    setIsBulkProcessing(true);
+    let successCount = 0;
+    for (const draft of selectedDrafts) {
+      try {
+        await DraftTransactionService.updateStatus(draft.id, 'REJECTED');
+        successCount++;
+      } catch {}
+    }
+    setIsBulkProcessing(false);
+    setShowBulkReviewModal(false);
+    exitSelectionMode();
+    await loadDrafts();
+    Alert.alert('Done', `Ignored ${successCount} transactions.`);
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+
   const handleDeleteDraft = (draftId: string) => {
     const confirmDelete = async () => {
       try {
@@ -405,15 +492,31 @@ export default function DraftTransactionsScreen() {
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">SMS Transactions</Text>
           <View className="flex-row gap-2">
-            <TouchableOpacity onPress={() => setShowOptions(!showOptions)} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
-              <FontAwesome name="sliders" size={18} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleClearAll} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
-              <FontAwesome name="trash" size={18} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleRefresh} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
-              <FontAwesome name="refresh" size={18} color="#fff" />
-            </TouchableOpacity>
+            {isSelectionMode ? (
+              <>
+                <TouchableOpacity onPress={selectAll} className="px-3 h-10 bg-white/20 rounded-xl justify-center items-center">
+                  <Text className="text-white text-xs font-bold">All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={exitSelectionMode} className="px-3 h-10 bg-white/30 rounded-xl justify-center items-center">
+                  <Text className="text-white text-xs font-bold">Done</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity onPress={() => setIsSelectionMode(true)} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+                  <FontAwesome name="check-square-o" size={18} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowOptions(!showOptions)} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+                  <FontAwesome name="sliders" size={18} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleClearAll} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+                  <FontAwesome name="trash" size={18} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleRefresh} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+                  <FontAwesome name="refresh" size={18} color="#fff" />
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
 
@@ -559,6 +662,8 @@ export default function DraftTransactionsScreen() {
           renderItem={({ item: draft }) => {
             const isIncome = draft.type === 'INCOME';
             const isRecorded = draft.status === 'RECORDED';
+            const isSelected = selectedIds.has(draft.id);
+            const isSelectable = isSelectionMode && !isRecorded;
 
             const draftAccount = accounts.find((a: any) => a.id === draft.account_id);
             const postBalance = draftAccount
@@ -572,21 +677,35 @@ export default function DraftTransactionsScreen() {
               Math.abs(postBalance - draft.suggested_balance) > 0.01;
 
             return (
-              <View
-                className={`bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-sm border ${isRecorded
-                  ? 'border-green-200 dark:border-green-900'
-                  : 'border-yellow-200 dark:border-yellow-900'
-                  }`}
+              <TouchableOpacity
+                activeOpacity={isSelectable ? 0.7 : 1}
+                onPress={isSelectable ? () => toggleSelection(draft.id) : undefined}
+                className={`bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-sm border ${
+                  isSelected
+                    ? 'border-indigo-400 dark:border-indigo-500'
+                    : isRecorded
+                    ? 'border-green-200 dark:border-green-900'
+                    : 'border-yellow-200 dark:border-yellow-900'
+                }`}
                 style={{ elevation: 2 }}
               >
                 {/* Status Badge */}
                 <View className="flex-row justify-between items-start mb-3">
-                  <View className={`px-3 py-1 rounded-full ${isRecorded ? 'bg-green-100 dark:bg-green-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'
-                    }`}>
-                    <Text className={`text-xs font-bold ${isRecorded ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'
+                  <View className="flex-row items-center gap-2">
+                    {isSelectionMode && !isRecorded && (
+                      <View className={`w-6 h-6 rounded-full border-2 justify-center items-center ${
+                        isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 dark:border-slate-600'
                       }`}>
-                      {isRecorded ? 'Recorded' : 'Unrecorded'}
-                    </Text>
+                        {isSelected && <FontAwesome name="check" size={10} color="#fff" />}
+                      </View>
+                    )}
+                    <View className={`px-3 py-1 rounded-full ${isRecorded ? 'bg-green-100 dark:bg-green-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'
+                      }`}>
+                      <Text className={`text-xs font-bold ${isRecorded ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'
+                        }`}>
+                        {isRecorded ? 'Recorded' : 'Unrecorded'}
+                      </Text>
+                    </View>
                   </View>
                   <View className="flex-row items-center gap-3">
                     <TouchableOpacity
@@ -686,7 +805,7 @@ export default function DraftTransactionsScreen() {
                 )}
 
                 {/* Actions */}
-                {draft.status === 'PENDING' && (
+                {draft.status === 'PENDING' && !isSelectionMode && (
                   <View className="flex-row gap-2">
                     <TouchableOpacity
                       onPress={() => openConfirmModal(draft)}
@@ -702,12 +821,161 @@ export default function DraftTransactionsScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             );
           }}
           ListFooterComponent={<View className="h-8" />}
         />
       )}
+
+      {/* Bulk Action Bar */}
+      {isSelectionMode && (
+        <View className="absolute bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 px-4 py-3 flex-row items-center gap-3" style={{ elevation: 8 }}>
+          <View className="flex-1">
+            <Text className="text-slate-900 dark:text-white font-bold text-sm">
+              {selectedIds.size} selected
+            </Text>
+            <TouchableOpacity onPress={selectedIds.size === pendingDrafts.length ? clearSelection : selectAll}>
+              <Text className="text-indigo-500 text-xs">
+                {selectedIds.size === pendingDrafts.length ? 'Deselect all' : `Select all (${pendingDrafts.length})`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            onPress={() => openBulkReview('reject')}
+            disabled={selectedIds.size === 0}
+            className={`px-4 py-3 rounded-xl border ${selectedIds.size === 0 ? 'border-slate-200 dark:border-slate-700' : 'border-red-300 bg-red-50 dark:bg-red-900/20'}`}
+          >
+            <Text className={`text-sm font-bold ${selectedIds.size === 0 ? 'text-slate-300' : 'text-red-600 dark:text-red-400'}`}>
+              Ignore
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => openBulkReview('record')}
+            disabled={selectedIds.size === 0}
+            className={`px-5 py-3 rounded-xl ${selectedIds.size === 0 ? 'bg-slate-200 dark:bg-slate-700' : 'bg-primary-500'}`}
+          >
+            <Text className={`text-sm font-bold ${selectedIds.size === 0 ? 'text-slate-400' : 'text-white'}`}>
+              Record
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Bulk Review Modal */}
+      <Modal
+        visible={showBulkReviewModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBulkReviewModal(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-end">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl" style={{ maxHeight: '85%' }}>
+            {/* Handle */}
+            <View className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full self-center mt-4 mb-4" />
+
+            {/* Header */}
+            <View className="px-5 pb-3 flex-row items-center justify-between">
+              <View>
+                <Text className="text-slate-900 dark:text-white text-lg font-bold">
+                  {bulkAction === 'record' ? 'Record Transactions' : 'Ignore Transactions'}
+                </Text>
+                <Text className="text-slate-400 text-xs mt-0.5">
+                  {selectedDrafts.length} transaction{selectedDrafts.length !== 1 ? 's' : ''} will be {bulkAction === 'record' ? 'saved to your ledger' : 'moved to rejected'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowBulkReviewModal(false)} className="p-2">
+                <FontAwesome name="times" size={20} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Column Headers */}
+            <View className="flex-row items-center px-5 py-2 bg-slate-50 dark:bg-slate-800 border-t border-b border-slate-100 dark:border-slate-700">
+              <View className="w-7" />
+              <Text className="text-[10px] font-bold text-slate-400 uppercase w-24">Amount</Text>
+              <Text className="text-[10px] font-bold text-slate-400 uppercase flex-1">Description</Text>
+              <Text className="text-[10px] font-bold text-slate-400 uppercase w-20 text-right">Date</Text>
+              <View className="w-6" />
+            </View>
+
+            {/* Rows */}
+            <ScrollView className="px-5" showsVerticalScrollIndicator={false}>
+              {selectedDrafts.map(draft => {
+                const isIncome = draft.type === 'INCOME';
+                return (
+                  <View key={draft.id} className="flex-row items-center py-3 border-b border-slate-50 dark:border-slate-800">
+                    {/* Type icon */}
+                    <View className={`w-6 h-6 rounded-full justify-center items-center mr-1 ${isIncome ? 'bg-green-100 dark:bg-green-900/40' : 'bg-red-100 dark:bg-red-900/40'}`}>
+                      <FontAwesome name={isIncome ? 'arrow-down' : 'arrow-up'} size={9} color={isIncome ? '#10b981' : '#ef4444'} />
+                    </View>
+                    {/* Amount */}
+                    <Text className={`text-sm font-bold w-24 ${isIncome ? 'text-green-600' : 'text-red-500'}`} numberOfLines={1}>
+                      {isIncome ? '+' : '-'}{formatCurrency(draft.amount)}
+                    </Text>
+                    {/* Description + category */}
+                    <View className="flex-1 pr-2">
+                      <Text className="text-slate-800 dark:text-slate-200 text-xs font-semibold" numberOfLines={1}>{draft.description}</Text>
+                      <Text className="text-slate-400 text-[10px]" numberOfLines={1}>{draft.category}</Text>
+                    </View>
+                    {/* Date */}
+                    <Text className="text-slate-400 text-[10px] w-20 text-right">
+                      {new Date(draft.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </Text>
+                    {/* Remove from selection */}
+                    <TouchableOpacity
+                      onPress={() => toggleSelection(draft.id)}
+                      className="w-6 h-6 ml-1 justify-center items-center"
+                    >
+                      <FontAwesome name="times-circle" size={14} color="#cbd5e1" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+              <View className="h-4" />
+            </ScrollView>
+
+            {/* Summary + Actions */}
+            <View className="px-5 pt-3 pb-8 border-t border-slate-100 dark:border-slate-800">
+              {bulkAction === 'record' && (
+                <View className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3 mb-3 flex-row items-center">
+                  <FontAwesome name="info-circle" size={13} color="#6366f1" />
+                  <Text className="text-indigo-600 dark:text-indigo-400 text-xs ml-2 flex-1">
+                    Transactions will be recorded with their auto-detected category. You can edit individual transactions afterwards.
+                  </Text>
+                </View>
+              )}
+              <View className="flex-row gap-3">
+                <TouchableOpacity
+                  onPress={() => setShowBulkReviewModal(false)}
+                  disabled={isBulkProcessing}
+                  className="flex-1 py-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800 items-center"
+                >
+                  <Text className="text-slate-600 dark:text-slate-300 font-bold">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={bulkAction === 'record' ? handleBulkRecord : handleBulkReject}
+                  disabled={isBulkProcessing || selectedDrafts.length === 0}
+                  className={`flex-1 py-3.5 rounded-2xl items-center ${
+                    isBulkProcessing || selectedDrafts.length === 0
+                      ? 'bg-slate-300 dark:bg-slate-700'
+                      : bulkAction === 'record'
+                      ? 'bg-primary-500'
+                      : 'bg-red-500'
+                  }`}
+                >
+                  <Text className="text-white font-bold">
+                    {isBulkProcessing
+                      ? 'Processing...'
+                      : bulkAction === 'record'
+                      ? `Record ${selectedDrafts.length}`
+                      : `Ignore ${selectedDrafts.length}`}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Raw SMS Preview Modal */}
       <Modal
