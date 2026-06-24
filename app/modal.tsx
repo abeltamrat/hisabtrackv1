@@ -6,8 +6,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 
 import { AppDispatch } from '@/store';
 import BudgetService from '@/services/BudgetService';
@@ -84,6 +84,16 @@ export default function AddTransactionScreen() {
   const [transactionDate, setTransactionDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [kbdHeight, setKbdHeight] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, e => setKbdHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvent, () => setKbdHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   const uniqueTags = useMemo(() => {
     const tagsSet = new Set<string>();
@@ -306,8 +316,8 @@ export default function AddTransactionScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
-      enabled={Platform.OS !== 'web'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      enabled={Platform.OS === 'ios'}
       className="flex-1 bg-slate-50 dark:bg-background-dark"
     >
       <Stack.Screen options={{ headerShown: false }} />
@@ -347,7 +357,14 @@ export default function AddTransactionScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView className="flex-1 px-4 -mt-4" showsVerticalScrollIndicator={false} nestedScrollEnabled={true}>
+      <ScrollView
+        ref={scrollRef}
+        className="flex-1 px-4 -mt-4"
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: kbdHeight > 0 ? kbdHeight + 16 : 32 }}
+      >
         {/* Type Selector */}
         <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
           <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Transaction Type</Text>
@@ -499,6 +516,7 @@ export default function AddTransactionScreen() {
               onChangeText={setTagsInput}
               autoCapitalize="none"
               autoCorrect={false}
+              onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)}
             />
           </View>
           <Text className="text-slate-400 text-[10px] mt-1.5">Comma-separated. Great for projects, events, or links.</Text>
@@ -551,6 +569,7 @@ export default function AddTransactionScreen() {
               onChangeText={setNote}
               multiline
               textAlignVertical="top"
+              onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)}
             />
           </View>
         </View>
