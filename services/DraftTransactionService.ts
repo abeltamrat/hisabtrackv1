@@ -18,9 +18,10 @@ export interface DraftTransaction {
   tax?: number;
   suggested_balance?: number;
   raw_sms: string;
+  receipt_url?: string;
   status: DraftStatus;
-  is_recorded: boolean; // Keep for backward compatibility or refactor
-  created_at: number; // Sync date
+  is_recorded: boolean;
+  created_at: number;
   matched_transaction_id?: string;
   categoryHint?: string;
 }

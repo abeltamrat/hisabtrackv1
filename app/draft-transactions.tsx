@@ -13,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { parseTagInput } from '@/utils/tags';
 
@@ -655,12 +655,23 @@ export default function DraftTransactionsScreen() {
                       </View>
                     )}
                     {draft.suggested_balance !== undefined && (
-                      <View className="flex-row justify-between">
+                      <View className="flex-row justify-between mb-1">
                         <Text className="text-slate-500 text-xs">Stated Bank Bal</Text>
                         <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
                           {formatCurrency(draft.suggested_balance)}
                         </Text>
                       </View>
+                    )}
+                    {draft.receipt_url && (
+                      <TouchableOpacity
+                        onPress={() => Linking.openURL(draft.receipt_url!)}
+                        className="flex-row items-center mt-1"
+                      >
+                        <FontAwesome name="external-link" size={11} color="#6366f1" />
+                        <Text className="text-indigo-500 text-xs ml-1.5 underline" numberOfLines={1}>
+                          View Receipt
+                        </Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 )}
@@ -965,10 +976,19 @@ export default function DraftTransactionsScreen() {
                   </View>
                 )}
                 {selectedDraft?.reference_number && (
-                  <View className="flex-row justify-between">
+                  <View className="flex-row justify-between mb-2">
                     <Text className="text-slate-500 text-sm">Reference</Text>
                     <Text className="text-slate-900 dark:text-white font-mono text-xs">{selectedDraft.reference_number}</Text>
                   </View>
+                )}
+                {selectedDraft?.receipt_url && (
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(selectedDraft.receipt_url!)}
+                    className="flex-row items-center py-2"
+                  >
+                    <FontAwesome name="external-link" size={14} color="#6366f1" />
+                    <Text className="text-indigo-600 dark:text-indigo-400 text-sm font-semibold ml-2">View Receipt / Download</Text>
+                  </TouchableOpacity>
                 )}
               </View>
 

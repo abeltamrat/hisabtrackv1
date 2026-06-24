@@ -16,6 +16,7 @@ import { ActivityIndicator, Alert, Image, Keyboard, Modal, PermissionsAndroid, P
 import { useDispatch, useSelector } from 'react-redux';
 import { getDatabase } from '@/services/database';
 import { DraftTransactionService } from '@/services/DraftTransactionService';
+import SMSSyncOnboardingModal from '@/components/SMSSyncOnboardingModal';
 
 export default function Accounts() {
   const router = useRouter();
@@ -38,6 +39,10 @@ export default function Accounts() {
   const [showSmsList, setShowSmsList] = useState(false);
   const [smsSearchQuery, setSmsSearchQuery] = useState('');
   const [smsFilterShortcodes, setSmsFilterShortcodes] = useState(true);
+
+  // SMS Onboarding Modal State
+  const [showSmsOnboarding, setShowSmsOnboarding] = useState(false);
+  const [smsOnboardingAccount, setSmsOnboardingAccount] = useState<Account | null>(null);
 
   // Sync Management Modal State
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -605,7 +610,13 @@ export default function Accounts() {
           Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
           return;
         }
-        Platform.OS === 'web' ? window.alert('Account created') : Alert.alert('Success', 'Account created');
+        // Prompt SMS onboarding if account has an SMS number (Android only)
+        if (smsNumber && Platform.OS === 'android' && addResult.payload) {
+          setSmsOnboardingAccount(addResult.payload as Account);
+          setShowSmsOnboarding(true);
+        } else {
+          Platform.OS === 'web' ? window.alert('Account created') : Alert.alert('Success', 'Account created');
+        }
       }
 
       setShowAddModal(false);
@@ -1480,6 +1491,22 @@ export default function Accounts() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* SMS Import Onboarding — shown after creating an account with an SMS number */}
+      <SMSSyncOnboardingModal
+        visible={showSmsOnboarding}
+        account={smsOnboardingAccount}
+        onClose={() => {
+          setShowSmsOnboarding(false);
+          setSmsOnboardingAccount(null);
+          Alert.alert('Account Created', 'Your account has been saved. You can import SMS transactions any time from the account settings.');
+        }}
+        onComplete={(savedCount) => {
+          setShowSmsOnboarding(false);
+          setSmsOnboardingAccount(null);
+          Alert.alert('Import Complete', `${savedCount} transaction${savedCount !== 1 ? 's' : ''} imported from your SMS history.`);
+        }}
+      />
     </View>
   );
 }

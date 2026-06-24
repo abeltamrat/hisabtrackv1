@@ -169,8 +169,8 @@ export class SMSSyncService {
         sinceTimestamp = Date.now() - (options.historicalDays * 24 * 60 * 60 * 1000);
       } else {
         const lastSync = await this.getLastSuccessfulSync(account.id);
-        // NEW: If never synced before, default to NOW to avoid pulling years of history
-        sinceTimestamp = lastSync || Date.now();
+        // Default to 30 days back on first sync so users get recent history
+        sinceTimestamp = lastSync ?? (Date.now() - 30 * 24 * 60 * 60 * 1000);
       }
 
       for (const sender of senders) {
@@ -306,6 +306,7 @@ export class SMSSyncService {
           tax: parsed.tax,
           suggested_balance: parsed.balance,
           raw_sms: parsed.rawMessage,
+          receipt_url: parsed.receiptUrl,
           status: isAlreadyRecorded ? 'RECORDED' : 'PENDING',
           is_recorded: isAlreadyRecorded,
           categoryHint,
