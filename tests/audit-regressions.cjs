@@ -175,6 +175,18 @@ test('loan interest is validated and split from principal, and payment ids canno
  await assert.rejects(db.recordLoanPayment(loan.id,a.id,99,'loan-pay'));
  await assert.rejects(db.createLoanWithCash({...input,remaining_balance:9999},a.id,50));
 });
+test('persisted loan money is normalized to cents',async()=>{
+ const {db}=make();await db.createAccount(account('A'));
+ const loan=await db.createLoan({
+  type:'BORROWED',principal_amount:100.129,interest_rate:0,start_date:1,due_date:2,
+  lender_borrower_name:'B',status:'ACTIVE',remaining_balance:100.129,
+  total_interest:0.005,remaining_interest:0.005,
+ });
+ assert.equal(loan.principal_amount,100.13);assert.equal(loan.remaining_balance,100.13);
+ assert.equal(loan.total_interest,0.01);assert.equal(loan.remaining_interest,0.01);
+ await db.updateLoan({...loan,reminderEnabled:true});
+ const stored=(await db.getLoans())[0];assert.equal(stored.remaining_balance,100.13);
+});
 test('calendar periods include today and exclude future postings without 30-day approximations',()=>{
  const now=new Date(2026,1,15,10).getTime();const period=finance.reportPeriod('month',now);
  assert.equal(period.start,new Date(2026,1,1).getTime());assert.equal(period.days,15);

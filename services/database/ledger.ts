@@ -187,7 +187,15 @@ export class LedgerDatabase implements IDatabase {
       let extra: Record<string, any> = {};
       if (table === 'loans') {
         const loan = input as unknown as Loan;
-        extra = { reminder_at: loanReminderAt(loan), currency: (await this.raw.getAccounts())[0]?.currency || 'ETB', interest_method: 'FLAT_MONTHLY' };
+        extra = {
+          reminder_at: loanReminderAt(loan),
+          currency: (await this.raw.getAccounts())[0]?.currency || 'ETB',
+          interest_method: 'FLAT_MONTHLY',
+          principal_amount: money(loan.principal_amount),
+          remaining_balance: money(loan.remaining_balance),
+          ...(loan.total_interest === undefined ? {} : { total_interest: money(loan.total_interest) }),
+          ...(loan.remaining_interest === undefined ? {} : { remaining_interest: money(loan.remaining_interest) }),
+        };
         if (loan.id && !loan.shared_loan_id) {
           const old = (await this.raw.getLoans()).find(l => l.id === loan.id);
           if (old && ['principal_amount', 'interest_rate', 'start_date', 'due_date', 'remaining_balance'].some(k => (old as any)[k] !== (loan as any)[k]) && (await this.raw.getTransactions()).some(t => t.loan_id === loan.id)) throw new Error('Recorded loan amounts cannot be overwritten. Use the payment workflow.');
@@ -259,21 +267,24 @@ export class LedgerDatabase implements IDatabase {
       if (money(paid) < 0 || !Number.isFinite(paid)) throw new Error('Invalid initial payment');
       const start = new Date(input.start_date), due = new Date(input.due_date);
       const months = Math.max(1, (due.getFullYear() - start.getFullYear()) * 12 + due.getMonth() - start.getMonth() - (due.getDate() < start.getDate() ? 1 : 0));
-      const totalInterest = money(input.principal_amount * input.interest_rate / 100 * months / 12);
-      const total = sumMoney([input.principal_amount, totalInterest]);
-      if (money(paid) > total || money(input.remaining_balance) !== money(total - paid)) throw new Error('Loan balance must equal principal plus flat interest minus payments');
+      const principal = money(input.principal_amount);
+      const paidAmount = money(paid);
+      const totalInterest = money(principal * input.interest_rate / 100 * months / 12);
+      const total = sumMoney([principal, totalInterest]);
+      if (paidAmount > total || money(input.remaining_balance) !== money(total - paidAmount)) throw new Error('Loan balance must equal principal plus flat interest minus payments');
       const reminder = new Date(input.due_date);
       reminder.setDate(reminder.getDate() - (input.reminderDaysBefore || 0));
       const clock = input.reminderTime ? new Date(input.reminderTime) : null;
       reminder.setHours(clock?.getHours() ?? 9, clock?.getMinutes() ?? 0, 0, 0);
       if (totalInterest < 0) throw new Error('Invalid loan principal/payment total');
-      const loan: Loan = { ...input, currency: (await this.raw.getAccounts())[0]?.currency || 'ETB', reminder_at: reminder.getTime(), status: money(input.remaining_balance) === 0 ? 'PAID' : 'ACTIVE', total_interest: totalInterest, remaining_interest: Math.max(0, money(totalInterest - paid)), interest_method: 'FLAT_MONTHLY', id: generateUUID(), updated_at: Date.now() };
+      const remainingBalance = money(total - paidAmount);
+      const loan: Loan = { ...input, principal_amount: principal, remaining_balance: remainingBalance, currency: (await this.raw.getAccounts())[0]?.currency || 'ETB', reminder_at: reminder.getTime(), status: remainingBalance === 0 ? 'PAID' : 'ACTIVE', total_interest: totalInterest, remaining_interest: Math.max(0, money(totalInterest - paidAmount)), interest_method: 'FLAT_MONTHLY', id: generateUUID(), updated_at: Date.now() };
       const tx = await this.buildTransaction({ account_id: accountId, amount: loan.principal_amount, type: loan.type === 'LENT' ? 'EXPENSE' : 'INCOME', purpose: 'FINANCING', loan_id: loan.id, category: 'Loans', description: `Loan ${loan.type === 'LENT' ? 'to' : 'from'} ${loan.lender_borrower_name}`, date: loan.start_date });
       const rows: Row[] = [{ table: 'loans', id: loan.id, value: loan }, { table: 'transactions', id: tx.id, value: tx }];
       const balances = await this.balances(undefined, tx);
-      if (paid > 0) {
-        const payment = await this.buildTransaction({ account_id: accountId, amount: paid, type: loan.type === 'LENT' ? 'INCOME' : 'EXPENSE', purpose: 'FINANCING', loan_id: loan.id, category: 'Loan Repayment', description: 'Initial loan repayment', date: loan.start_date });
-        payment.interest_amount = Math.min(paid, totalInterest);
+      if (paidAmount > 0) {
+        const payment = await this.buildTransaction({ account_id: accountId, amount: paidAmount, type: loan.type === 'LENT' ? 'INCOME' : 'EXPENSE', purpose: 'FINANCING', loan_id: loan.id, category: 'Loan Repayment', description: 'Initial loan repayment', date: loan.start_date });
+        payment.interest_amount = money(Math.min(paidAmount, totalInterest));
         rows.push({ table: 'transactions', id: payment.id, value: payment });
         for (const row of balances) row.value.balance = money(row.value.balance + accountDelta(payment, row.id));
       }
