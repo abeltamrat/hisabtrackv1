@@ -488,6 +488,17 @@ export default function Accounts() {
   };
 
   const handleDelete = (id: string, balance: number) => {
+    const hasLedgerHistory = transactions.some(transaction =>
+      transaction.account_id === id || transaction.to_account_id === id
+    );
+    if (hasLedgerHistory) {
+      Alert.alert(
+        'Cannot Delete Account',
+        'This account has ledger history. Keep it so transactions, transfers, balances, and reports remain accurate.'
+      );
+      return;
+    }
+
     const doDelete = async () => {
       const result = await (dispatch as any)(deleteAccount(id));
       if (deleteAccount.rejected.match(result)) {
@@ -497,12 +508,11 @@ export default function Accounts() {
       Alert.alert('Success', 'Account deleted.');
     };
 
-    const balanceMsg = balance !== 0
-      ? ` The remaining balance (${formatCurrency(Math.abs(balance))}) will be recorded as an expense.`
-      : '';
     Alert.alert(
       'Delete Account',
-      `Are you sure you want to delete this account?${balanceMsg}`,
+      balance !== 0
+        ? `This unused account still has a balance of ${formatCurrency(Math.abs(balance))}. Delete it without creating a transaction?`
+        : 'Are you sure you want to delete this unused account?',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: doDelete },

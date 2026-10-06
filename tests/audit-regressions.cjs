@@ -104,6 +104,14 @@ test('stale session rejects writes and malformed transactions cannot enter ledge
  await assert.rejects(db.createTransaction({...transaction(a.id,1,'TRANSFER'),to_account_id:a.id}));
  db.deactivate();await assert.rejects(db.createTransaction(transaction(a.id,1)));
 });
+test('account deletion preserves ledger history and permits only unused accounts',async()=>{
+ const {db}=make();const historical=await db.createAccount(account('Historical',100));
+ await assert.rejects(db.deleteAccount(historical.id),/ledger history/);
+ assert.ok((await db.getAccounts()).some(item=>item.id===historical.id));
+ const unused=await db.createAccount(account('Unused'));
+ await db.deleteAccount(unused.id);
+ assert.equal((await db.getAccounts()).some(item=>item.id===unused.id),false);
+});
 test('unrelated equal-value SMS are not paired',()=>{
  const drafts=[{id:'e',account_id:'a',type:'EXPENSE',status:'PENDING',amount:500,date:100000},{id:'i',account_id:'b',type:'INCOME',status:'PENDING',amount:500,date:100001}];
  assert.equal(findSelfTransferPairs(drafts).length,0);

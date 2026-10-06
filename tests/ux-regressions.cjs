@@ -374,6 +374,12 @@ test('financial records and navigation identifiers are not written to debug logs
   assert.deepEqual(offenders, []);
 });
 
+test('account deletion does not promise an unrecorded balancing expense', () => {
+  const source = fs.readFileSync(path.join(root, 'app/accounts.tsx'), 'utf8');
+  assert.doesNotMatch(source, /remaining balance.*recorded as an expense/i);
+  assert.match(source, /has ledger history/);
+});
+
 test('no user-facing string uses "?" where an ellipsis or bullet belongs', () => {
   const offenders = [];
   const walk = dir => {
