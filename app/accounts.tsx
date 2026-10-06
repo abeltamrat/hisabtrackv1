@@ -548,8 +548,8 @@ export default function Accounts() {
             const fallback = d0?.logo;
             finalLogo = fallback || (domain ? `https://logo.clearbit.com/${domain}` : null);
           }
-        } catch (e) {
-          console.log('Auto-fetch logo failed', e);
+        } catch {
+          if (__DEV__) console.warn('Auto-fetch logo failed');
         }
       }
     }

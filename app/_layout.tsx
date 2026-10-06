@@ -176,7 +176,6 @@ function RootLayoutNav() {
       }
 
       if (data?.recurringId) {
-        console.log('[Notification] Navigating to recurring execute:', data.recurringId);
         router.push({
           pathname: '/recurring',
           params: { executeId: data.recurringId }

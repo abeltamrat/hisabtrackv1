@@ -416,7 +416,6 @@ export default function RecurringTransactionsScreen() {
               return current;
             }
           } else {
-            console.log(`[Recurring catch-up] Skipping duplicate transaction for ${current.name} on ${new Date(current.nextDate).toLocaleDateString()}`);
           }
 
           current = {
@@ -442,7 +441,6 @@ export default function RecurringTransactionsScreen() {
       setRecurringTransactions(updated);
       dispatch(fetchAccounts());
       dispatch(fetchTransactions());
-      console.log('[Recurring catch-up] Processed overdue recurring transactions.');
     }
   };
 
@@ -491,7 +489,6 @@ export default function RecurringTransactionsScreen() {
 
         // Ensure we don't schedule in the past
         if (nextDue.getTime() <= Date.now()) {
-          console.log('Notification date is in the past, skipping scheduling');
           return undefined;
         }
 

@@ -360,6 +360,20 @@ test('financial screens and notifications do not render dollar-only amounts', ()
   assert.deepEqual(offenders, []);
 });
 
+test('financial records and navigation identifiers are not written to debug logs', () => {
+  const files = [
+    'app/loans.tsx',
+    'app/accounts.tsx',
+    'app/recurring.tsx',
+    'app/_layout.tsx',
+    'services/database/web.ts',
+  ];
+  const offenders = files.filter(file =>
+    /console\.log\s*\(/.test(fs.readFileSync(path.join(root, file), 'utf8'))
+  );
+  assert.deepEqual(offenders, []);
+});
+
 test('no user-facing string uses "?" where an ellipsis or bullet belongs', () => {
   const offenders = [];
   const walk = dir => {

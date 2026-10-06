@@ -473,24 +473,17 @@ export default function LoansDebtsScreen() {
   };
 
   const handleAddItem = async () => {
-    console.log('[Loans] handleAddItem called');
-    console.log('[Loans] Form data:', formData);
-    console.log('[Loans] Active tab:', activeTab);
-
     if (!formData.accountId) {
-      console.log('[Loans] Validation failed: No account selected');
       Alert.alert('Error', 'Please select an account');
       return;
     }
 
     if (!formData.amount || parseFloat(formData.amount) <= 0 || isNaN(parseFloat(formData.amount))) {
-      console.log('[Loans] Validation failed: Invalid amount');
       Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
 
     if (!formData.dueDate) {
-      console.log('[Loans] Validation failed: No due date selected');
       Alert.alert('Error', 'Please select a due date');
       return;
     }
@@ -506,15 +499,6 @@ export default function LoansDebtsScreen() {
       if (!Number.isFinite(paid) || paid < 0 || paid > totalPayable || !Number.isFinite(interestRate) || interestRate < 0 || dueDate <= startDate) throw new Error('Invalid loan terms or initial payment');
       const remaining = Math.max(0, totalPayable - paid);
 
-      console.log('[Loans] Creating loan:', {
-        type: activeTab,
-        name: formData.personName.trim(),
-        amount,
-        paid,
-        remaining,
-        dueDate: formData.dueDate
-      });
-
       // 1. Schedule notification first
       const notifId = await scheduleNotificationHelper({
         ...formData,
@@ -525,8 +509,6 @@ export default function LoansDebtsScreen() {
         reminderDaysBefore: parseInt(formData.reminderDaysBefore),
         reminderTime: formData.reminderTime.getTime(),
       });
-      console.log('[Loans] Notification scheduled:', notifId);
-
       const created = await (await getDatabase()).createLoanWithCash({
         type: activeTab,
         lender_borrower_name: formData.personName.trim(),
@@ -575,7 +557,6 @@ export default function LoansDebtsScreen() {
             linked_phone: normalizePhone(linkedPhone.trim()),
             is_initiator: true,
           }));
-          console.log('[Loans] Link request created:', sharedLoanId);
         } catch (linkErr) {
           console.warn('[Loans] Link creation failed (loan still saved):', linkErr);
         }

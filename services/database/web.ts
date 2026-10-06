@@ -402,10 +402,8 @@ export class WebDatabase implements IDatabase {
       id: generateUUID(),
       updated_at: Date.now(),
     };
-    console.log('[WebDatabase] Creating loan:', newLoan);
     await db.put('loans', newLoan);
     LocalChangeEmitter.emit();
-    console.log('[WebDatabase] Loan saved to IndexedDB');
     return newLoan;
   }
 
