@@ -126,6 +126,25 @@ test('local settings and SMS data are isolated by user',async()=>{
  await session.setSessionScope('bob');assert.equal(await session.default.getItem('draft_transactions'),null);
  await session.setSessionScope('alice');assert.equal(await session.default.getItem('draft_transactions'),'private');
 });
+test('large custom logos migrate out of credential storage',async()=>{
+ const session=load('./services/SessionStorage.ts');await session.setSessionScope('asset-test');
+ await session.default.removeItem('local_bank_logos');
+ let savedSecureData;
+ mocks['./SecureStorageService']={SecureStorageService:{
+  getUserData:async()=>({appSettings:{geminiApiKey:'kept-secret'},local_bank_logos:{Custom:'data:image/png;base64,large'}}),
+  saveUserData:async value=>{savedSecureData=value;},
+ }};
+ cache.delete(path.join(root,'services/LocalAssetService.ts'));
+ try {
+  const LocalAssetService=load('./services/LocalAssetService.ts').default;
+  assert.deepEqual(await LocalAssetService.getUserAssets(),{Custom:'data:image/png;base64,large'});
+  assert.deepEqual(JSON.parse(await session.default.getItem('local_bank_logos')),{Custom:'data:image/png;base64,large'});
+  assert.equal(savedSecureData.local_bank_logos,undefined);
+  assert.equal(savedSecureData.appSettings.geminiApiKey,'kept-secret');
+ } finally {
+  delete mocks['./SecureStorageService'];cache.delete(path.join(root,'services/LocalAssetService.ts'));
+ }
+});
 
 test('legacy balance migration is durable, idempotent and excluded from earnings', async () => {
  const {raw,db}=make(); raw.rows.accounts.set('old',{...account('Old',123),id:'old',created_at:1});

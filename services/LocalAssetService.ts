@@ -1,6 +1,7 @@
 import BUNDLED_ET from '@/assets/bankLogos/et';
 import LocalChangeEmitter from './LocalChangeEmitter';
 import { SecureStorageService } from './SecureStorageService';
+import Storage from './SessionStorage';
 
 const USER_ASSETS_KEY = 'local_bank_logos';
 const BUNDLED_LOGO_MAP = Object.fromEntries(BUNDLED_ET.map((logo) => [logo.name, logo.url])) as Record<string, string>;
@@ -8,9 +9,20 @@ const BUNDLED_LOGO_MAP = Object.fromEntries(BUNDLED_ET.map((logo) => [logo.name,
 export default class LocalAssetService {
   static async getUserAssets(): Promise<Record<string, string>> {
     try {
-      const raw = await SecureStorageService.getUserData();
-      const user = raw || {};
-      return (user[USER_ASSETS_KEY] as Record<string, string>) || {};
+      const stored = await Storage.getItem(USER_ASSETS_KEY);
+      if (stored) return JSON.parse(stored) as Record<string, string>;
+
+      // Older releases placed image data in the same SecureStore value as API
+      // keys and settings. A single imported base64 logo can exceed the native
+      // keystore's small-value limit, preventing every later settings write.
+      const user = (await SecureStorageService.getUserData()) || {};
+      const legacy = user[USER_ASSETS_KEY] as Record<string, string> | undefined;
+      if (!legacy) return {};
+      await Storage.setItem(USER_ASSETS_KEY, JSON.stringify(legacy));
+      const safeUserData = { ...user };
+      delete safeUserData[USER_ASSETS_KEY];
+      await SecureStorageService.saveUserData(safeUserData);
+      return legacy;
     } catch (e) {
       console.error('Failed to load user assets', e);
       return {};
@@ -19,9 +31,7 @@ export default class LocalAssetService {
 
   static async saveUserAssets(map: Record<string, string>) {
     try {
-      const existing = (await SecureStorageService.getUserData()) || {};
-      existing[USER_ASSETS_KEY] = map;
-      await SecureStorageService.saveUserData(existing);
+      await Storage.setItem(USER_ASSETS_KEY, JSON.stringify(map));
       try { LocalChangeEmitter.emit(); } catch (e) { /* ignore */ }
     } catch (e) {
       console.error('Failed to save user assets', e);
