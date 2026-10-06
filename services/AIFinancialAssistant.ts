@@ -1,4 +1,4 @@
-import { operatingTransactions } from '@/utils/finance';
+import { operatingTransactions, sumMoney } from '@/utils/finance';
 import { Platform } from 'react-native';
 
 export interface FinancialData {
@@ -323,7 +323,7 @@ export class AIFinancialAssistant {
             if (type === 'EXPENSE') {
                 expenseItems.push({ amount, category, description, date });
                 const current = categoryMap.get(category) || { amount: 0, count: 0 };
-                current.amount += amount;
+                current.amount = sumMoney([current.amount, amount]);
                 current.count += 1;
                 categoryMap.set(category, current);
             } else if (type === 'INCOME') {
@@ -333,9 +333,9 @@ export class AIFinancialAssistant {
             }
         }
 
-        const totalIncome = incomeItems.reduce((sum, item) => sum + item.amount, 0);
-        const totalExpense = expenseItems.reduce((sum, item) => sum + item.amount, 0);
-        const fallbackBalance = totalIncome - totalExpense;
+        const totalIncome = sumMoney(incomeItems.map(item => item.amount));
+        const totalExpense = sumMoney(expenseItems.map(item => item.amount));
+        const fallbackBalance = sumMoney([totalIncome, -totalExpense]);
         const netBalanceRaw = Number(data.balance);
         const netBalance = Number.isFinite(netBalanceRaw) ? netBalanceRaw : fallbackBalance;
         const savingsRate = totalIncome > 0 ? (netBalance / totalIncome) * 100 : 0;
@@ -365,18 +365,18 @@ export class AIFinancialAssistant {
         const startNextMonth = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1).getTime();
         const startPreviousMonth = new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, 1).getTime();
 
-        const currentMonthExpense = expenseItems
+        const currentMonthExpense = sumMoney(expenseItems
             .filter((item) => item.date >= startCurrentMonth && item.date < startNextMonth)
-            .reduce((sum, item) => sum + item.amount, 0);
-        const previousMonthExpense = expenseItems
+            .map(item => item.amount));
+        const previousMonthExpense = sumMoney(expenseItems
             .filter((item) => item.date >= startPreviousMonth && item.date < startCurrentMonth)
-            .reduce((sum, item) => sum + item.amount, 0);
-        const currentMonthIncome = incomeItems
+            .map(item => item.amount));
+        const currentMonthIncome = sumMoney(incomeItems
             .filter((item) => item.date >= startCurrentMonth && item.date < startNextMonth)
-            .reduce((sum, item) => sum + item.amount, 0);
-        const previousMonthIncome = incomeItems
+            .map(item => item.amount));
+        const previousMonthIncome = sumMoney(incomeItems
             .filter((item) => item.date >= startPreviousMonth && item.date < startCurrentMonth)
-            .reduce((sum, item) => sum + item.amount, 0);
+            .map(item => item.amount));
 
         const expenseTrendPercent = this.calculateTrend(currentMonthExpense, previousMonthExpense);
         const incomeTrendPercent = this.calculateTrend(currentMonthIncome, previousMonthIncome);
@@ -391,13 +391,13 @@ export class AIFinancialAssistant {
             const end = this.toTimestamp(rawBudget?.end_date) ?? startNextMonth;
             const budgetCategory = String(rawBudget?.category || 'Uncategorized');
 
-            const spent = expenseItems
+            const spent = sumMoney(expenseItems
                 .filter((item) =>
                     item.date >= start &&
                     item.date <= end &&
                     this.categoryMatches(item.category, budgetCategory)
                 )
-                .reduce((sum, item) => sum + item.amount, 0);
+                .map(item => item.amount));
 
             const usagePercent = (spent / limit) * 100;
             const remaining = limit - spent;

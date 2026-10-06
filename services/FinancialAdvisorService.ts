@@ -1,4 +1,4 @@
-import { operatingTransactions } from '@/utils/finance';
+import { operatingTransactions, sumMoney } from '@/utils/finance';
 import BudgetService from '@/services/BudgetService';
 import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
 
@@ -799,15 +799,13 @@ export class FinancialAdvisorService {
 
   // Helper methods
   private static getTotalByType(transactions: Transaction[], type: string): number {
-    return transactions
-      .filter(t => t.type === type)
-      .reduce((sum, t) => sum + t.amount, 0);
+    return sumMoney(transactions.filter(t => t.type === type).map(t => t.amount));
   }
 
   private static groupByCategory(transactions: Transaction[]): Record<string, number> {
     return transactions.reduce((acc, t) => {
       const category = t.category || 'Uncategorized';
-      acc[category] = (acc[category] || 0) + t.amount;
+      acc[category] = sumMoney([acc[category] || 0, t.amount]);
       return acc;
     }, {} as Record<string, number>);
   }
@@ -835,7 +833,7 @@ export class FinancialAdvisorService {
   private static getLargeTransactions(transactions: Transaction[]): Transaction[] {
     if (transactions.length === 0) return [];
 
-    const avgAmount = transactions.reduce((sum, t) => sum + t.amount, 0) / transactions.length;
+    const avgAmount = sumMoney(transactions.map(t => t.amount)) / transactions.length;
     return transactions.filter(t => t.amount > avgAmount * 2);
   }
 }

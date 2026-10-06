@@ -180,17 +180,11 @@ export class ForecastService {
       };
     }).sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta));
 
-    const upcomingIncome = events
-      .filter((event) => event.type === 'INCOME')
-      .reduce((sum, event) => sum + event.amount, 0);
+    const upcomingIncome = sumMoney(events.filter((event) => event.type === 'INCOME').map(event => event.amount));
 
-    const upcomingExpense = events
-      .filter((event) => event.type === 'EXPENSE')
-      .reduce((sum, event) => sum + event.amount, 0);
+    const upcomingExpense = sumMoney(events.filter((event) => event.type === 'EXPENSE').map(event => event.amount));
 
-    const upcomingLoanPayments = events
-      .filter((event) => event.type === 'LOAN_DUE')
-      .reduce((sum, event) => sum + event.amount, 0);
+    const upcomingLoanPayments = sumMoney(events.filter((event) => event.type === 'LOAN_DUE').map(event => event.amount));
 
     const largeExpenses = events
       .filter((event) => event.type === 'EXPENSE' || event.type === 'LOAN_DUE')
