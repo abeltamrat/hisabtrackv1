@@ -1,7 +1,7 @@
 import { getDatabase } from '@/services/database';
 import LinkedPaymentService from '@/services/LinkedPaymentService';
 import { generateUUID } from '@/utils/uuid';
-import { flatLoanSchedule } from '@/utils/finance';
+import { flatLoanSchedule, money, sumMoney } from '@/utils/finance';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -113,8 +113,8 @@ export default function LoanDetailsScreen() {
     months = Math.max(months, 1);
     const annualRate = rate / 100;
     const years = months / 12;
-    const totalInterest = principal * annualRate * years;
-    return principal + totalInterest;
+    const totalInterest = money(principal * annualRate * years);
+    return sumMoney([principal, totalInterest]);
   };
 
   useEffect(() => {
@@ -154,10 +154,10 @@ export default function LoanDetailsScreen() {
 
     void getDatabase().then(db => db.allocateLinkedInterest(currentLoan.shared_loan_id!, repayments)).catch(() => undefined);
     const totalPayable = getLoanTotalPayable(sharedLoan.amount, sharedLoan.interestRate, sharedLoan.startDate, sharedLoan.dueDate);
-    const confirmedPaid = repayments
+    const confirmedPaid = sumMoney(repayments
       .filter(r => r.status === 'CONFIRMED')
-      .reduce((sum, r) => sum + r.amount, 0);
-    const computedRemainingBalance = Math.max(0, Math.round((totalPayable - confirmedPaid) * 100) / 100);
+      .map(r => r.amount));
+    const computedRemainingBalance = Math.max(0, money(totalPayable - confirmedPaid));
     const computedStatus = computedRemainingBalance === 0 ? 'PAID' : sharedLoan.status;
 
     if (
@@ -183,10 +183,11 @@ export default function LoanDetailsScreen() {
   // ── Helpers ────────────────────────────────────────────────────────────────
   const getPaidMonths = () => {
     if (!loan || schedule.length === 0) return 0;
-    const totalPayable =
-      loan.principal_amount +
-      loan.principal_amount * (loan.interest_rate / 100) * (schedule.length / 12);
-    const paidAmount = totalPayable - loan.remaining_balance;
+    const totalPayable = sumMoney([
+      loan.principal_amount,
+      money(loan.principal_amount * (loan.interest_rate / 100) * (schedule.length / 12)),
+    ]);
+    const paidAmount = money(totalPayable - loan.remaining_balance);
     const monthly = schedule[0]?.payment || 0;
     return monthly === 0 ? 0 : Math.floor(paidAmount / monthly);
   };

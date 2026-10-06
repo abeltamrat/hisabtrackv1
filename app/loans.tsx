@@ -28,6 +28,7 @@ import { Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, u
 import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 import { NotificationService } from '@/services/NotificationService';
+import { money, sumMoney } from '@/utils/finance';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -409,8 +410,8 @@ export default function LoansDebtsScreen() {
         groups[name] = { items: [], totalPrincipal: 0, totalRemaining: 0, count: 0 };
       }
       groups[name].items.push(item);
-      groups[name].totalPrincipal += item.principal_amount;
-      groups[name].totalRemaining += item.remaining_balance;
+      groups[name].totalPrincipal = sumMoney([groups[name].totalPrincipal, item.principal_amount]);
+      groups[name].totalRemaining = sumMoney([groups[name].totalRemaining, item.remaining_balance]);
       groups[name].count += 1;
     });
     return groups;
@@ -419,9 +420,9 @@ export default function LoansDebtsScreen() {
   const groupNames = Object.keys(groupedItems).sort();
 
   const getTotalAmount = (type: LoanType) => {
-    return loans
+    return sumMoney(loans
       .filter(item => item.type === type && item.status === 'ACTIVE')
-      .reduce((sum, item) => sum + item.remaining_balance, 0);
+      .map(item => item.remaining_balance));
   };
 
   const getLoanTotalPayable = (principal: number, rate: number, start: number, due: number) => {
@@ -439,14 +440,14 @@ export default function LoansDebtsScreen() {
 
     const annualRate = rate / 100;
     const years = months / 12;
-    const totalInterest = principal * annualRate * years;
-    return principal + totalInterest;
+    const totalInterest = money(principal * annualRate * years);
+    return sumMoney([principal, totalInterest]);
   };
 
   const getProgress = (principal: number, remaining: number, rate: number, start: number, due: number) => {
     const totalPayable = getLoanTotalPayable(principal, rate, start, due);
     if (totalPayable === 0) return 0;
-    const paid = totalPayable - remaining;
+    const paid = money(totalPayable - remaining);
     return (paid / totalPayable) * 100;
   };
 
@@ -466,10 +467,10 @@ export default function LoansDebtsScreen() {
     // Simple interest calculation
     const annualRate = rate / 100;
     const years = months / 12;
-    const totalInterest = principal * annualRate * years;
-    const totalPayable = principal + totalInterest;
+    const totalInterest = money(principal * annualRate * years);
+    const totalPayable = sumMoney([principal, totalInterest]);
 
-    return totalPayable / months;
+    return money(totalPayable / months);
   };
 
   const handleAddItem = async () => {
@@ -497,7 +498,7 @@ export default function LoansDebtsScreen() {
 
       const totalPayable = getLoanTotalPayable(amount, interestRate, startDate, dueDate);
       if (!Number.isFinite(paid) || paid < 0 || paid > totalPayable || !Number.isFinite(interestRate) || interestRate < 0 || dueDate <= startDate) throw new Error('Invalid loan terms or initial payment');
-      const remaining = Math.max(0, totalPayable - paid);
+      const remaining = Math.max(0, money(totalPayable - paid));
 
       // 1. Schedule notification first
       const notifId = await scheduleNotificationHelper({
@@ -634,7 +635,7 @@ export default function LoansDebtsScreen() {
     }
 
     const totalPayable = getLoanTotalPayable(amount, interestRate, startDate, dueDate);
-    const remaining = Math.max(0, totalPayable - paid);
+    const remaining = Math.max(0, money(totalPayable - paid));
 
     if (editingItem.notificationId) {
       await NotificationService.cancelNotification(editingItem.notificationId);
@@ -755,7 +756,7 @@ export default function LoansDebtsScreen() {
   const openEditModal = (item: Loan) => {
     setEditingItem(item);
     const totalPayable = getLoanTotalPayable(item.principal_amount, item.interest_rate, item.start_date, item.due_date);
-    const paid = Math.max(0, totalPayable - item.remaining_balance);
+    const paid = Math.max(0, money(totalPayable - item.remaining_balance));
     setFormData({
       personName: item.lender_borrower_name,
       accountId: '',
@@ -1039,7 +1040,7 @@ export default function LoansDebtsScreen() {
             {groupedItems[selectedGroup]?.items.map((item) => {
               const progress = getProgress(item.principal_amount, item.remaining_balance, item.interest_rate, item.start_date, item.due_date);
               const totalPayable = getLoanTotalPayable(item.principal_amount, item.interest_rate, item.start_date, item.due_date);
-              const paidAmount = totalPayable - item.remaining_balance;
+              const paidAmount = money(totalPayable - item.remaining_balance);
               const isPaid = item.status === 'PAID';
               const monthlyPayment = calculateMonthlyPayment(item.principal_amount, item.interest_rate, item.start_date, item.due_date);
               const isItemLinked = !!item.shared_loan_id && item.link_status === 'ACCEPTED';
