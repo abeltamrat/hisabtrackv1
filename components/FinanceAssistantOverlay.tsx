@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { operatingExpense, operatingIncome, operatingTransactions, sumMoney } from '@/utils/finance';
 
 type LocalAssistantRole = 'user' | 'assistant';
 
@@ -60,21 +61,17 @@ const TIP_ASK_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 const cleanText = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 const buildSnapshot = (transactions: Transaction[], budgets: Budget[], loans: Loan[]): AssistantSnapshot => {
-  const totalIncome = transactions
-    .filter((transaction) => transaction.type === 'INCOME')
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const totalExpense = transactions
-    .filter((transaction) => transaction.type === 'EXPENSE')
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const balance = totalIncome - totalExpense;
+  const totalIncome = sumMoney(transactions.map(operatingIncome));
+  const totalExpense = sumMoney(transactions.map(operatingExpense));
+  const balance = sumMoney([totalIncome, -totalExpense]);
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0;
 
   const categoryTotals = new Map<string, number>();
-  transactions
+  operatingTransactions(transactions)
     .filter((transaction) => transaction.type === 'EXPENSE')
     .forEach((transaction) => {
       const category = transaction.category?.trim() || 'General';
-      categoryTotals.set(category, (categoryTotals.get(category) ?? 0) + transaction.amount);
+      categoryTotals.set(category, sumMoney([categoryTotals.get(category) ?? 0, transaction.amount]));
     });
 
   const topCategoryEntry = [...categoryTotals.entries()].sort((a, b) => b[1] - a[1])[0];

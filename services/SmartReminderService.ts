@@ -5,6 +5,7 @@ import { loadStoredAppSettings } from '@/contexts/AppSettingsContext';
 import { createSerialQueue } from '@/utils/asyncLock';
 import { getDatabase } from './database';
 import { NotificationService } from './NotificationService';
+import { operatingExpense, operatingIncome, operatingTransactions, sumMoney } from '@/utils/finance';
 
 const STORAGE_KEY = '@hisabtrack_smart_reminders';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -114,9 +115,9 @@ export class SmartReminderService {
     if (new Date(now).getHours() < 17 || state.lastSmartInsightDay === todayKey || transactions.length === 0) return false;
     const start = new Date(now); start.setHours(0, 0, 0, 0);
     const todayTransactions = transactions.filter(transaction => transaction.date >= start.getTime());
-    const income = todayTransactions.filter(transaction => transaction.type === 'INCOME').reduce((sum, transaction) => sum + transaction.amount, 0);
-    const expenseTransactions = todayTransactions.filter(transaction => transaction.type === 'EXPENSE');
-    const expenses = expenseTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+    const income = sumMoney(todayTransactions.map(operatingIncome));
+    const expenseTransactions = operatingTransactions(todayTransactions).filter(transaction => transaction.type === 'EXPENSE');
+    const expenses = sumMoney(todayTransactions.map(operatingExpense));
     const currency = settings.currency;
     const seed = Number(todayKey.replace(/-/g, '')) % 3;
 
@@ -132,7 +133,7 @@ export class SmartReminderService {
       );
     } else if (flags.personalizedTipsEnabled) {
       const categoryTotals = expenseTransactions.reduce((totals, transaction) => {
-        totals[transaction.category || 'Other'] = (totals[transaction.category || 'Other'] || 0) + transaction.amount;
+        totals[transaction.category || 'Other'] = sumMoney([totals[transaction.category || 'Other'] || 0, transaction.amount]);
         return totals;
       }, {} as Record<string, number>);
       const top = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0];

@@ -8,6 +8,7 @@ import { fetchLoans } from '@/store/slices/loansSlice';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import { Transaction } from '@/types/database';
 import { hasTag } from '@/utils/tags';
+import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -369,13 +370,9 @@ export default function ExportDataScreen() {
   ]);
 
   const exportSummary = useMemo(() => {
-    const income = filteredTransactions
-      .filter((transaction) => transaction.type === 'INCOME')
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const expense = filteredTransactions
-      .filter((transaction) => transaction.type === 'EXPENSE')
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const balance = income - expense;
+    const income = sumMoney(filteredTransactions.map(operatingIncome));
+    const expense = sumMoney(filteredTransactions.map(operatingExpense));
+    const balance = sumMoney([income, -expense]);
     const savingsRate = income > 0 ? ((income - expense) / income) * 100 : 0;
 
     return { income, expense, balance, savingsRate };

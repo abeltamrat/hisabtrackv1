@@ -8,6 +8,7 @@ import { AppDispatch, RootState } from '@/store';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import ExportService from '@/services/ExportService';
 import { hasTag } from '@/utils/tags';
+import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -227,8 +228,8 @@ export default function TransactionsScreen() {
   };
 
   const totals = useMemo(() => {
-    const income = filteredTransactions.filter(t => t.type === 'INCOME').reduce((sum, t) => sum + t.amount, 0);
-    const expense = filteredTransactions.filter(t => t.type === 'EXPENSE').reduce((sum, t) => sum + t.amount, 0);
+    const income = sumMoney(filteredTransactions.map(operatingIncome));
+    const expense = sumMoney(filteredTransactions.map(operatingExpense));
     return { income, expense };
   }, [filteredTransactions]);
 

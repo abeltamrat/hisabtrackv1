@@ -28,6 +28,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Modal, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -157,8 +158,10 @@ export default function SettingsScreen() {
         format,
         timeRange: 'All Time',
         summary: {
-          balance: transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0) -
-            transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0)
+          balance: sumMoney([
+            sumMoney(transactions.map(operatingIncome)),
+            -sumMoney(transactions.map(operatingExpense)),
+          ])
         }
       });
       Alert.alert('Success', `Transactions exported to ${format.toUpperCase()} successfully!`);
@@ -195,8 +198,8 @@ export default function SettingsScreen() {
   const handleExportSummary = async () => {
     try {
       setExporting(true);
-      const income = transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
-      const expense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
+      const income = sumMoney(transactions.map(operatingIncome));
+      const expense = sumMoney(transactions.map(operatingExpense));
 
       await ExportService.exportReport({
         data: transactions,

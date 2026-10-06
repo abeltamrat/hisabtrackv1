@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 
 import BudgetService from '@/services/BudgetService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
+import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 
 export interface AppNotification {
   id: string;
@@ -230,13 +231,9 @@ export class AppNotificationService {
       return date.getMonth() === thisMonth && date.getFullYear() === thisYear;
     });
 
-    const income = thisMonthTransactions
-      .filter(t => t.type === 'INCOME')
-      .reduce((sum, t) => sum + t.amount, 0);
+    const income = sumMoney(thisMonthTransactions.map(operatingIncome));
     
-    const expenses = thisMonthTransactions
-      .filter(t => t.type === 'EXPENSE')
-      .reduce((sum, t) => sum + t.amount, 0);
+    const expenses = sumMoney(thisMonthTransactions.map(operatingExpense));
 
     // 1. 💸 High Spending Alert
     if (income > 0 && expenses > income * 0.85) {

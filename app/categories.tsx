@@ -9,6 +9,7 @@ import { Animated, Modal, PanResponder, ScrollView, Text, TextInput, TouchableOp
 import { Alert } from '@/utils/alert';
 import { useSelector } from 'react-redux';
 import { Category, useTransactions } from '../context/TransactionContext';
+import { operatingTransactions, sumMoney } from '@/utils/finance';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -253,14 +254,14 @@ export default function ManageCategoriesScreen() {
     monthStart.setHours(0, 0, 0, 0);
     const monthStartMs = monthStart.getTime();
 
-    const monthTxs = transactions.filter(t => t.date >= monthStartMs);
-    const totalExpense = monthTxs.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
-    const totalIncome = monthTxs.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
+    const monthTxs = operatingTransactions(transactions.filter(t => t.date >= monthStartMs));
+    const totalExpense = sumMoney(monthTxs.filter(t => t.type === 'EXPENSE').map(t => t.amount));
+    const totalIncome = sumMoney(monthTxs.filter(t => t.type === 'INCOME').map(t => t.amount));
 
     const result: Record<string, CategoryStat> = {};
     for (const cat of categories) {
-      const catTxs = transactions.filter(t => t.category === cat.name);
-      const monthAmount = catTxs.filter(t => t.date >= monthStartMs).reduce((s, t) => s + t.amount, 0);
+      const catTxs = operatingTransactions(transactions.filter(t => t.category === cat.name));
+      const monthAmount = sumMoney(catTxs.filter(t => t.date >= monthStartMs).map(t => t.amount));
       const lastUsed = catTxs.length > 0 ? Math.max(...catTxs.map(t => t.date)) : null;
       const total = cat.type === 'expense' ? totalExpense : totalIncome;
       result[cat.id] = {
