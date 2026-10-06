@@ -909,7 +909,7 @@ export default function Accounts() {
         {/* Total Balance */}
         <View className="bg-white/10 backdrop-blur-lg rounded-3xl p-6">
           <View className="items-center">
-            <Text className="text-white/80 text-sm mb-2 text-center">Total Balance</Text>
+            <Text className="text-white/90 text-sm mb-2 text-center">Total Balance</Text>
             <View className="flex-row items-center justify-center">
               <Text className="text-white text-4xl font-bold text-center">{balancesHidden ? '••••••' : formatCurrency(getTotalBalance())}</Text>
             <TouchableOpacity
@@ -921,7 +921,7 @@ export default function Accounts() {
               <FontAwesome name={balancesHidden ? 'eye-slash' : 'eye'} size={18} color="#fff" />
             </TouchableOpacity>
             </View>
-            <Text className="text-white/60 text-xs mt-2 text-center">{accounts.length} Accounts</Text>
+            <Text className="text-white/90 text-xs mt-2 text-center">{accounts.length} Accounts</Text>
           </View>
         </View>
       </LinearGradient>
@@ -1002,10 +1002,10 @@ export default function Accounts() {
                       </Text>
                       <Text className="text-slate-500 text-sm">{account.type}</Text>
                       {account.account_number ? (
-                        <Text className="text-slate-400 text-xs mt-1">Acct: {account.account_number}</Text>
+                        <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">Acct: {account.account_number}</Text>
                       ) : null}
                       {account.sms_number ? (
-                        <Text className="text-slate-400 text-xs">SMS: {account.sms_number}</Text>
+                        <Text className="text-slate-500 text-xs dark:text-slate-400">SMS: {account.sms_number}</Text>
                       ) : null}
                     </View>
                   </View>
@@ -1056,7 +1056,7 @@ export default function Accounts() {
                   >
                     {draftCounts[account.id] > 0 ? (
                       <View className="w-5 h-5 rounded-full bg-amber-500 justify-center items-center">
-                        <Text className="text-white text-[9px] font-black">{draftCounts[account.id]}</Text>
+                        <Text className="text-white text-[10px] font-black">{draftCounts[account.id]}</Text>
                       </View>
                     ) : (
                       <FontAwesome name="list-alt" size={13} color="#64748b" />
@@ -1185,7 +1185,7 @@ export default function Accounts() {
                           </View>
                           <View>
                             <Text className="text-slate-900 dark:text-white font-medium">{s.name}</Text>
-                            <Text className="text-slate-400 text-xs">{s.domain}</Text>
+                            <Text className="text-slate-500 text-xs dark:text-slate-400">{s.domain}</Text>
                           </View>
                         </TouchableOpacity>
                       ))}
@@ -1201,7 +1201,7 @@ export default function Accounts() {
                       <ActivityIndicator size="small" color="#059669" />
                     </View>
                   ) : imageSuggestions.length === 0 ? (
-                    <Text className="text-slate-400 text-xs">No image suggestions yet</Text>
+                    <Text className="text-slate-500 text-xs dark:text-slate-400">No image suggestions yet</Text>
                   ) : (
                     <View className="flex-row flex-wrap -mr-2">
                       {imageSuggestions.map((url, idx) => {
@@ -1385,7 +1385,7 @@ export default function Accounts() {
               nestedScrollEnabled={true}
             >
               {filteredSmsNumbers.length === 0 ? (
-                <Text className="text-center text-slate-400 py-4">No matching sender IDs found.</Text>
+                <Text className="text-center text-slate-500 py-4 dark:text-slate-400">No matching sender IDs found.</Text>
               ) : (
                 filteredSmsNumbers.map(({ sender, preview }) => {
                   const currentSenders = smsNumber ? smsNumber.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -1404,7 +1404,7 @@ export default function Accounts() {
                           {sender}
                         </Text>
                         {preview ? (
-                          <Text className="text-slate-400 text-xs mt-0.5" numberOfLines={1}>{preview}</Text>
+                          <Text className="text-slate-500 text-xs mt-0.5 dark:text-slate-400" numberOfLines={1}>{preview}</Text>
                         ) : null}
                       </View>
                     </TouchableOpacity>
@@ -1475,7 +1475,7 @@ export default function Accounts() {
                     return (
                       <View className="flex-row items-center mt-2">
                         <FontAwesome name="clock-o" size={10} color="#94a3b8" />
-                        <Text className="text-slate-400 text-xs ml-1">
+                        <Text className="text-slate-500 text-xs ml-1 dark:text-slate-400">
                           Last sync: {r.newDrafts} new draft{r.newDrafts !== 1 ? 's' : ''} · {ago}
                         </Text>
                       </View>

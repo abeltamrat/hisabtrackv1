@@ -941,11 +941,11 @@ export default function LoansDebtsScreen() {
         {!selectedGroup && (
           <View className="flex-row justify-between mt-4">
             <View className="flex-1 bg-white/10 backdrop-blur-lg rounded-2xl p-3 mr-2">
-              <Text className="text-white/80 text-xs">{t('loansGiven')}</Text>
+              <Text className="text-white/90 text-xs">{t('loansGiven')}</Text>
               <Text className="text-white text-xl font-bold">{formatCurrency(getTotalAmount('LENT'))}</Text>
             </View>
             <View className="flex-1 bg-white/10 backdrop-blur-lg rounded-2xl p-3 ml-2">
-              <Text className="text-white/80 text-xs">{t('debtsOwed')}</Text>
+              <Text className="text-white/90 text-xs">{t('debtsOwed')}</Text>
               <Text className="text-white text-xl font-bold">{formatCurrency(getTotalAmount('BORROWED'))}</Text>
             </View>
           </View>
@@ -954,11 +954,11 @@ export default function LoansDebtsScreen() {
         {selectedGroup && (
           <View className="flex-row justify-between mt-4">
             <View className="flex-1 bg-white/10 backdrop-blur-lg rounded-2xl p-3 mr-2">
-              <Text className="text-white/80 text-xs">{t('totalPrincipal')}</Text>
+              <Text className="text-white/90 text-xs">{t('totalPrincipal')}</Text>
               <Text className="text-white text-xl font-bold">{formatCurrency(groupedItems[selectedGroup]?.totalPrincipal || 0)}</Text>
             </View>
             <View className="flex-1 bg-white/10 backdrop-blur-lg rounded-2xl p-3 ml-2">
-              <Text className="text-white/80 text-xs">{t('totalRemaining')}</Text>
+              <Text className="text-white/90 text-xs">{t('totalRemaining')}</Text>
               <Text className="text-white text-xl font-bold">{formatCurrency(groupedItems[selectedGroup]?.totalRemaining || 0)}</Text>
             </View>
           </View>
@@ -1103,7 +1103,7 @@ export default function LoansDebtsScreen() {
                       <Text className="text-slate-500 text-xs">
                         Due: {new Date(item.due_date).toLocaleDateString()}
                       </Text>
-                      <Text className="text-slate-400 text-xs">
+                      <Text className="text-slate-500 text-xs dark:text-slate-400">
                         Est. Monthly: ${monthlyPayment.toFixed(2)}
                       </Text>
                     </View>
@@ -1148,7 +1148,7 @@ export default function LoansDebtsScreen() {
                             {getTimeRemaining(item.due_date, item.reminderDaysBefore || 0, item.reminderTime)}
                           </Text>
                           {item.reminderTime && (
-                            <Text className="text-blue-400 dark:text-blue-500 text-[8px]">
+                            <Text className="text-blue-400 dark:text-blue-500 text-[10px]">
                               at {new Date(item.reminderTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </Text>
                           )}
@@ -1407,7 +1407,7 @@ export default function LoansDebtsScreen() {
                       onChangeText={setLinkedPhone}
                     />
                     {linkLookupState === 'searching' && (
-                      <Text className="text-slate-400 text-xs">Searching...</Text>
+                      <Text className="text-slate-500 text-xs dark:text-slate-400">Searching...</Text>
                     )}
                     {linkLookupState === 'found' && (
                       <View className="flex-row items-center">
@@ -1519,7 +1519,7 @@ export default function LoansDebtsScreen() {
                     disabled={!canEditLinkedTerms}
                     className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 justify-center h-14 mb-4"
                   >
-                    <Text className={`text-base ${formData.dueDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
+                    <Text className={`text-base ${formData.dueDate ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}>
                       {formData.dueDate || 'Select Due Date (YYYY-MM-DD)'}
                     </Text>
                   </TouchableOpacity>

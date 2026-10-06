@@ -531,7 +531,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
 
             {/* Version */}
             <View className="px-6 pb-6">
-              <Text className={`text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} text-center`}>
+              <Text className={`text-slate-500 ${isVerySmall ? 'text-[10px]' : 'text-xs'} text-center dark:text-slate-400`}>
                 HisabTrack v1.0.0
               </Text>
             </View>

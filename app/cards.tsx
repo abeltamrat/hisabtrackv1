@@ -115,11 +115,11 @@ export default function CardsScreen() {
                 {/* Card Details */}
                 <View className="flex-row justify-between items-end">
                   <View>
-                    <Text className="text-white/70 text-xs mb-1">Card Holder</Text>
+                    <Text className="text-white/90 text-xs mb-1">Card Holder</Text>
                     <Text className="text-white text-sm font-bold">{cardItem.holder}</Text>
                   </View>
                   <View>
-                    <Text className="text-white/70 text-xs mb-1">Expires</Text>
+                    <Text className="text-white/90 text-xs mb-1">Expires</Text>
                     <Text className="text-white text-sm font-bold">{cardItem.expiry}</Text>
                   </View>
                   <View className="bg-white/20 px-3 py-2 rounded-lg">
@@ -168,8 +168,8 @@ export default function CardsScreen() {
                 />
               </View>
               <View className="flex-row justify-between mt-2">
-                <Text className="text-slate-400 text-xs">{formatCurrency(0)}</Text>
-                <Text className="text-slate-400 text-xs">{formatCurrency(card.limit)}</Text>
+                <Text className="text-slate-500 text-xs dark:text-slate-400">{formatCurrency(0)}</Text>
+                <Text className="text-slate-500 text-xs dark:text-slate-400">{formatCurrency(card.limit)}</Text>
               </View>
             </View>
 

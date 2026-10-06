@@ -332,7 +332,7 @@ export default function BanksScreen() {
           </TouchableOpacity>
           <View className="flex-1 items-center">
             <Text className="text-white text-2xl font-bold">Banks</Text>
-            <Text className="text-white/80 text-sm mt-1">Manage your banks</Text>
+            <Text className="text-white/90 text-sm mt-1">Manage your banks</Text>
           </View>
           <TouchableOpacity
             onPress={handleAddBank}
@@ -348,7 +348,7 @@ export default function BanksScreen() {
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4" style={{ elevation: 2 }}>
             <View className="flex-row items-center justify-between">
               <View>
-                <Text className="text-white/80 text-xs font-semibold">Total Banks</Text>
+                <Text className="text-white/90 text-xs font-semibold">Total Banks</Text>
                 <Text className="text-white text-2xl font-bold mt-1">{banks.length}</Text>
               </View>
               <View className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
@@ -359,7 +359,7 @@ export default function BanksScreen() {
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4" style={{ elevation: 2 }}>
             <View className="flex-row items-center justify-between">
               <View>
-                <Text className="text-white/80 text-xs font-semibold">Custom</Text>
+                <Text className="text-white/90 text-xs font-semibold">Custom</Text>
                 <Text className="text-white text-2xl font-bold mt-1">
                   {banks.filter(b => !b.isBundled).length}
                 </Text>

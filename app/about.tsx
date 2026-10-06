@@ -157,8 +157,8 @@ export default function AboutScreen() {
 
                 {/* Footer */}
                 <View className="items-center py-6">
-                    <Text className="text-slate-400 text-sm">© 2026 HisabTrack. All rights reserved.</Text>
-                    <Text className="text-slate-400 text-xs mt-1">Made with ❤️ for better financial wellness</Text>
+                    <Text className="text-slate-500 text-sm dark:text-slate-400">© 2026 HisabTrack. All rights reserved.</Text>
+                    <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">Made with ❤️ for better financial wellness</Text>
                 </View>
 
                 <View className="h-8" />

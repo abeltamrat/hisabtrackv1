@@ -446,7 +446,7 @@ export default function ManageAssets() {
           </TouchableOpacity>
           <View className="flex-1 items-center">
             <Text className="text-white text-2xl font-bold">Asset Manager</Text>
-            <Text className="text-white/80 text-sm mt-1">Manage your bank logos</Text>
+            <Text className="text-white/90 text-sm mt-1">Manage your bank logos</Text>
           </View>
           <View className="w-12 h-12" />
         </View>
@@ -456,7 +456,7 @@ export default function ManageAssets() {
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4" style={{ elevation: 2 }}>
             <View className="flex-row items-center justify-between">
               <View>
-                <Text className="text-white/80 text-xs font-semibold">Custom</Text>
+                <Text className="text-white/90 text-xs font-semibold">Custom</Text>
                 <Text className="text-white text-2xl font-bold mt-1">{Object.keys(userAssets).length}</Text>
               </View>
               <View className="w-10 h-10 bg-emerald-500/30 rounded-xl justify-center items-center">
@@ -467,7 +467,7 @@ export default function ManageAssets() {
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4" style={{ elevation: 2 }}>
             <View className="flex-row items-center justify-between">
               <View>
-                <Text className="text-white/80 text-xs font-semibold">Bundled</Text>
+                <Text className="text-white/90 text-xs font-semibold">Bundled</Text>
                 <Text className="text-white text-2xl font-bold mt-1">{Object.keys(bundled).length}</Text>
               </View>
               <View className="w-10 h-10 bg-blue-500/30 rounded-xl justify-center items-center">

@@ -761,7 +761,7 @@ export default function RecurringTransactionsScreen() {
             {recurringTransactions.length === 0 ? (
               <View className="bg-white dark:bg-slate-800 rounded-3xl p-8 items-center shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
                 <FontAwesome name="repeat" size={48} color="#cbd5e1" />
-                <Text className="text-slate-400 text-center mt-4 mb-2">No active recurring transactions</Text>
+                <Text className="text-slate-500 text-center mt-4 mb-2 dark:text-slate-400">No active recurring transactions</Text>
               </View>
             ) : (
               recurringTransactions.map((recurring) => (
@@ -874,7 +874,7 @@ export default function RecurringTransactionsScreen() {
 
             {filteredMonthKeys.length === 0 ? (
               <View className="bg-white dark:bg-slate-800 rounded-3xl p-8 items-center">
-                <Text className="text-slate-400">No upcoming recurring projections found.</Text>
+                <Text className="text-slate-500 dark:text-slate-400">No upcoming recurring projections found.</Text>
               </View>
             ) : (
               filteredMonthKeys.map(month => (
@@ -959,7 +959,7 @@ export default function RecurringTransactionsScreen() {
                         <Text className={selectedAccountId === acc.id ? 'text-indigo-600 font-bold' : 'text-slate-600'}>
                           {acc.name}
                         </Text>
-                        <Text className="text-xs text-slate-400">{formatCurrency(acc.balance)}</Text>
+                        <Text className="text-xs text-slate-500 dark:text-slate-400">{formatCurrency(acc.balance)}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>

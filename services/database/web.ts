@@ -240,6 +240,11 @@ export class WebDatabase implements IDatabase {
    * Fix #5: use the 'by-account' index when an account_id filter is set,
    * then apply date range filters in JS only on the smaller result set.
    */
+  /** Keyed lookup, so ledger writes no longer read the whole object store. */
+  async getTransactionById(id: string): Promise<Transaction | undefined> {
+    return (await this.getDB()).get('transactions', id) as Promise<Transaction | undefined>;
+  }
+
   async getTransactions(filters?: { account_id?: string; startDate?: number; endDate?: number }): Promise<Transaction[]> {
     const db = await this.getDB();
     let transactions: Transaction[];

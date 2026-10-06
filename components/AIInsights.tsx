@@ -173,7 +173,7 @@ export default function AIInsights({
                           style={{ width: `${insight.priority}%` }}
                         />
                       </View>
-                      <Text className="text-white/60 text-xs ml-2 font-medium">
+                      <Text className="text-white/90 text-xs ml-2 font-medium">
                         {insight.priority > 80 ? 'Critical' : insight.priority > 60 ? 'Important' : 'Helpful'}
                       </Text>
                     </View>

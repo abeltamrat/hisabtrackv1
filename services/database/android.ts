@@ -409,6 +409,18 @@ export class AndroidDatabase implements IDatabase {
    * Fix #5: SQL-level filtering — only rows matching the filter are fetched.
    * Previously the entire table was loaded into JS and filtered there.
    */
+  /**
+   * Single-row lookup on the primary key. The ledger needs to find one
+   * transaction on every update, delete and idempotency check; doing that via
+   * getTransactions() loaded and JSON.parsed the entire table each time.
+   */
+  async getTransactionById(id: string): Promise<Transaction | undefined> {
+    return this.runWithRetry(async (db) => {
+      const row = await db.getFirstAsync<{ data: string }>('SELECT data FROM transactions WHERE id = ?', id);
+      return row ? (JSON.parse(row.data) as Transaction) : undefined;
+    });
+  }
+
   async getTransactions(filters?: { account_id?: string; startDate?: number; endDate?: number }): Promise<Transaction[]> {
     const conditions: string[] = [];
     const params: (string | number)[] = [];

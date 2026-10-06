@@ -55,7 +55,7 @@ function FinancialPulse({
             <Text className={`text-slate-100 font-bold ${isVerySmall ? 'text-base' : 'text-lg'}`}>
               Financial Pulse
             </Text>
-            <Text className={`text-slate-300 mt-1 leading-5 ${isVerySmall ? 'text-xs' : 'text-sm'}`}>
+            <Text className={`text-slate-500 mt-1 leading-5 ${isVerySmall ? 'text-xs' : 'text-sm'} dark:text-slate-400`}>
               {headline}
             </Text>
           </View>

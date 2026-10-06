@@ -437,7 +437,7 @@ export default function ManageSMSRulesScreen() {
                 </Text>
               </View>
 
-              <Text className="text-xs text-slate-400 font-semibold">
+              <Text className="text-xs text-slate-500 font-semibold dark:text-slate-400">
                 {getAccountName(rule.accountId)}
               </Text>
             </View>
@@ -474,7 +474,7 @@ export default function ManageSMSRulesScreen() {
             {/* Translation Output */}
             <View className="bg-slate-50 dark:bg-slate-900 rounded-xl p-3 border border-slate-100 dark:border-slate-800">
               <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-[10px] uppercase font-bold text-slate-400">Maps to Details</Text>
+                <Text className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Maps to Details</Text>
                 <View className="flex-row items-center">
                   <View
                     className="w-2 h-2 rounded-full mr-1.5"
@@ -532,7 +532,7 @@ export default function ManageSMSRulesScreen() {
           </TouchableOpacity>
           <View className="flex-1 items-center">
             <Text className="text-white text-xl font-bold">SMS Learning Rules</Text>
-            <Text className="text-white/80 text-xs mt-1">Auto-normalizing banking texts</Text>
+            <Text className="text-white/90 text-xs mt-1">Auto-normalizing banking texts</Text>
           </View>
           <TouchableOpacity
             onPress={handleClearAll}
@@ -548,11 +548,11 @@ export default function ManageSMSRulesScreen() {
         {/* Stats */}
         <View className="flex-row space-x-3">
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4">
-            <Text className="text-white/70 text-xs font-semibold">Learned Rules</Text>
+            <Text className="text-white/90 text-xs font-semibold">Learned Rules</Text>
             <Text className="text-white text-2xl font-bold mt-1">{rules.length}</Text>
           </View>
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4">
-            <Text className="text-white/70 text-xs font-semibold">Active Filtered</Text>
+            <Text className="text-white/90 text-xs font-semibold">Active Filtered</Text>
             <Text className="text-white text-2xl font-bold mt-1">{filteredRules.length}</Text>
           </View>
         </View>
@@ -608,7 +608,7 @@ export default function ManageSMSRulesScreen() {
                   </View>
                   <View className="flex-1">
                     <Text className="text-slate-900 dark:text-white font-bold" numberOfLines={1}>{account.name}</Text>
-                    <Text className="text-slate-400 text-xs mt-0.5">
+                    <Text className="text-slate-500 text-xs mt-0.5 dark:text-slate-400">
                       {accountRuleCount} rules · {calibrationCounts[account.id] ?? 0} AI examples
                     </Text>
                   </View>
@@ -765,7 +765,7 @@ export default function ManageSMSRulesScreen() {
               </TouchableOpacity>
               <View className="flex-1 ml-4">
                 <Text className="text-white text-xl font-bold">AI SMS Calibration</Text>
-                <Text className="text-white/75 text-xs mt-1">AI suggests. You verify. HisabTrack remembers.</Text>
+                <Text className="text-white/90 text-xs mt-1">AI suggests. You verify. HisabTrack remembers.</Text>
               </View>
             </View>
           </LinearGradient>
@@ -776,7 +776,7 @@ export default function ManageSMSRulesScreen() {
               <Text className="text-slate-700 dark:text-slate-300 font-bold mt-4">
                 {selectedSample ? 'AI is reading the sample…' : 'Loading recent bank messages…'}
               </Text>
-              <Text className="text-slate-400 text-xs text-center mt-2">The selected SMS is sent to your configured AI provider.</Text>
+              <Text className="text-slate-500 text-xs text-center mt-2 dark:text-slate-400">The selected SMS is sent to your configured AI provider.</Text>
             </View>
           ) : !selectedSample ? (
             <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingVertical: 20, paddingBottom: 40 }}>
@@ -794,7 +794,7 @@ export default function ManageSMSRulesScreen() {
                 <TouchableOpacity key={sample.id} onPress={() => void runAIParse(sample)} className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 border border-slate-100 dark:border-slate-700">
                   <View className="flex-row justify-between mb-2">
                     <Text className="text-indigo-600 dark:text-indigo-400 text-xs font-bold">{sample.address}</Text>
-                    <Text className="text-slate-400 text-[10px]">{new Date(sample.date).toLocaleDateString()}</Text>
+                    <Text className="text-slate-500 text-[10px] dark:text-slate-400">{new Date(sample.date).toLocaleDateString()}</Text>
                   </View>
                   <Text className="text-slate-700 dark:text-slate-200 text-xs leading-5" numberOfLines={4}>{sample.body}</Text>
                   <View className="flex-row items-center mt-3">

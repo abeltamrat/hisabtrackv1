@@ -1,3 +1,4 @@
+import { useI18n } from '@/contexts/I18nContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FontAwesome } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -7,20 +8,21 @@ import { Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type TabEntry =
-  | { kind: 'screen'; routeName: string; icon: string; label: string }
+  | { kind: 'screen'; routeName: string; icon: string; label: string; a11yKey: string }
   | { kind: 'fab' }
-  | { kind: 'link'; path: string; icon: string; label: string };
+  | { kind: 'link'; path: string; icon: string; label: string; a11yKey: string };
 
 const TAB_CONFIG: TabEntry[] = [
-  { kind: 'screen', routeName: 'index',        icon: 'home',      label: 'Home'     },
-  { kind: 'screen', routeName: 'transactions', icon: 'exchange',  label: 'Txns'     },
+  { kind: 'screen', routeName: 'index',        icon: 'home',      label: 'Home',    a11yKey: 'dashboard'    },
+  { kind: 'screen', routeName: 'transactions', icon: 'exchange',  label: 'Txns',    a11yKey: 'transactions' },
   { kind: 'fab' },
-  { kind: 'screen', routeName: 'reports',      icon: 'pie-chart', label: 'Reports'  },
-  { kind: 'link',   path: '/settings',         icon: 'user',      label: 'Profile'  },
+  { kind: 'screen', routeName: 'reports',      icon: 'pie-chart', label: 'Reports', a11yKey: 'reports'      },
+  { kind: 'link',   path: '/settings',         icon: 'user',      label: 'Profile', a11yKey: 'settings'     },
 ];
 
 export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const { actualTheme } = useTheme();
+  const { t } = useI18n();
   const isDark = actualTheme === 'dark';
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -32,6 +34,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View
+      accessibilityRole="tablist"
       style={[
         styles.bar,
         {
@@ -49,6 +52,9 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
             <View key="fab" style={styles.fabWrap}>
               <TouchableOpacity
                 onPress={() => router.push('/modal' as any)}
+                accessibilityRole="button"
+                accessibilityLabel={t('addNew')}
+                accessibilityHint="Opens the form to record a new transaction"
                 activeOpacity={0.8}
                 style={{
                   width: 54,
@@ -76,6 +82,8 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
             <Pressable
               key={entry.path}
               onPress={() => router.push(entry.path as any)}
+              accessibilityRole="button"
+              accessibilityLabel={t(entry.a11yKey)}
               android_ripple={{ color: active + '30', borderless: true }}
               style={styles.tab}
             >
@@ -107,10 +115,14 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
           <Pressable
             key={entry.routeName}
             onPress={handlePress}
+            accessibilityRole="tab"
+            accessibilityLabel={t(entry.a11yKey)}
+            // Without this the reader cannot tell which tab is current.
+            accessibilityState={{ selected: isActive }}
             android_ripple={{ color: active + '30', borderless: true }}
             style={styles.tab}
           >
-            <View style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
+            <View importantForAccessibility="no-hide-descendants" style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
               <FontAwesome
                 name={entry.icon as any}
                 size={20}

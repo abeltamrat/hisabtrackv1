@@ -1,0 +1,39 @@
+{
+  "indexes": [
+    {
+      "comment": "scheduleLoanReminderPushes runs a collection-group query over every user's loans. Without this composite index the scheduled function fails at runtime.",
+      "collectionGroup": "loans",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "reminderEnabled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "reminder_at",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "comment": "processPushReceipts scans pending receipts across all users, oldest first.",
+      "collectionGroup": "push_receipts",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

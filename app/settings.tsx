@@ -972,7 +972,7 @@ export default function SettingsScreen() {
                         <Text className="text-green-700 dark:text-green-400 text-[10px] font-bold ml-1">Linked</Text>
                       </View>
                     </View>
-                  : <Text className="text-slate-400 text-sm">Tap to add phone number</Text>
+                  : <Text className="text-slate-500 text-sm dark:text-slate-400">Tap to add phone number</Text>
                 }
                 <FontAwesome name="pencil" size={13} color="#6366f1" />
               </TouchableOpacity>
@@ -996,7 +996,7 @@ export default function SettingsScreen() {
           <View className="flex-row items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700">
             <View className="flex-1 mr-3">
               <Text className="text-slate-800 dark:text-slate-200 font-semibold text-sm">App Lock</Text>
-              <Text className="text-slate-400 text-xs mt-0.5">
+              <Text className="text-slate-500 text-xs mt-0.5 dark:text-slate-400">
                 {hasPin ? 'Lock app when switching away' : 'Set a PIN first to enable'}
               </Text>
             </View>
@@ -1019,7 +1019,7 @@ export default function SettingsScreen() {
             <View className="flex-row items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700">
               <View className="flex-1 mr-3">
                 <Text className="text-slate-800 dark:text-slate-200 font-semibold text-sm">Fingerprint / Face ID</Text>
-                <Text className="text-slate-400 text-xs mt-0.5">
+                <Text className="text-slate-500 text-xs mt-0.5 dark:text-slate-400">
                   {hasPin ? 'Use biometric to unlock' : 'Requires a PIN to be set'}
                 </Text>
               </View>
@@ -1290,7 +1290,7 @@ export default function SettingsScreen() {
                 secureTextEntry
                 className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
-              <Text className="text-slate-400 text-[10px] mt-2 leading-4">
+              <Text className="text-slate-500 text-[10px] mt-2 leading-4 dark:text-slate-400">
                 Your API key is stored securely on your device. It is used to power the AI Financial Assistant features.
                 Note: when any AI key is set, bank SMS messages that the built-in parser cannot read are sent to that AI
                 provider for parsing. Remove all keys if you don't want SMS content to leave your device.
@@ -1329,7 +1329,7 @@ export default function SettingsScreen() {
                 secureTextEntry
                 className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
-              <Text className="text-slate-400 text-[10px] mt-2 leading-4">
+              <Text className="text-slate-500 text-[10px] mt-2 leading-4 dark:text-slate-400">
                 Add at least one key or enable Puter.js on web. The app will automatically fail over across configured providers.
               </Text>
             </View>
@@ -1740,7 +1740,7 @@ export default function SettingsScreen() {
                 <View key={item.id} className="flex-row items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-2xl border-2 border-transparent">
                   <View className="flex-1 mr-2">
                     <Text className="text-slate-900 dark:text-white font-bold text-sm">{item.label}</Text>
-                    {item.desc && <Text className="text-slate-400 text-xs">{item.desc}</Text>}
+                    {item.desc && <Text className="text-slate-500 text-xs dark:text-slate-400">{item.desc}</Text>}
                   </View>
                   <TouchableOpacity
                     onPress={() => handleRequest(item.id as any)}

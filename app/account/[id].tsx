@@ -199,7 +199,7 @@ export default function AccountDetail() {
                 <View className="flex-1 mr-2">
                   <Text className="text-slate-900 dark:text-white font-bold text-lg" numberOfLines={1}>{account.name}</Text>
                   <Text className="text-slate-500 text-sm">{account.type}</Text>
-                  {account.account_number ? <Text className="text-slate-400 text-xs mt-1">Acct: {(account as any).account_number}</Text> : null}
+                  {account.account_number ? <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">Acct: {(account as any).account_number}</Text> : null}
                 </View>
               </View>
               <View className="items-end">
@@ -216,7 +216,7 @@ export default function AccountDetail() {
               </View>
             ) : transactions.length === 0 ? (
               <View className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-                <Text className="text-slate-400 text-sm">No transactions for this account</Text>
+                <Text className="text-slate-500 text-sm dark:text-slate-400">No transactions for this account</Text>
               </View>
             ) : (
               <View className="bg-white dark:bg-slate-900 rounded-2xl p-2 border border-slate-100 dark:border-slate-700">
@@ -229,7 +229,7 @@ export default function AccountDetail() {
                   >
                     <View>
                       <Text className="text-slate-900 dark:text-white font-medium">{tx.description || tx.category || 'Transaction'}</Text>
-                      <Text className="text-slate-400 text-xs">{new Date(tx.date).toLocaleString()}</Text>
+                      <Text className="text-slate-500 text-xs dark:text-slate-400">{new Date(tx.date).toLocaleString()}</Text>
                     </View>
                     <View className="items-end">
                       <Text className={`font-bold ${tx.type === 'INCOME' ? 'text-emerald-600' : 'text-red-500'}`}>{tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(Number(tx.amount))}</Text>

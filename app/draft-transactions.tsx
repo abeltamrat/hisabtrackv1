@@ -618,7 +618,7 @@ export default function DraftTransactionsScreen() {
 
       {/* Header */}
       <LinearGradient
-        colors={['#6366f1', '#4f46e5']}
+        colors={['#4f46e5', '#4338ca']}
         className="px-6 pt-6 pb-8 rounded-b-[32px]"
         style={{ elevation: 4 }}
       >
@@ -658,7 +658,7 @@ export default function DraftTransactionsScreen() {
 
         {/* Account Info */}
         <View className="bg-white/10 backdrop-blur-lg rounded-2xl p-4">
-          <Text className="text-white/80 text-sm mb-1">{account?.name || 'All SMS Accounts'}</Text>
+          <Text className="text-white/90 text-sm mb-1">{account?.name || 'All SMS Accounts'}</Text>
           <Text className="text-white text-2xl font-bold">
             {account ? formatCurrency(account.balance || 0) : `${unrecordedCount} pending draft${unrecordedCount === 1 ? '' : 's'}`}
           </Text>
@@ -754,7 +754,7 @@ export default function DraftTransactionsScreen() {
                   Scan older SMS (choose range)
                 </Text>
               </TouchableOpacity>
-              <Text className="text-[10px] text-slate-400 mt-1">
+              <Text className="text-[10px] text-slate-500 mt-1 dark:text-slate-400">
                 Use this if your bank SMS are not showing up
               </Text>
             </View>
@@ -823,7 +823,7 @@ export default function DraftTransactionsScreen() {
           renderSectionHeader={({ section: { title } }) => title ? (
             <View className="flex-row items-center mb-4 mt-2 bg-slate-50 dark:bg-background-dark py-1">
               <View className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
-              <Text className="mx-4 text-slate-400 text-[10px] font-bold uppercase tracking-wider">{title}</Text>
+              <Text className="mx-4 text-slate-500 text-[10px] font-bold uppercase tracking-wider dark:text-slate-400">{title}</Text>
               <View className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
             </View>
           ) : null}
@@ -892,7 +892,7 @@ export default function DraftTransactionsScreen() {
                     >
                       <FontAwesome name="envelope-o" size={14} color="#64748b" />
                     </TouchableOpacity>
-                    <Text className="text-slate-400 text-xs">{formatDate(draft.date)}</Text>
+                    <Text className="text-slate-500 text-xs dark:text-slate-400">{formatDate(draft.date)}</Text>
                   </View>
                 </View>
 
@@ -913,9 +913,9 @@ export default function DraftTransactionsScreen() {
                       {draft.description}
                     </Text>
                     <View className="flex-row items-center">
-                      <Text className="text-slate-400 text-xs">{draft.category}</Text>
+                      <Text className="text-slate-500 text-xs dark:text-slate-400">{draft.category}</Text>
                       <View className="w-1 h-1 bg-slate-300 rounded-full mx-2" />
-                      <Text className="text-slate-400 text-xs">{formatTime(draft.date)}</Text>
+                      <Text className="text-slate-500 text-xs dark:text-slate-400">{formatTime(draft.date)}</Text>
                     </View>
                   </View>
                   <Text className={`font-bold text-lg ${isIncome ? 'text-green-600' : 'text-red-500'
@@ -1024,7 +1024,7 @@ export default function DraftTransactionsScreen() {
             disabled={selectedIds.size === 0}
             className={`px-4 py-3 rounded-xl border ${selectedIds.size === 0 ? 'border-slate-200 dark:border-slate-700' : 'border-red-300 bg-red-50 dark:bg-red-900/20'}`}
           >
-            <Text className={`text-sm font-bold ${selectedIds.size === 0 ? 'text-slate-300' : 'text-red-600 dark:text-red-400'}`}>
+            <Text className={`text-sm font-bold ${selectedIds.size === 0 ? 'text-slate-500' : 'text-red-600 dark:text-red-400'}`}>
               Ignore
             </Text>
           </TouchableOpacity>
@@ -1033,7 +1033,7 @@ export default function DraftTransactionsScreen() {
             disabled={selectedIds.size === 0}
             className={`px-5 py-3 rounded-xl ${selectedIds.size === 0 ? 'bg-slate-200 dark:bg-slate-700' : 'bg-primary-500'}`}
           >
-            <Text className={`text-sm font-bold ${selectedIds.size === 0 ? 'text-slate-400' : 'text-white'}`}>
+            <Text className={`text-sm font-bold ${selectedIds.size === 0 ? 'text-slate-500' : 'text-white'} dark:text-slate-400`}>
               Record
             </Text>
           </TouchableOpacity>
@@ -1058,7 +1058,7 @@ export default function DraftTransactionsScreen() {
                 <Text className="text-slate-900 dark:text-white text-lg font-bold">
                   {bulkAction === 'record' ? 'Record Transactions' : 'Ignore Transactions'}
                 </Text>
-                <Text className="text-slate-400 text-xs mt-0.5">
+                <Text className="text-slate-500 text-xs mt-0.5 dark:text-slate-400">
                   {selectedDrafts.length} transaction{selectedDrafts.length !== 1 ? 's' : ''} will be {bulkAction === 'record' ? 'saved to your ledger' : 'moved to rejected'}
                 </Text>
               </View>
@@ -1070,9 +1070,9 @@ export default function DraftTransactionsScreen() {
             {/* Column Headers */}
             <View className="flex-row items-center px-5 py-2 bg-slate-50 dark:bg-slate-800 border-t border-b border-slate-100 dark:border-slate-700">
               <View className="w-7" />
-              <Text className="text-[10px] font-bold text-slate-400 uppercase w-24">Amount</Text>
-              <Text className="text-[10px] font-bold text-slate-400 uppercase flex-1">Description</Text>
-              <Text className="text-[10px] font-bold text-slate-400 uppercase w-20 text-right">Date</Text>
+              <Text className="text-[10px] font-bold text-slate-500 uppercase w-24 dark:text-slate-400">Amount</Text>
+              <Text className="text-[10px] font-bold text-slate-500 uppercase flex-1 dark:text-slate-400">Description</Text>
+              <Text className="text-[10px] font-bold text-slate-500 uppercase w-20 text-right dark:text-slate-400">Date</Text>
               <View className="w-6" />
             </View>
 
@@ -1093,10 +1093,10 @@ export default function DraftTransactionsScreen() {
                     {/* Description + category */}
                     <View className="flex-1 pr-2">
                       <Text className="text-slate-800 dark:text-slate-200 text-xs font-semibold" numberOfLines={1}>{draft.description}</Text>
-                      <Text className="text-slate-400 text-[10px]" numberOfLines={1}>{draft.category}</Text>
+                      <Text className="text-slate-500 text-[10px] dark:text-slate-400" numberOfLines={1}>{draft.category}</Text>
                     </View>
                     {/* Date */}
-                    <Text className="text-slate-400 text-[10px] w-20 text-right">
+                    <Text className="text-slate-500 text-[10px] w-20 text-right dark:text-slate-400">
                       {new Date(draft.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </Text>
                     {/* Remove from selection */}
@@ -1305,7 +1305,7 @@ export default function DraftTransactionsScreen() {
                   className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-slate-900 dark:text-white text-base border border-slate-100 dark:border-slate-700"
                   placeholder="e.g. Starbucks"
                 />
-                <Text className="text-[10px] text-slate-400 mt-1 italic">
+                <Text className="text-[10px] text-slate-500 mt-1 italic dark:text-slate-400">
                   * App will learn this mapping for future syncs
                 </Text>
               </View>
@@ -1321,7 +1321,7 @@ export default function DraftTransactionsScreen() {
                   </View>
                 )}
                 <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4">
-                  <Text className="text-[11px] text-slate-400 uppercase font-bold mb-3">
+                  <Text className="text-[11px] text-slate-500 uppercase font-bold mb-3 dark:text-slate-400">
                     {selectedDraft?.type === 'INCOME' ? 'Income categories' : 'Expense categories'}
                   </Text>
                   <ScrollView showsVerticalScrollIndicator={false} className="max-h-64" nestedScrollEnabled>
@@ -1398,7 +1398,7 @@ export default function DraftTransactionsScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                <Text className="text-[10px] text-slate-400 mt-1 italic">
+                <Text className="text-[10px] text-slate-500 mt-1 italic dark:text-slate-400">
                   Use comma-separated tags.
                 </Text>
                 {parseTagInput(tagsInput) && parseTagInput(tagsInput)!.length > 0 && (
@@ -1412,7 +1412,7 @@ export default function DraftTransactionsScreen() {
                 )}
                 {uniqueTags.length > 0 && (
                   <View className="mt-3">
-                    <Text className="text-[10px] text-slate-400 font-bold mb-1.5 uppercase">Suggested / Used Tags</Text>
+                    <Text className="text-[10px] text-slate-500 font-bold mb-1.5 uppercase dark:text-slate-400">Suggested / Used Tags</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1 px-1">
                       {uniqueTags.map((tag) => {
                         const currentTags = parseTagInput(tagsInput) || [];

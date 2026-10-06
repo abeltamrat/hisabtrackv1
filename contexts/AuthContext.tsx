@@ -16,7 +16,7 @@ import { resetLoans } from '@/store/slices/loansSlice';
 import { resetTransactions } from '@/store/slices/transactionsSlice';
 import { createSerialQueue } from '@/utils/asyncLock';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, View, Text } from 'react-native';
+import { ActivityIndicator, Appearance, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch } from 'react-redux';
 interface User { uid: string; email: string | null; displayName?: string | null }
 interface AuthContextType { user: User | null; loading: boolean; signOut: () => Promise<void>; isAuthenticated: boolean }
@@ -26,6 +26,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by `retry` to re-run the auth-state effect from scratch.
+  const [attempt, setAttempt] = useState(0);
   const dispatch = useDispatch();
   useEffect(() => {
     let disposed = false;
@@ -67,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }).catch(e => { if (!disposed && currentGeneration === generation) { setError(e.message || 'Unable to open your data'); setLoading(false); } });
     });
     return () => { disposed = true; unsubscribe(); SyncService.stopAutoSync(); };
-  }, [dispatch]);
+  }, [dispatch, attempt]);
   useEffect(() => {
     if (loading || error) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -77,15 +79,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     return () => { unsubscribe(); if (timer) clearTimeout(timer); };
   }, [loading, error, user?.uid]);
+  const retry = async () => {
+    try {
+      const Updates = await import('expo-updates');
+      await Updates.reloadAsync();
+    } catch {
+      // reloadAsync is unavailable in Expo Go and on web; re-running the auth
+      // transition by remounting the subscription is the next best thing.
+      setError(null);
+      setLoading(true);
+      setAttempt(value => value + 1);
+    }
+  };
   const signOut = async () => {
     setLoading(true); SyncService.stopAutoSync();
     await BackgroundService.suspend(); await SMSSyncService.suspend(); await SyncService.settle();
     if (user) await RemotePushService.unregisterCurrentDevice(user.uid).catch(() => undefined);
     try { await AuthService.signOut(); } catch (e) { setLoading(false); throw e; }
   };
+  // This gate replaces the whole app, so it needs the theme background and
+  // readable text; it previously rendered unstyled on a white surface in dark
+  // mode. ThemeProvider sits below AuthProvider, so read the OS preference.
+  const isDark = Appearance.getColorScheme() === 'dark';
+  const surface = isDark ? '#0f172a' : '#f8fafc';
+  const heading = isDark ? '#f8fafc' : '#0f172a';
+  const muted = isDark ? '#cbd5e1' : '#475569';
+
   return <AuthContext.Provider value={{ user, loading, signOut, isAuthenticated: !!user }}>
-    {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /><Text>Opening your data…</Text></View>
-      : error ? <View style={{ flex: 1, padding: 24 }}><Text>{error}</Text><Text>Close and reopen the app to retry. Your stored data has been preserved.</Text></View>
+    {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: surface }}>
+        <ActivityIndicator size="large" color="#6366f1" />
+        <Text accessibilityLiveRegion="polite" style={{ color: muted, marginTop: 12 }}>Opening your data…</Text>
+      </View>
+      : error ? <View style={{ flex: 1, padding: 24, justifyContent: 'center', backgroundColor: surface }}>
+          <Text accessibilityRole="alert" style={{ color: heading, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Unable to open your data</Text>
+          <Text style={{ color: muted, marginBottom: 4 }}>{error}</Text>
+          <Text style={{ color: muted, marginBottom: 20 }}>Your stored data has been preserved.</Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Try opening your data again"
+            onPress={retry}
+            style={{ backgroundColor: '#4f46e5', borderRadius: 12, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: '700' }}>Try again</Text>
+          </TouchableOpacity>
+        </View>
       : <React.Fragment key={user?.uid || 'guest'}>{children}</React.Fragment>}
   </AuthContext.Provider>;
 }

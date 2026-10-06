@@ -234,21 +234,21 @@ export default function AmortizationScreen() {
               <Text className="text-white text-lg font-bold mb-6">Calculation Results</Text>
 
               <View className="flex-row justify-between items-center mb-4 border-b border-slate-800 pb-4">
-                <Text className="text-slate-400">{result.paymentLabel}</Text>
+                <Text className="text-slate-500 dark:text-slate-400">{result.paymentLabel}</Text>
                 <Text className="text-white text-2xl font-bold text-green-400">
                   {formatCurrency(result.paymentAmount)}
                 </Text>
               </View>
 
               <View className="flex-row justify-between items-center mb-4">
-                <Text className="text-slate-400">Total Payment</Text>
+                <Text className="text-slate-500 dark:text-slate-400">Total Payment</Text>
                 <Text className="text-white font-bold text-lg">
                   {formatCurrency(result.totalPayment)}
                 </Text>
               </View>
 
               <View className="flex-row justify-between items-center mb-6">
-                <Text className="text-slate-400">Total Interest</Text>
+                <Text className="text-slate-500 dark:text-slate-400">Total Interest</Text>
                 <Text className="text-white font-bold text-lg text-red-400">
                   {formatCurrency(result.totalInterest)}
                 </Text>

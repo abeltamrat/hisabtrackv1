@@ -19,7 +19,28 @@ const initialState: BudgetsState = {
 
 export const fetchBudgets = createAsyncThunk('budgets/fetchBudgets', async () => {
   const db = await getDatabase();
-  return await db.getBudgets();
+  const stored = await db.getBudgets();
+
+  // One row per period is stored, so without this a budget stops existing the
+  // moment its period ends and the screen looks as though it was deleted.
+  // planRollForward is idempotent, so this is safe on every fetch.
+  const { BudgetService } = await import('@/services/BudgetService');
+  const missing = BudgetService.planRollForward(stored);
+  if (missing.length === 0) return stored;
+
+  const created = await Promise.all(
+    missing.map(async budget => {
+      try {
+        await db.upsertBudget(budget);
+        return budget;
+      } catch (error) {
+      // A failure here must not block showing the budgets that do exist.
+      console.warn('[budgets] Could not carry a budget into the new period:', error);
+      return null;
+      }
+    })
+  );
+  return [...stored, ...created.filter((budget): budget is Budget => budget !== null)];
 });
 
 export const addBudget = createAsyncThunk('budgets/addBudget', async (budget: Omit<Budget, 'id'>) => {
@@ -35,9 +56,13 @@ export const updateBudget = createAsyncThunk('budgets/updateBudget', async (budg
 
 export const deleteBudget = createAsyncThunk('budgets/deleteBudget', async (id: string) => {
   const db = await getDatabase();
-  await db.deleteBudget(id);
-
-  return id;
+  const budgets = await db.getBudgets();
+  const selected = budgets.find(budget => budget.id === id);
+  const ids = selected
+    ? budgets.filter(budget => budget.category === selected.category && budget.period === selected.period).map(budget => budget.id)
+    : [id];
+  await Promise.all(ids.map(budgetId => db.deleteBudget(budgetId)));
+  return ids;
 });
 
 const budgetsSlice = createSlice({
@@ -104,7 +129,8 @@ const budgetsSlice = createSlice({
       .addCase(deleteBudget.fulfilled, (state, action) => {
         if (!state.mutations[action.meta.requestId]) return;
         delete state.mutations[action.meta.requestId];
-        state.items = state.items.filter((b) => b.id !== action.payload);
+        const deleted = new Set(action.payload);
+        state.items = state.items.filter((b) => !deleted.has(b.id));
       });
   },
 });

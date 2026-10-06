@@ -2,6 +2,7 @@ import { useTransactions } from '@/context/TransactionContext';
 import CategoryIcon from '@/components/CategoryIcon';
 import ScreenInfoCard from '@/components/ScreenInfoCard';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
+import { useLedgerClock } from '@/hooks/useLedgerClock';
 import BudgetService from '@/services/BudgetService';
 import { AppDispatch, RootState } from '@/store';
 import { deleteBudget, fetchBudgets } from '@/store/slices/budgetsSlice';
@@ -18,6 +19,8 @@ import { useDispatch, useSelector } from 'react-redux';
 
 export default function BudgetScreen() {
   const { formatCurrency } = useAppSettings();
+  // Re-evaluates across a period boundary instead of freezing at mount time.
+  const ledgerNow = useLedgerClock();
   const colorScheme = useColorScheme();
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
@@ -83,7 +86,7 @@ export default function BudgetScreen() {
 
   const activeBudgets = useMemo(
     () => {
-      const currentTime = Date.now();
+      const currentTime = ledgerNow;
       return budgets.filter((budget) => {
         if (budget.start_date > currentTime || budget.end_date < currentTime) {
           return false;
@@ -92,7 +95,7 @@ export default function BudgetScreen() {
         return !category || category.type === 'expense';
       });
     },
-    [budgets, categoryByName]
+    [budgets, categoryByName, ledgerNow]
   );
 
   const budgetData = useMemo(
@@ -308,7 +311,7 @@ export default function BudgetScreen() {
                     <View className="flex-1">
                       <Text className="text-slate-900 dark:text-white font-bold text-base">{budget.category}</Text>
                       {parentCategory && (
-                        <Text className="text-slate-400 dark:text-slate-500 text-xs mb-1">
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs mb-1">
                           {parentCategory.name} category
                         </Text>
                       )}

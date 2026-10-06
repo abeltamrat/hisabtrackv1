@@ -325,7 +325,7 @@ export default function AddTransactionScreen() {
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 className="flex-row items-center px-1"
               >
-                <Text className="text-slate-400 text-[10px] mr-1">{children.length}</Text>
+                <Text className="text-slate-500 text-[10px] mr-1 dark:text-slate-400">{children.length}</Text>
                 <FontAwesome name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={9} color="#94a3b8" />
               </TouchableOpacity>
             )}
@@ -401,7 +401,7 @@ export default function AddTransactionScreen() {
             >
               <View className="flex-row items-center">
                 <FontAwesome name="arrow-up" size={13} color={type === 'EXPENSE' ? '#ef4444' : '#94a3b8'} />
-                <Text className={`ml-1.5 text-xs font-bold ${type === 'EXPENSE' ? 'text-red-500' : 'text-slate-400'}`}>Expense</Text>
+                <Text className={`ml-1.5 text-xs font-bold ${type === 'EXPENSE' ? 'text-red-500' : 'text-slate-500'} dark:text-slate-400`}>Expense</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
@@ -411,7 +411,7 @@ export default function AddTransactionScreen() {
             >
               <View className="flex-row items-center">
                 <FontAwesome name="arrow-down" size={13} color={type === 'INCOME' ? '#10b981' : '#94a3b8'} />
-                <Text className={`ml-1.5 text-xs font-bold ${type === 'INCOME' ? 'text-green-600' : 'text-slate-400'}`}>Income</Text>
+                <Text className={`ml-1.5 text-xs font-bold ${type === 'INCOME' ? 'text-green-600' : 'text-slate-500'} dark:text-slate-400`}>Income</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -439,7 +439,7 @@ export default function AddTransactionScreen() {
                   />
                 </View>
                 <Text className="text-slate-900 dark:text-white text-[11px] font-bold mb-0.5" numberOfLines={1}>{account.name}</Text>
-                <Text className="text-slate-500 text-[9px]">{formatCurrency(account.balance)}</Text>
+                <Text className="text-slate-500 text-[10px]">{formatCurrency(account.balance)}</Text>
               </TouchableOpacity>
             ))}
             {accounts.length === 0 && (
@@ -516,7 +516,7 @@ export default function AddTransactionScreen() {
                     />
                   </View>
                   {selectedBudgetMetrics.rolloverDelta !== 0 && (
-                    <Text className={`ml-1.5 text-[9px] font-semibold ${selectedBudgetMetrics.rolloverDelta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <Text className={`ml-1.5 text-[10px] font-semibold ${selectedBudgetMetrics.rolloverDelta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                       {selectedBudgetMetrics.rolloverDelta > 0 ? '+' : ''}{selectedBudgetMetrics.rolloverDelta.toFixed(0)}
                     </Text>
                   )}
@@ -544,7 +544,7 @@ export default function AddTransactionScreen() {
               onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)}
             />
           </View>
-          <Text className="text-slate-400 text-[10px] mt-1.5">Comma-separated. Great for projects, events, or links.</Text>
+          <Text className="text-slate-500 text-[10px] mt-1.5 dark:text-slate-400">Comma-separated. Great for projects, events, or links.</Text>
           {parsedTags.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2 -mx-1 px-1">
               {parsedTags.map((tag) => (
@@ -556,7 +556,7 @@ export default function AddTransactionScreen() {
           )}
           {uniqueTags.length > 0 && (
             <View className="mt-2">
-              <Text className="text-[9px] text-slate-400 font-bold mb-1 uppercase">Suggested Tags</Text>
+              <Text className="text-[10px] text-slate-500 font-bold mb-1 uppercase dark:text-slate-400">Suggested Tags</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1 px-1">
                 {uniqueTags.map((tag) => {
                   const currentTags = parseTagInput(tagsInput) || [];

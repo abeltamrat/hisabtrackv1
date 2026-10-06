@@ -72,8 +72,8 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
       {transactions.length === 0 ? (
         <View className="bg-white dark:bg-slate-800 rounded-2xl p-8 items-center border border-slate-100 dark:border-slate-700">
           <FontAwesome name="inbox" size={48} color="#cbd5e1" />
-          <Text className="text-slate-400 mt-4 text-sm">No transactions yet</Text>
-          <Text className="text-slate-300 text-xs mt-1">Add your first transaction to get started</Text>
+          <Text className="text-slate-500 mt-4 text-sm dark:text-slate-400">No transactions yet</Text>
+          <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">Add your first transaction to get started</Text>
         </View>
       ) : (
         transactions.map((item) => {
@@ -113,13 +113,13 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
               </View>
               <View className="flex-1">
                 <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">{item.description}</Text>
-                <Text className="text-slate-400 text-xs">{formatDate(item.date)}</Text>
+                <Text className="text-slate-500 text-xs dark:text-slate-400">{formatDate(item.date)}</Text>
               </View>
               <View className="items-end">
                 <Text className={`font-bold text-lg ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
                   {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
                 </Text>
-                <Text className="text-slate-400 text-xs mt-1">{item.category}</Text>
+                <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">{item.category}</Text>
               </View>
             </TouchableOpacity>
           );

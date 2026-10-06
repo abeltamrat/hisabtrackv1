@@ -2,9 +2,49 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null && !exists(/databases/$(database)/documents/deletedAccounts/$(request.auth.uid)); }
-    match /users/{userId}/{document=**} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
+    function owner(userId) { return signedIn() && request.auth.uid == userId; }
+
+    // Push jobs are the payload a Cloud Function hands straight to Expo, so a
+    // client-written title/body would be delivered verbatim to whatever token
+    // the device document names. Content is server-generated only; the test
+    // push goes through the sendTestPush callable instead.
+    match /users/{userId}/push_jobs/{jobId} {
+      allow read: if owner(userId);
+      allow write: if false;
     }
+    // Receipts are written by the delivery pipeline and only read by the owner.
+    match /users/{userId}/push_receipts/{receiptId} {
+      allow read: if owner(userId);
+      allow write: if false;
+    }
+    // Device registration stays client-writable, but constrained: an Expo token
+    // must look like one, and free-text fields cannot be used to smuggle a
+    // notification payload through.
+    match /users/{userId}/devices/{deviceId} {
+      function validDevice(d) {
+        return (d.expoPushToken == null || (d.expoPushToken is string && d.expoPushToken.size() <= 256
+                 && d.expoPushToken.matches('^Expo(nent)?PushToken\\[[A-Za-z0-9_-]+\\]$')))
+          && d.notificationsEnabled is bool && d.isActive is bool
+          && d.installationId is string && d.installationId.size() <= 200
+          && (!('lastError' in d) || d.lastError == null || (d.lastError is string && d.lastError.size() <= 500))
+          && d.keys().hasOnly(['installationId', 'expoPushToken', 'expoPushTokenPreview', 'notificationsEnabled',
+                              'isActive', 'platform', 'projectId', 'appVersion', 'appBuild',
+                              'executionEnvironment', 'updatedAt', 'lastSeenAt', 'lastError']);
+      }
+      allow read: if owner(userId);
+      allow create, update: if owner(userId) && validDevice(request.resource.data);
+      allow delete: if owner(userId);
+    }
+
+    // Enumerated rather than a `{document=**}` wildcard: rules are additive, so
+    // a recursive allow on the whole user subtree would re-grant the writes the
+    // push_jobs and devices rules above exist to prevent.
+    match /users/{userId}/accounts/{id} { allow read, write: if owner(userId); }
+    match /users/{userId}/transactions/{id} { allow read, write: if owner(userId); }
+    match /users/{userId}/budgets/{id} { allow read, write: if owner(userId); }
+    match /users/{userId}/loans/{id} { allow read, write: if owner(userId); }
+    match /users/{userId}/meta/{id} { allow read, write: if owner(userId); }
+    match /users/{userId} { allow read, write: if owner(userId); }
     match /phoneIndex/{phone} {
       allow get: if signedIn() && resource.data.uid == request.auth.uid;
       allow list: if false;

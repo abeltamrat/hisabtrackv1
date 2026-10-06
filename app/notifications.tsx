@@ -134,11 +134,11 @@ export default function NotificationsScreen() {
         {/* Stats */}
         <View className="flex-row justify-around">
           <View className="items-center">
-            <Text className="text-white/80 text-xs">Total</Text>
+            <Text className="text-white/90 text-xs">Total</Text>
             <Text className="text-white text-2xl font-bold">{notifications.length}</Text>
           </View>
           <View className="items-center">
-            <Text className="text-white/80 text-xs">Unread</Text>
+            <Text className="text-white/90 text-xs">Unread</Text>
             <Text className="text-white text-2xl font-bold">{unreadCount}</Text>
           </View>
         </View>
@@ -179,8 +179,8 @@ export default function NotificationsScreen() {
         {notifications.length === 0 ? (
           <View className="flex-1 justify-center items-center py-20">
             <FontAwesome name="bell-slash" size={64} color="#cbd5e1" />
-            <Text className="text-slate-400 text-lg mt-4">No notifications</Text>
-            <Text className="text-slate-300 text-sm text-center mt-2 px-8">
+            <Text className="text-slate-500 text-lg mt-4 dark:text-slate-400">No notifications</Text>
+            <Text className="text-slate-500 text-sm text-center mt-2 px-8 dark:text-slate-400">
               You're all caught up! New notifications will appear here.
             </Text>
           </View>
@@ -224,7 +224,7 @@ export default function NotificationsScreen() {
                     <Text className="text-slate-600 dark:text-slate-300 text-sm mb-2">
                       {notification.message}
                     </Text>
-                    <Text className="text-slate-400 text-xs">
+                    <Text className="text-slate-500 text-xs dark:text-slate-400">
                       {new Date(notification.timestamp).toLocaleString()}
                     </Text>
                   </View>

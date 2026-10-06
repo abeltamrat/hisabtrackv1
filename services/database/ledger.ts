@@ -7,9 +7,22 @@ import LocalChangeEmitter from '../LocalChangeEmitter';
 export type Table = 'accounts' | 'transactions' | 'budgets' | 'loans' | 'meta';
 export type Row = { table: Table; id: string; value?: any };
 export type Change = Row & { token: string; base: number };
-type Adapter = IDatabase & { readMeta(id: string): Promise<any>; commitRows(rows: Row[], metadata?: Record<string, any>): Promise<void> };
+type Adapter = IDatabase & {
+  readMeta(id: string): Promise<any>;
+  commitRows(rows: Row[], metadata?: Record<string, any>): Promise<void>;
+  getTransactionById?(id: string): Promise<Transaction | undefined>;
+};
 const tables: Array<Exclude<Table, 'meta'>> = ['accounts', 'transactions', 'budgets', 'loans'];
 const key = (row: Row) => `${row.table}/${row.id}`;
+
+function loanReminderAt(loan: Pick<Loan, 'due_date' | 'reminderDaysBefore' | 'reminderTime'>) {
+  const reminder = new Date(loan.due_date);
+  reminder.setDate(reminder.getDate() - (loan.reminderDaysBefore || 0));
+  const clock = loan.reminderTime ? new Date(loan.reminderTime) : null;
+  const hasClock = clock !== null && Number.isFinite(clock.getTime());
+  reminder.setHours(hasClock ? clock.getHours() : 9, hasClock ? clock.getMinutes() : 0, 0, 0);
+  return reminder.getTime();
+}
 
 /** One writer, atomic compound operations, and an outbox committed with the data. */
 export class LedgerDatabase implements IDatabase {
@@ -34,6 +47,14 @@ export class LedgerDatabase implements IDatabase {
   private baseline(account: Account, difference: number): Row {
     const id = `baseline-${account.id}`;
     return { table: 'transactions', id, value: { id, account_id: account.id, amount: Math.abs(difference), type: difference > 0 ? 'INCOME' : 'EXPENSE', purpose: 'ADJUSTMENT', category: 'Opening Balance', description: 'Preserved legacy balance', date: account.created_at || 1, updated_at: Date.now() } };
+  }
+  /**
+   * Find one transaction by id. Prefers the adapter's keyed lookup; the
+   * fallback keeps any adapter without it working (older builds, test doubles).
+   */
+  private async transactionById(id: string): Promise<Transaction | undefined> {
+    if (this.raw.getTransactionById) return this.raw.getTransactionById(id);
+    return (await this.raw.getTransactions()).find(t => t.id === id);
   }
   deactivate() { this.active = false; }
   drain() { return this.queue(async () => undefined); }
@@ -84,7 +105,7 @@ export class LedgerDatabase implements IDatabase {
     return this.run(async () => {
       const tx = await this.buildTransaction(input);
       if (input.operation_id) {
-        const existing = (await this.raw.getTransactions()).find(t => t.id === tx.id);
+        const existing = await this.transactionById(tx.id);
         if (existing) {
           if (existing.account_id !== tx.account_id || existing.amount !== tx.amount || existing.type !== tx.type || existing.to_account_id !== tx.to_account_id) throw new Error('Operation already recorded with different details');
           return existing;
@@ -96,7 +117,7 @@ export class LedgerDatabase implements IDatabase {
   }
   updateTransaction(id: string, updates: Partial<Omit<Transaction, 'id'>>) {
     return this.run(async () => {
-      const old = (await this.raw.getTransactions()).find(t => t.id === id);
+      const old = await this.transactionById(id);
       if (!old) throw new Error('Transaction not found');
       if (old.loan_id || old.operation_id?.startsWith('repayment-')) throw new Error('Loan postings must be corrected through the loan workflow');
       const tx = { ...old, ...updates, id, updated_at: Date.now() } as Transaction;
@@ -108,7 +129,7 @@ export class LedgerDatabase implements IDatabase {
   }
   deleteTransaction(id: string, silent = false) {
     return this.run(async () => {
-      const old = (await this.raw.getTransactions()).find(t => t.id === id);
+      const old = await this.transactionById(id);
       if (old?.loan_id && !silent) throw new Error('Loan postings must be corrected through the loan workflow');
       await this.commit([{ table: 'transactions', id }], old ? await this.balances(old) : []);
     });
@@ -166,11 +187,7 @@ export class LedgerDatabase implements IDatabase {
       let extra: Record<string, any> = {};
       if (table === 'loans') {
         const loan = input as unknown as Loan;
-        const reminder = new Date(loan.due_date);
-        reminder.setDate(reminder.getDate() - (loan.reminderDaysBefore || 0));
-        const clock = loan.reminderTime ? new Date(loan.reminderTime) : null;
-        reminder.setHours(clock?.getHours() ?? 9, clock?.getMinutes() ?? 0, 0, 0);
-        extra = { reminder_at: reminder.getTime(), currency: (await this.raw.getAccounts())[0]?.currency || 'ETB', interest_method: 'FLAT_MONTHLY' };
+        extra = { reminder_at: loanReminderAt(loan), currency: (await this.raw.getAccounts())[0]?.currency || 'ETB', interest_method: 'FLAT_MONTHLY' };
         if (loan.id && !loan.shared_loan_id) {
           const old = (await this.raw.getLoans()).find(l => l.id === loan.id);
           if (old && ['principal_amount', 'interest_rate', 'start_date', 'due_date', 'remaining_balance'].some(k => (old as any)[k] !== (loan as any)[k]) && (await this.raw.getTransactions()).some(t => t.loan_id === loan.id)) throw new Error('Recorded loan amounts cannot be overwritten. Use the payment workflow.');
@@ -210,7 +227,12 @@ export class LedgerDatabase implements IDatabase {
   }
   recordLoanPayment(loanId: string, accountId: string, amount: number, operationId: string) {
     return this.run(async () => {
-      const existing = (await this.raw.getTransactions()).find(t => t.operation_id === operationId);
+      // buildTransaction derives the id from operation_id, so the keyed lookup
+      // catches retries without a scan. A record written by an older build could
+      // carry operation_id under a random id, and missing it would double-post a
+      // payment, so a miss still falls back to the scan.
+      const existing = await this.transactionById(`op-${operationId}`)
+        ?? (await this.raw.getTransactions()).find(t => t.operation_id === operationId);
       if (existing) {
         if (existing.loan_id !== loanId || existing.account_id !== accountId || existing.amount !== money(amount)) throw new Error('Payment operation already has different details');
         return existing;
@@ -384,8 +406,16 @@ export class LedgerDatabase implements IDatabase {
       for (const change of changes) {
         const k = key(change);
         if (outbox[k] || (revisions[k] !== undefined && change.revision <= revisions[k])) continue;
-        if (change.value) this.validateEntity(change.table, change.value);
-        rows.push(change); revisions[k] = change.revision;
+        let row: Row = change;
+        if (change.table === 'loans' && change.value && !Number.isFinite(change.value.reminder_at)) {
+          const value = { ...change.value, reminder_at: loanReminderAt(change.value), updated_at: Date.now() };
+          row = { table: 'loans', id: change.id, value };
+          // Persist the derived field remotely so the indexed scheduler can see
+          // loans created by builds that predate reminder_at.
+          outbox[k] = { ...row, token: generateUUID(), base: change.revision };
+        }
+        if (row.value) this.validateEntity(row.table, row.value);
+        rows.push(row); revisions[k] = change.revision;
       }
       // Derived balances are rebuilt from the combined ledger in the same commit.
       const accounts = new Map((await this.raw.getAccounts()).map(a => [a.id, a]));

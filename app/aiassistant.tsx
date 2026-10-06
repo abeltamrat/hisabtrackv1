@@ -326,7 +326,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                             </Text>
                         </View>
                     ) : null}
-                    <Text className={`${isUser ? 'text-indigo-100' : 'text-slate-400'} text-xs`}>
+                    <Text className={`${isUser ? 'text-indigo-100' : 'text-slate-500'} text-xs dark:text-slate-400`}>
                         {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                 </View>

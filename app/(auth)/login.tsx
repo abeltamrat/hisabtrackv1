@@ -188,7 +188,7 @@ export default function LoginScreen() {
                 <FontAwesome name="lock" size={48} color="#fff" />
               </View>
               <Text className="text-white text-4xl font-bold mb-2">HisabTrack</Text>
-              <Text className="text-white/80 text-center text-base">
+              <Text className="text-white/90 text-center text-base">
                 {mode === 'signin' && 'Welcome back! Sign in to continue'}
                 {mode === 'signup' && 'Create your account to get started'}
                 {mode === 'reset' && 'Reset your password'}
@@ -265,7 +265,7 @@ export default function LoginScreen() {
                   {/* Divider */}
                   <View className="flex-row items-center mb-4">
                     <View className="flex-1 h-px bg-slate-200" />
-                    <Text className="text-slate-400 text-sm mx-3">or</Text>
+                    <Text className="text-slate-500 text-sm mx-3 dark:text-slate-400">or</Text>
                     <View className="flex-1 h-px bg-slate-200" />
                   </View>
 
@@ -319,7 +319,7 @@ export default function LoginScreen() {
                     {phoneError ? (
                       <Text className="text-red-500 text-xs mt-1">{phoneError}</Text>
                     ) : (
-                      <Text className="text-slate-400 text-xs mt-1">
+                      <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">
                         Accepts 09…, 9…, or +251… — allows sign-in with phone
                       </Text>
                     )}
@@ -358,7 +358,7 @@ export default function LoginScreen() {
                         <FontAwesome name={showPassword ? 'eye-slash' : 'eye'} size={20} color="#64748b" />
                       </TouchableOpacity>
                     </View>
-                    <Text className="text-slate-400 text-xs mt-2">
+                    <Text className="text-slate-500 text-xs mt-2 dark:text-slate-400">
                       Must be at least 6 characters
                     </Text>
                   </View>
@@ -425,7 +425,7 @@ export default function LoginScreen() {
             </View>
 
             {/* Footer */}
-            <Text className="text-white/60 text-center mt-8 text-sm">
+            <Text className="text-white/90 text-center mt-8 text-sm">
               By continuing, you agree to our Terms of Service and Privacy Policy
             </Text>
           </ScrollView>

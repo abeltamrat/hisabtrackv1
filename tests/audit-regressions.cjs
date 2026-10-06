@@ -229,3 +229,19 @@ test('old cloud accounts retain unposted balances and mixed-currency restore is 
  assert.equal((await db.getTransactions()).length,1);
  await assert.rejects(db.restore({accounts:[{...account('Other'),id:'usd',currency:'USD',created_at:1}],transactions:[],loans:[],budgets:[]}),/currency/);
 });
+
+test('legacy cloud loans gain an indexed reminder timestamp and an outbox write',async()=>{
+ const {raw,db}=make();await db.init();
+ const due=new Date(2026,10,20,12).getTime();
+ await db.applyRemote([{table:'loans',id:'legacy-loan',revision:3,value:{
+  id:'legacy-loan',type:'BORROWED',status:'ACTIVE',principal_amount:1000,
+  remaining_balance:1000,interest_rate:0,start_date:new Date(2026,9,1).getTime(),
+  due_date:due,reminderEnabled:true,reminderDaysBefore:2,
+ }}]);
+ const [loan]=await db.getLoans();
+ assert.ok(Number.isFinite(loan.reminder_at));
+ assert.equal(new Date(loan.reminder_at).getDate(),18);
+ const pending=await raw.readMeta('outbox');
+ assert.equal(pending['loans/legacy-loan'].base,3);
+ assert.equal(pending['loans/legacy-loan'].value.reminder_at,loan.reminder_at);
+});

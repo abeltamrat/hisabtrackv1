@@ -30,10 +30,37 @@ function calculateLoanReminderAt(loan) {
   return Number.isFinite(instant) && instant > 0 ? instant : null;
 }
 
+/**
+ * An Expo push token identifies exactly one install, so if two accounts claim
+ * the same token one of them planted it to aim notifications at someone else's
+ * device. Firestore rules cannot verify token ownership (the token is not tied
+ * to a Firebase identity), so the check belongs here: a contested token is
+ * never delivered to.
+ */
+async function tokenIsExclusivelyOwned(userId, expoPushToken) {
+  const claims = await db
+    .collectionGroup(DEVICES_COLLECTION)
+    .where('expoPushToken', '==', expoPushToken)
+    .get();
+
+  const owners = new Set(
+    claims.docs
+      .map((claim) => claim.ref.parent.parent && claim.ref.parent.parent.id)
+      .filter(Boolean)
+  );
+  if (owners.size <= 1) return true;
+
+  logger.warn('Refusing a push token claimed by more than one account.', {
+    userId,
+    owners: [...owners],
+  });
+  return false;
+}
+
 async function getActiveDeviceTargets(userId) {
   const snapshot = await db.collection(`users/${userId}/${DEVICES_COLLECTION}`).get();
 
-  return snapshot.docs
+  const candidates = snapshot.docs
     .map((docSnapshot) => ({
       deviceId: docSnapshot.id,
       ...docSnapshot.data(),
@@ -46,6 +73,11 @@ async function getActiveDeviceTargets(userId) {
         && Expo.isExpoPushToken(device.expoPushToken)
       );
     });
+
+  const ownership = await Promise.all(
+    candidates.map((device) => tokenIsExclusivelyOwned(userId, device.expoPushToken))
+  );
+  return candidates.filter((_, index) => ownership[index]);
 }
 
 async function disableInvalidDevice(userId, deviceId, error) {
@@ -190,6 +222,7 @@ exports.processPushReceipts = onSchedule(
     const snapshot = await db
       .collectionGroup(PUSH_RECEIPTS_COLLECTION)
       .where('status', '==', 'pending')
+      .orderBy('createdAt')
       .limit(RECEIPT_BATCH_LIMIT)
       .get();
 
@@ -255,10 +288,18 @@ exports.scheduleLoanReminderPushes = onSchedule(
     const windowStart = now - LOAN_REMINDER_WINDOW_MS;
     const windowEnd = now + LOAN_REMINDER_WINDOW_MS;
 
+    // The reminder window is part of the query, not a post-filter. Reading every
+    // active loan in the project every 15 minutes grows without bound and bills
+    // a document read per loan; this touches only the loans actually due.
+    // Needs the composite index declared in firestore.indexes.json.
     const snapshot = await db
       .collectionGroup('loans')
       .where('status', '==', 'ACTIVE')
       .where('reminderEnabled', '==', true)
+      .where('reminder_at', '>=', windowStart)
+      .where('reminder_at', '<=', windowEnd)
+      .orderBy('reminder_at')
+      .limit(500)
       .get();
 
     if (snapshot.empty) {
@@ -411,4 +452,40 @@ exports.lookupLinkedUser = onCall({ region: 'us-central1' }, async request => {
   catch (error) { if (error.code === 'auth/user-not-found') return null; throw error; }
   if (user.disabled || user.phoneNumber !== phone || (await db.doc(`deletedAccounts/${user.uid}`).get()).exists) return null;
   return { uid: user.uid, displayName: user.displayName || 'Verified account' };
+});
+
+// Notification content is generated here, never accepted from the client: the
+// job document is handed verbatim to Expo, so a client-supplied title/body
+// combined with a planted device token would deliver arbitrary text to another
+// person's device. Firestore rules deny client writes to push_jobs.
+exports.sendTestPush = onCall({ region: 'us-central1' }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const uid = request.auth.uid;
+  if ((await db.doc(`deletedAccounts/${uid}`).get()).exists) throw new HttpsError('permission-denied', 'Account is deleted.');
+
+  // One test push per minute is plenty and stops the endpoint being a relay.
+  const limitRef = db.doc(`testPushLimits/${uid}`);
+  const now = Date.now();
+  await db.runTransaction(async tx => {
+    const previous = (await tx.get(limitRef)).data() || {};
+    if (now - Number(previous.lastAt || 0) < 60000) {
+      throw new HttpsError('resource-exhausted', 'Wait a minute before sending another test notification.');
+    }
+    tx.set(limitRef, { lastAt: now });
+  });
+
+  const jobRef = db.doc(`users/${uid}/${PUSH_JOBS_COLLECTION}/test-${now}`);
+  await jobRef.create({
+    title: 'HisabTrack test push',
+    body: 'Remote push is configured. This notification was sent by your backend pipeline.',
+    actionType: 'view_reports',
+    data: { actionType: 'view_reports', route: '/reports', source: 'remote_test' },
+    priority: 'high',
+    sound: 'default',
+    channelId: 'finance_alerts',
+    source: 'test_callable',
+    status: 'queued',
+    requestedAt: now,
+  });
+  return { jobId: jobRef.id };
 });

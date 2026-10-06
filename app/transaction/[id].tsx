@@ -224,7 +224,7 @@ export default function TransactionDetail() {
                     ))}
                   </View>
                 ) : (
-                  <Text className="text-slate-400 text-sm">No tags</Text>
+                  <Text className="text-slate-500 text-sm dark:text-slate-400">No tags</Text>
                 )}
               </View>
             </View>

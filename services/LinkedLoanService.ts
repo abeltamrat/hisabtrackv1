@@ -1,4 +1,4 @@
-import { firebaseConfig } from '@/config/firebase';
+import { getFirebaseApp } from '@/config/firebaseApp';
 import {
   LinkedChangelogEntry,
   LinkedChatMessage,
@@ -8,7 +8,6 @@ import {
   SharedLoan,
 } from '@/types/database';
 import { generateUUID } from '@/utils/uuid';
-import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
   addDoc,
   runTransaction,
@@ -27,8 +26,7 @@ import {
 import { normalizePhone } from './AuthService';
 
 function getFirestoreInstance() {
-  const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  return getFirestore(app);
+  return getFirestore(getFirebaseApp());
 }
 
 export interface UserLookupResult {

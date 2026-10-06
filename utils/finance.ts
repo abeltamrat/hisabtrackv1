@@ -88,6 +88,45 @@ export function flatLoanSchedule(principal: number, annualRate: number, months: 
   });
 }
 
+export interface TrendBucket { start: number; end: number; granularity: 'day' | 'month' }
+
+/**
+ * Buckets spanning exactly [start, end], so a trend chart covers the same
+ * window as the summary built from the same `reportPeriod`.
+ *
+ * The chart used to build a fixed trailing window (7 / 30 / 12) independent of
+ * the selected range: "Month" charted the last 30 days while the headline
+ * figures were calendar month-to-date, and "All" fell through to 12 *days*
+ * because the 12 was only treated as months for the 'year' range.
+ */
+export function trendBuckets(start: number, end: number, maxDailyPoints = 62): TrendBucket[] {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return [];
+  const dayOf = (value: number) => { const d = new Date(value); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+  const first = dayOf(start), last = dayOf(end);
+  const spanDays = Math.round((Date.UTC(last.getFullYear(), last.getMonth(), last.getDate())
+    - Date.UTC(first.getFullYear(), first.getMonth(), first.getDate())) / 86400000) + 1;
+
+  const buckets: TrendBucket[] = [];
+  if (spanDays <= maxDailyPoints) {
+    for (const cursor = new Date(first); cursor <= last; cursor.setDate(cursor.getDate() + 1)) {
+      const dayStart = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+      const dayEnd = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate(), 23, 59, 59, 999);
+      buckets.push({ start: Math.max(start, dayStart.getTime()), end: Math.min(end, dayEnd.getTime()), granularity: 'day' });
+    }
+    return buckets;
+  }
+  // Longer ranges aggregate by calendar month so "Year" and "All" stay readable.
+  const cursor = new Date(first.getFullYear(), first.getMonth(), 1);
+  const stop = new Date(last.getFullYear(), last.getMonth(), 1);
+  while (cursor <= stop) {
+    const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59, 999);
+    buckets.push({ start: Math.max(start, monthStart.getTime()), end: Math.min(end, monthEnd.getTime()), granularity: 'month' });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return buckets;
+}
+
 /** Calendar periods, with an explicit upper bound excluding future postings. */
 export function reportPeriod(range: string, now: number, oldest = now) {
   const today = new Date(now);

@@ -4,10 +4,9 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { auth } from '@/services/AuthService';
 import { generateUUID } from '@/utils/uuid';
-import { getApp } from 'firebase/app';
-import { addDoc, collection, doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
+import { getFirebaseApp } from '@/config/firebaseApp';
+import { doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
 
 const INSTALLATION_ID_KEY = '@hisabtrack_push_installation_id';
 const LAST_TOKEN_KEY = '@hisabtrack_expo_push_token';
@@ -55,22 +54,9 @@ export interface RemotePushStatusSnapshot {
   lastSeenAt: number | null;
 }
 
-interface RemotePushPayload {
-  title: string;
-  body: string;
-  data?: Record<string, unknown>;
-  actionType?: string;
-  sound?: string | null;
-  channelId?: string;
-  priority?: 'default' | 'normal' | 'high';
-  ttl?: number;
-  subtitle?: string;
-}
-
 export class RemotePushService {
   private static async getFirestore() {
-    const app = getApp();
-    return getFirestore(app);
+    return getFirestore(getFirebaseApp());
   }
 
   private static getProjectId() {
@@ -281,38 +267,16 @@ export class RemotePushService {
     };
   }
 
-  static async enqueuePushForUser(uid: string, payload: RemotePushPayload): Promise<string> {
-    const firestore = await this.getFirestore();
-    const currentUser = auth.currentUser;
-    const job = {
-      ...payload,
-      data: {
-        ...(payload.data || {}),
-        actionType: payload.actionType ?? payload.data?.actionType ?? 'view_reports',
-      },
-      requestedAt: Date.now(),
-      requestedBy: currentUser?.uid ?? uid,
-      source: 'client',
-      status: 'queued',
-    };
-
-    const ref = await addDoc(collection(firestore, `users/${uid}/${PUSH_JOB_COLLECTION}`), job);
-    return ref.id;
-  }
-
-  static async sendTestPush(uid: string): Promise<string> {
-    return await this.enqueuePushForUser(uid, {
-      title: 'HisabTrack test push',
-      body: 'Remote push is configured. This notification was sent by your backend pipeline.',
-      actionType: 'view_reports',
-      channelId: 'finance_alerts',
-      priority: 'high',
-      sound: 'default',
-      data: {
-        route: '/reports',
-        source: 'remote_test',
-      },
-    });
+  /**
+   * The push job document is handed to Expo verbatim, so its title and body are
+   * generated server-side by the `sendTestPush` callable. Firestore rules deny
+   * client writes to `push_jobs`; a client-composed job plus a planted device
+   * token would otherwise deliver arbitrary text to another person's device.
+   */
+  static async sendTestPush(_uid: string): Promise<string> {
+    const { getFunctions, httpsCallable } = await import('firebase/functions');
+    const result = await httpsCallable<unknown, { jobId: string }>(getFunctions(), 'sendTestPush')({});
+    return result.data.jobId;
   }
 }
 

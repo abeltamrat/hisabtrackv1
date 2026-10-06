@@ -307,7 +307,7 @@ function DraftCard({
 
           {/* Right side */}
           <View className="items-end">
-            <Text className="text-xs text-slate-400 dark:text-slate-500 mb-1">
+            <Text className="text-xs text-slate-500 dark:text-slate-400 mb-1">
               {formatShortDate(draft.date)}
             </Text>
 
@@ -328,7 +328,7 @@ function DraftCard({
                 />
                 <Text
                   className={`text-xs font-semibold ${
-                    accepted ? 'text-white' : 'text-slate-400 dark:text-slate-500'
+                    accepted ? 'text-white' : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
                   Accept
@@ -350,7 +350,7 @@ function DraftCard({
                 />
                 <Text
                   className={`text-xs font-semibold ${
-                    !accepted ? 'text-white' : 'text-slate-400 dark:text-slate-500'
+                    !accepted ? 'text-white' : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
                   Skip
@@ -765,7 +765,7 @@ export default function SMSSyncOnboardingModal({
         <View className="w-full mb-3">
           <ProgressBar progress={syncProgress} />
         </View>
-        <Text className="text-xs text-slate-400 dark:text-slate-500">
+        <Text className="text-xs text-slate-500 dark:text-slate-400">
           {syncProgress}%
         </Text>
       </View>
@@ -816,7 +816,7 @@ export default function SMSSyncOnboardingModal({
           {filteredDraftStates.length === 0 ? (
             <View className="items-center py-12">
               <FontAwesome name="inbox" size={36} color="#94a3b8" />
-              <Text className="text-sm text-slate-400 dark:text-slate-500 mt-3">
+              <Text className="text-sm text-slate-500 dark:text-slate-400 mt-3">
                 No transactions found for this filter.
               </Text>
             </View>
@@ -838,7 +838,7 @@ export default function SMSSyncOnboardingModal({
 
         {/* Bottom bar */}
         <View className="px-4 pt-3 pb-5 border-t border-slate-100 dark:border-slate-700">
-          <Text className="text-xs text-slate-400 dark:text-slate-500 mb-3 text-center">
+          <Text className="text-xs text-slate-500 dark:text-slate-400 mb-3 text-center">
             {acceptedCount} of {draftStates.length} selected
           </Text>
           <View className="flex-row gap-3">

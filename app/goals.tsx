@@ -195,7 +195,7 @@ export default function FinancialGoalsScreen() {
               <FontAwesome name="star-o" size={32} color="#cbd5e1" />
             </View>
             <Text className="text-slate-900 dark:text-white font-bold text-lg mb-2">No Goals Yet</Text>
-            <Text className="text-slate-400 text-sm text-center">Set your first financial goal to start tracking</Text>
+            <Text className="text-slate-500 text-sm text-center dark:text-slate-400">Set your first financial goal to start tracking</Text>
           </View>
         ) : (
           goals.map((goal) => {

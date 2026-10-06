@@ -9,9 +9,11 @@ interface SummaryCardProps {
   income: number;
   expense: number;
   percentageChange?: number;
+  /** True until the ledger has loaded, so zeroes are not shown as real totals. */
+  loading?: boolean;
 }
 
-function SummaryCard({ balance, income, expense, percentageChange = 0 }: SummaryCardProps) {
+function SummaryCard({ balance, income, expense, percentageChange = 0, loading = false }: SummaryCardProps) {
   const isPositive = percentageChange >= 0;
   const { formatCurrency, fontSize, balancesHidden, setBalancesHidden } = useAppSettings();
   const { t } = useI18n();
@@ -24,8 +26,11 @@ function SummaryCard({ balance, income, expense, percentageChange = 0 }: Summary
       <View className="items-center mb-6">
         <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-xs' : 'text-sm'} font-medium mb-2`}>Total Balance</Text>
         <View className="flex-row items-center justify-center">
-          <Text className={`text-slate-900 dark:text-white ${titleSize} font-bold text-center`}>
-            {balancesHidden ? '••••••' : formatCurrency(balance)}
+          <Text
+            className={`text-slate-900 dark:text-white ${titleSize} font-bold text-center`}
+            accessibilityLabel={loading ? 'Loading total balance' : undefined}
+          >
+            {loading ? '—' : balancesHidden ? '••••••' : formatCurrency(balance)}
           </Text>
           <TouchableOpacity
             onPress={() => setBalancesHidden(!balancesHidden)}
@@ -36,7 +41,7 @@ function SummaryCard({ balance, income, expense, percentageChange = 0 }: Summary
             <FontAwesome name={balancesHidden ? 'eye-slash' : 'eye'} size={isVerySmall ? 13 : 15} color="#64748b" />
           </TouchableOpacity>
         </View>
-        {!balancesHidden && (
+        {!balancesHidden && !loading && (
           <View className={`flex-row items-center mt-2 ${isVerySmall ? 'px-2 py-1' : 'px-3 py-1.5'} rounded-full ${isPositive ? 'bg-green-50 dark:bg-green-900/30' : 'bg-red-50 dark:bg-red-900/30'}`}>
             <FontAwesome name={isPositive ? "arrow-up" : "arrow-down"} size={isVerySmall ? 9 : 10} color={isPositive ? "#10b981" : "#ef4444"} />
             <Text className={`${isVerySmall ? 'text-[10px]' : 'text-xs'} font-bold ml-1 ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -54,10 +59,10 @@ function SummaryCard({ balance, income, expense, percentageChange = 0 }: Summary
             </View>
             <View>
               <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} font-medium`}>{t('income')}</Text>
-              <Text className={`text-slate-400 dark:text-slate-500 ${isVerySmall ? 'text-[8px]' : 'text-[10px]'}`}>This Month</Text>
+              <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-[10px]'}`}>This Month</Text>
             </View>
           </View>
-          <Text className={`text-slate-900 dark:text-white ${valueSize} font-bold`}>{formatCurrency(income)}</Text>
+          <Text className={`text-slate-900 dark:text-white ${valueSize} font-bold`}>{loading ? '—' : formatCurrency(income)}</Text>
         </View>
         <View className="w-px bg-slate-200 dark:bg-slate-700" />
         <View className="flex-1 ml-3">
@@ -67,10 +72,10 @@ function SummaryCard({ balance, income, expense, percentageChange = 0 }: Summary
             </View>
             <View>
               <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} font-medium`}>{t('expense')}</Text>
-              <Text className={`text-slate-400 dark:text-slate-500 ${isVerySmall ? 'text-[8px]' : 'text-[10px]'}`}>This Month</Text>
+              <Text className={`text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-[10px]'}`}>This Month</Text>
             </View>
           </View>
-          <Text className={`text-slate-900 dark:text-white ${valueSize} font-bold`}>{formatCurrency(expense)}</Text>
+          <Text className={`text-slate-900 dark:text-white ${valueSize} font-bold`}>{loading ? '—' : formatCurrency(expense)}</Text>
         </View>
       </View>
     </View>

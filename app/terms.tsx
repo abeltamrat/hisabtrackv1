@@ -255,7 +255,7 @@ export default function TermsOfServiceScreen() {
                 </View>
 
                 <View className="items-center py-6">
-                    <Text className="text-slate-400 text-sm">© 2026 HisabTrack. All rights reserved.</Text>
+                    <Text className="text-slate-500 text-sm dark:text-slate-400">© 2026 HisabTrack. All rights reserved.</Text>
                 </View>
 
                 <View className="h-8" />

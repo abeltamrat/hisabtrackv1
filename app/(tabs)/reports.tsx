@@ -1,5 +1,5 @@
 import { useLedgerClock } from '@/hooks/useLedgerClock';
-import { operatingTransactions, reportPeriod, sumMoney } from '@/utils/finance';
+import { operatingTransactions, reportPeriod, sumMoney, trendBuckets } from '@/utils/finance';
 import { sessionLocalStorage } from '@/services/SessionStorage';
 import AIInsights from '@/components/AIInsights';
 import { useTransactions } from '@/context/TransactionContext';
@@ -290,16 +290,22 @@ export default function ReportsScreen() {
 
   // Analysis Stats
   const analysisStats = useMemo(() => {
+    // The month in progress is only partially recorded, so including it made
+    // "lowest spending month" almost always report the current month for the
+    // first few weeks, and dragged the monthly average down.
+    const current = new Date(ledgerNow);
+    const currentMonthStart = new Date(current.getFullYear(), current.getMonth(), 1).getTime();
+    const completeMonths = monthlyData.filter(m => m.date.getTime() < currentMonthStart);
+    // With only the current month on record there is nothing complete to
+    // compare, so fall back to it rather than showing zeroes.
+    const months = completeMonths.length > 0 ? completeMonths : monthlyData;
+
     let maxIncome = { amount: 0, month: 'N/A' };
     let minIncome = { amount: Infinity, month: 'N/A' };
     let maxExpense = { amount: 0, month: 'N/A' };
     let minExpense = { amount: Infinity, month: 'N/A' };
-    let totalExpense = 0;
 
-    // Filter out incomplete current month if needed, but for now include all
-    const validMonths = monthlyData.length;
-
-    monthlyData.forEach(m => {
+    months.forEach(m => {
       const monthStr = m.date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
       if (m.income > maxIncome.amount) maxIncome = { amount: m.income, month: monthStr };
@@ -307,16 +313,24 @@ export default function ReportsScreen() {
 
       if (m.expense > maxExpense.amount) maxExpense = { amount: m.expense, month: monthStr };
       if (m.expense < minExpense.amount) minExpense = { amount: m.expense, month: monthStr };
-
-      totalExpense += m.expense;
     });
 
     if (minIncome.amount === Infinity) minIncome = { amount: 0, month: 'N/A' };
     if (minExpense.amount === Infinity) minExpense = { amount: 0, month: 'N/A' };
 
-    const avgMonthlyExpense = validMonths > 0 ? totalExpense / validMonths : 0;
+    const avgMonthlyExpense = months.length > 0
+      ? sumMoney(months.map(m => m.expense)) / months.length
+      : 0;
 
-    return { maxIncome, minIncome, maxExpense, minExpense, avgMonthlyExpense };
+    return {
+      maxIncome,
+      minIncome,
+      maxExpense,
+      minExpense,
+      avgMonthlyExpense,
+      // Lets the UI say which basis the figures use.
+      excludesCurrentMonth: completeMonths.length > 0,
+    };
   }, [monthlyData, ledgerNow]);
 
   // Historical reference (avg of last 3 months)
@@ -439,48 +453,37 @@ export default function ReportsScreen() {
       .sort((a, b) => b.amount - a.amount);
   }, [filteredTransactions, categories, summary.income]);
 
-  // Daily trend data
+  // Trend buckets come from the same `period` as the headline summary, so the
+  // chart always describes the window the user selected. Previously "Month"
+  // charted a trailing 30 days against month-to-date totals, and "All" charted
+  // only the last 12 days.
   const dailyTrend = useMemo(() => {
-    const days = timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 12;
-    const data = Array.from({ length: days }, (_, i) => {
-      const date = new Date();
-      if (timeRange === 'year') {
-        date.setMonth(date.getMonth() - (days - 1 - i));
-      } else {
-        date.setDate(date.getDate() - (days - 1 - i));
-      }
-      return {
-        date,
-        label: timeRange === 'year'
-          ? date.toLocaleDateString('en-US', { month: 'short' })
-          : date.getDate().toString(),
-        income: 0,
-        expense: 0,
-      };
-    });
+    const buckets = trendBuckets(period.start, period.end);
+    const totals = buckets.map(bucket => ({
+      date: new Date(bucket.start),
+      label: bucket.granularity === 'month'
+        ? new Date(bucket.start).toLocaleDateString('en-US', { month: 'short' })
+        : new Date(bucket.start).getDate().toString(),
+      income: [] as number[],
+      expense: [] as number[],
+    }));
 
-    filteredTransactions.forEach(transaction => {
-      const tDate = new Date(typeof transaction.date === 'number' ? transaction.date : new Date(transaction.date).getTime());
-      const index = data.findIndex(d => {
-        if (timeRange === 'year') {
-          return d.date.getMonth() === tDate.getMonth() &&
-            d.date.getFullYear() === tDate.getFullYear();
-        } else {
-          return d.date.toDateString() === tDate.toDateString();
-        }
-      });
+    for (const transaction of filteredTransactions) {
+      const at = typeof transaction.date === 'number' ? transaction.date : new Date(transaction.date).getTime();
+      const index = buckets.findIndex(bucket => at >= bucket.start && at <= bucket.end);
+      if (index === -1) continue;
+      const type = (transaction.type || '').toString().toUpperCase();
+      if (type === 'INCOME') totals[index].income.push(transaction.amount || 0);
+      else if (type === 'EXPENSE') totals[index].expense.push(transaction.amount || 0);
+    }
 
-      if (index !== -1) {
-        if ((transaction.type || '').toString().toUpperCase() === 'INCOME') {
-          data[index].income += (transaction.amount || 0);
-        } else if ((transaction.type || '').toString().toUpperCase() === 'EXPENSE') {
-          data[index].expense += (transaction.amount || 0);
-        }
-      }
-    });
-
-    return data;
-  }, [filteredTransactions, timeRange, period]);
+    return totals.map(bucket => ({
+      date: bucket.date,
+      label: bucket.label,
+      income: sumMoney(bucket.income),
+      expense: sumMoney(bucket.expense),
+    }));
+  }, [filteredTransactions, period]);
 
   const chartConfig = {
     backgroundColor: actualTheme === 'dark' ? '#0f172a' : '#ffffff',
@@ -514,7 +517,7 @@ export default function ReportsScreen() {
 
       {/* Header */}
       <LinearGradient
-        colors={['#6366f1', '#4f46e5']}
+        colors={['#4f46e5', '#4338ca']}
         className="px-6 pt-3 pb-8 rounded-b-[32px]"
         style={{ elevation: 4 }}
       >
@@ -719,13 +722,13 @@ export default function ReportsScreen() {
             <LinearGradient colors={['#1d4ed8', '#4338ca']} className="rounded-3xl p-6 mb-6 shadow-lg">
               <View className="flex-row justify-between items-start mb-5">
                 <View className="flex-1 pr-4">
-                  <Text className="text-white/80 font-bold mb-1">Cashflow Forecast</Text>
-                  <Text className="text-white/70 text-sm">
+                  <Text className="text-white/90 font-bold mb-1">Cashflow Forecast</Text>
+                  <Text className="text-white/90 text-sm">
                     Next {forecastDays} days from current balances, recurring activity, and active debt due dates.
                   </Text>
                 </View>
                 <View className="items-end">
-                  <Text className="text-white/60 text-xs">Projected Change</Text>
+                  <Text className="text-white/90 text-xs">Projected Change</Text>
                   <Text
                     className={`text-xl font-bold ${
                       forecastResult.projectedBalance - forecastResult.startingBalance >= 0
@@ -740,11 +743,11 @@ export default function ReportsScreen() {
 
               <View className="flex-row gap-3">
                 <View className="flex-1 bg-white/10 rounded-2xl p-4">
-                  <Text className="text-white/60 text-xs mb-1">Current Balance</Text>
+                  <Text className="text-white/90 text-xs mb-1">Current Balance</Text>
                   <Text className="text-white text-2xl font-bold">{formatCurrency(forecastResult.startingBalance)}</Text>
                 </View>
                 <View className="flex-1 bg-white/10 rounded-2xl p-4">
-                  <Text className="text-white/60 text-xs mb-1">Projected Balance</Text>
+                  <Text className="text-white/90 text-xs mb-1">Projected Balance</Text>
                   <Text className="text-white text-2xl font-bold">{formatCurrency(forecastResult.projectedBalance)}</Text>
                 </View>
               </View>
@@ -754,11 +757,11 @@ export default function ReportsScreen() {
                 style={{ borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.18)' }}
               >
                 <View>
-                  <Text className="text-white/60 text-xs mb-1">Lowest Balance</Text>
+                  <Text className="text-white/90 text-xs mb-1">Lowest Balance</Text>
                   <Text className="text-white text-xl font-bold">{formatCurrency(forecastResult.lowestBalance)}</Text>
                 </View>
                 <View className="items-end">
-                  <Text className="text-white/60 text-xs mb-1">Lowest Date</Text>
+                  <Text className="text-white/90 text-xs mb-1">Lowest Date</Text>
                   <Text className="text-white font-semibold">
                     {forecastResult.lowestBalanceDate
                       ? new Date(forecastResult.lowestBalanceDate).toLocaleDateString()
@@ -824,7 +827,7 @@ export default function ReportsScreen() {
               ) : (
                 <View className="items-center justify-center py-10">
                   <FontAwesome name="line-chart" size={48} color="#cbd5e1" />
-                  <Text className="text-slate-400 mt-4">Not enough scheduled activity to draw a forecast yet.</Text>
+                  <Text className="text-slate-500 mt-4 dark:text-slate-400">Not enough scheduled activity to draw a forecast yet.</Text>
                 </View>
               )}
             </View>
@@ -868,7 +871,7 @@ export default function ReportsScreen() {
                           {event.type === 'INCOME' ? '+' : event.type === 'TRANSFER' ? '' : '-'}
                           {formatCurrency(event.amount)}
                         </Text>
-                        <Text className="text-slate-400 text-xs">
+                        <Text className="text-slate-500 text-xs dark:text-slate-400">
                           Bal: {formatCurrency(event.balanceAfter ?? forecastResult.startingBalance)}
                         </Text>
                       </View>
@@ -876,7 +879,7 @@ export default function ReportsScreen() {
                   );
                 })
               ) : (
-                <Text className="text-slate-400 text-center py-8">
+                <Text className="text-slate-500 text-center py-8 dark:text-slate-400">
                   No recurring transactions or due loan payments fall within this horizon.
                 </Text>
               )}
@@ -902,7 +905,7 @@ export default function ReportsScreen() {
                   </View>
                 ))
               ) : (
-                <Text className="text-slate-400 text-center py-8">
+                <Text className="text-slate-500 text-center py-8 dark:text-slate-400">
                   No major outgoing events are scheduled in the selected forecast window.
                 </Text>
               )}
@@ -944,7 +947,7 @@ export default function ReportsScreen() {
                   </View>
                 ))
               ) : (
-                <Text className="text-slate-400 text-center py-8">
+                <Text className="text-slate-500 text-center py-8 dark:text-slate-400">
                   Add at least one account to start forecasting balances.
                 </Text>
               )}
@@ -970,15 +973,23 @@ export default function ReportsScreen() {
                 </View>
               </View>
 
-              <View className="flex-row justify-between bg-slate-50 dark:bg-slate-900/40 rounded-2xl p-4">
-                <View>
-                  <Text className="text-slate-500 dark:text-slate-400 text-xs">Avg Monthly Expense</Text>
-                  <Text className="text-slate-900 dark:text-white font-bold">{formatCurrency(analysisStats.avgMonthlyExpense)}</Text>
+              <View className="bg-slate-50 dark:bg-slate-900/40 rounded-2xl p-4">
+                <View className="flex-row justify-between">
+                  <View>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs">Avg Monthly Expense</Text>
+                    <Text className="text-slate-900 dark:text-white font-bold">{formatCurrency(analysisStats.avgMonthlyExpense)}</Text>
+                  </View>
+                  <View className="items-end">
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs">Best Income Month</Text>
+                    <Text className="text-slate-900 dark:text-white font-bold">{analysisStats.maxIncome.month}</Text>
+                  </View>
                 </View>
-                <View className="items-end">
-                  <Text className="text-slate-500 dark:text-slate-400 text-xs">Best Income Month</Text>
-                  <Text className="text-slate-900 dark:text-white font-bold">{analysisStats.maxIncome.month}</Text>
-                </View>
+                {/* Say which months the figures cover, so a partial month is not mistaken for a real low. */}
+                <Text className="text-slate-500 dark:text-slate-400 text-[10px] mt-2">
+                  {analysisStats.excludesCurrentMonth
+                    ? 'Based on completed months only; the month in progress is excluded.'
+                    : 'Based on the current month so far.'}
+                </Text>
               </View>
             </View>
           </View>
@@ -988,7 +999,7 @@ export default function ReportsScreen() {
         {activeTab === 'income' && (
           <View>
             <LinearGradient colors={['#22c55e', '#16a34a']} className="rounded-3xl p-6 mb-6">
-              <Text className="text-white/80 text-sm mb-2">{t('totalIncome')}</Text>
+              <Text className="text-white/90 text-sm mb-2">{t('totalIncome')}</Text>
               <Text className="text-white text-4xl font-bold">{formatCurrency(summary.income)}</Text>
             </LinearGradient>
 
@@ -1027,7 +1038,7 @@ export default function ReportsScreen() {
         {activeTab === 'expense' && (
           <View>
             <LinearGradient colors={['#ef4444', '#dc2626']} className="rounded-3xl p-6 mb-6">
-              <Text className="text-white/80 text-sm mb-2">{t('totalExpenses')}</Text>
+              <Text className="text-white/90 text-sm mb-2">{t('totalExpenses')}</Text>
               <Text className="text-white text-4xl font-bold">{formatCurrency(summary.expense)}</Text>
             </LinearGradient>
 
@@ -1072,7 +1083,7 @@ export default function ReportsScreen() {
               {dailyTrend.some(d => d.income > 0 || d.expense > 0) ? (
                 <LineChart
                   data={{
-                    labels: dailyTrend.filter((_, i) => i % Math.ceil(dailyTrend.length / 6) === 0).map(d => d.label),
+                    labels: dailyTrend.filter((_, i) => i % Math.max(1, Math.ceil(dailyTrend.length / 6)) === 0).map(d => d.label),
                     datasets: [
                       {
                         data: dailyTrend.map(d => d.expense),
@@ -1097,7 +1108,7 @@ export default function ReportsScreen() {
               ) : (
                 <View className="items-center justify-center py-10">
                   <FontAwesome name="line-chart" size={48} color="#cbd5e1" />
-                  <Text className="text-slate-400 mt-4">{t('noTrendData')}</Text>
+                  <Text className="text-slate-500 mt-4 dark:text-slate-400">{t('noTrendData')}</Text>
                 </View>
               )}
             </View>

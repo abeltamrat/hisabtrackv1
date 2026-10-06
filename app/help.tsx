@@ -365,7 +365,7 @@ export default function HelpScreen() {
           <Text className="text-white/90 text-sm text-center">
             📚 Complete guide to using HisabTrack
           </Text>
-          <Text className="text-white/70 text-xs text-center mt-1">
+          <Text className="text-white/90 text-xs text-center mt-1">
             Tap any section below to learn more
           </Text>
         </View>
@@ -427,7 +427,7 @@ export default function HelpScreen() {
                   </View>
                   {section.features.map((feature, index) => (
                     <View key={index} className="flex-row items-start mb-2 ml-1">
-                      <Text className="text-slate-400 mr-2">•</Text>
+                      <Text className="text-slate-500 mr-2 dark:text-slate-400">•</Text>
                       <Text className="text-slate-600 dark:text-slate-300 text-sm flex-1">
                         {feature}
                       </Text>

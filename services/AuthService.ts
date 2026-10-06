@@ -1,8 +1,7 @@
 import { Platform } from 'react-native';
-import { firebaseConfig } from '@/config/firebase';
+import { getFirebaseApp } from '@/config/firebaseApp';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import { initializeApp } from 'firebase/app';
 import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
@@ -21,8 +20,8 @@ import { doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
 
 const GOOGLE_WEB_CLIENT_ID = '891851135453-injmmpfl3qncm01q9c6c78t3a2mjmjq8.apps.googleusercontent.com';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Firebase is initialized once in config/firebaseApp.ts.
+const app = getFirebaseApp();
 
 // Configure Google Sign-In once at module load
 if (Platform.OS !== 'web') GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });

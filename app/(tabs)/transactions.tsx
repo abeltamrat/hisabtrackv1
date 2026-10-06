@@ -366,7 +366,7 @@ export default function TransactionsScreen() {
             >
               {filter === f ? (
                 <LinearGradient
-                  colors={['#6366f1', '#4f46e5']}
+                  colors={['#4f46e5', '#4338ca']}
                   className={`${denseButtonPadding} rounded-xl items-center w-full`}
                 >
                   <Text className={`${labelSize} font-bold capitalize text-white`}>
@@ -515,17 +515,17 @@ export default function TransactionsScreen() {
         {/* Summary */}
         <View className="flex-row bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
           <View className="flex-1 items-center py-2">
-            <Text className="text-slate-400 dark:text-slate-500 text-[10px] font-semibold uppercase mb-0.5">{t('income')}</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-semibold uppercase mb-0.5">{t('income')}</Text>
             <Text className="text-green-600 text-xs font-bold" numberOfLines={1}>{formatCurrency(totals.income)}</Text>
           </View>
           <View className="w-px bg-slate-100 dark:bg-slate-700" />
           <View className="flex-1 items-center py-2">
-            <Text className="text-slate-400 dark:text-slate-500 text-[10px] font-semibold uppercase mb-0.5">{t('expense')}</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-semibold uppercase mb-0.5">{t('expense')}</Text>
             <Text className="text-red-500 text-xs font-bold" numberOfLines={1}>{formatCurrency(totals.expense)}</Text>
           </View>
           <View className="w-px bg-slate-100 dark:bg-slate-700" />
           <View className="flex-1 items-center py-2">
-            <Text className="text-slate-400 dark:text-slate-500 text-[10px] font-semibold uppercase mb-0.5">{t('total')}</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-semibold uppercase mb-0.5">{t('total')}</Text>
             <Text className="text-slate-900 dark:text-white text-xs font-bold" numberOfLines={1}>{formatCurrency(totals.income - totals.expense)}</Text>
           </View>
         </View>
@@ -587,9 +587,9 @@ export default function TransactionsScreen() {
                 <View className="flex-1">
                   <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">{item.description}</Text>
                   <View className="flex-row items-center">
-                    <Text className="text-slate-400 text-xs">{item.category}</Text>
+                    <Text className="text-slate-500 text-xs dark:text-slate-400">{item.category}</Text>
                     <View className="w-1 h-1 bg-slate-300 rounded-full mx-2" />
-                    <Text className="text-slate-400 text-xs">{formatTime(item.date)}</Text>
+                    <Text className="text-slate-500 text-xs dark:text-slate-400">{formatTime(item.date)}</Text>
                   </View>
                   {item.tags && item.tags.length > 0 && (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2 -mx-0.5 px-0.5">
@@ -619,7 +619,7 @@ export default function TransactionsScreen() {
                 <FontAwesome name="search" size={32} color="#cbd5e1" />
               </View>
               <Text className="text-slate-900 dark:text-white font-bold text-lg mb-2">{t('noTransactionsFound')}</Text>
-              <Text className="text-slate-400 text-sm text-center">
+              <Text className="text-slate-500 text-sm text-center dark:text-slate-400">
                 {searchQuery ? t('tryAdjustingSearch') : t('startAddingTransactions')}
               </Text>
             </View>

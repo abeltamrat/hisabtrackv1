@@ -263,7 +263,7 @@ export default function TransferScreen() {
               style={{ outline: Platform.OS === 'web' ? 'none' : undefined } as any}
             />
           </View>
-          <Text className="text-slate-400 text-xs mt-2">Separate tags with commas.</Text>
+          <Text className="text-slate-500 text-xs mt-2 dark:text-slate-400">Separate tags with commas.</Text>
           {parsedTags.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3 -mx-1 px-1">
               {parsedTags.map((tag) => (

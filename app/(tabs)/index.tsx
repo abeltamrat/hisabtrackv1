@@ -38,6 +38,10 @@ export default function DashboardScreen() {
   const { items: budgets } = useSelector((state: RootState) => state.budgets);
   const { items: loans } = useSelector((state: RootState) => state.loans);
   const dataError = useSelector((s: RootState) => s.accounts.error || s.transactions.error || s.budgets.error || s.loans.error);
+  // The first fetch arrives after the first render, so without this the card
+  // showed a confident 0.00 that then jumped to the real balance.
+  const initialLoad = useSelector((s: RootState) =>
+    (s.accounts.loading || s.transactions.loading) && s.accounts.items.length === 0 && s.transactions.items.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -169,7 +173,7 @@ export default function DashboardScreen() {
     sectionTitleSize: fontSize === 'V.Small' ? 'text-sm' : fontSize === 'Small' ? 'text-base' : fontSize === 'Large' ? 'text-xl' : 'text-lg',
     quickActionCardClass: `flex-1 items-center bg-white dark:bg-slate-800 ${isVerySmall ? 'p-2.5' : 'p-3'} rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700`,
     quickActionIconWrapClass: `${isVerySmall ? 'w-10 h-10 mb-1.5' : 'w-12 h-12 mb-2'} rounded-xl justify-center items-center shadow-lg`,
-    quickActionLabelClass: `text-slate-900 dark:text-white ${isVerySmall ? 'text-[9px]' : 'text-[10px]'} font-bold`,
+    quickActionLabelClass: `text-slate-900 dark:text-white ${isVerySmall ? 'text-[10px]' : 'text-[10px]'} font-bold`,
   }), [fontSize, isVerySmall]);
 
   return (
@@ -203,6 +207,9 @@ export default function DashboardScreen() {
             <TouchableOpacity
               onPress={handleRefresh}
               disabled={refreshing}
+              accessibilityRole="button"
+              accessibilityLabel="Refresh financial data"
+              accessibilityState={{ disabled: refreshing, busy: refreshing }}
               className="w-12 h-12 items-center justify-center"
             >
               {refreshing ? (
@@ -214,7 +221,7 @@ export default function DashboardScreen() {
           </View>
 
           {/* Balance Card - Floating */}
-          <SummaryCard balance={balance} income={thisMonthIncome} expense={thisMonthExpense} percentageChange={percentageChange} />
+          <SummaryCard balance={balance} income={thisMonthIncome} expense={thisMonthExpense} percentageChange={percentageChange} loading={initialLoad} />
         </LinearGradient>
 
         {/* Content Section */}
@@ -227,6 +234,9 @@ export default function DashboardScreen() {
                 className={`${quickActionCardClass} mr-3`}
                 style={{ elevation: 2 }}
                 onPress={() => router.push('/modal')}
+                accessibilityRole="button"
+                accessibilityLabel={t('addNew')}
+                accessibilityHint="Opens the form to record a new transaction"
               >
                 <LinearGradient
                   colors={actualTheme === 'dark' ? ['#0f766e', '#134e4a'] : ['#2dd4bf', '#0d9488']}
@@ -237,7 +247,9 @@ export default function DashboardScreen() {
                 <Text className={quickActionLabelClass}>{t('addNew')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/recurring')}>
+              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/recurring')}
+                accessibilityRole="button"
+                accessibilityLabel={t('recurring')}>
                 <LinearGradient
                   colors={actualTheme === 'dark' ? ['#c2410c', '#7c2d12'] : ['#fb923c', '#ea580c']}
                   className={quickActionIconWrapClass}
@@ -247,7 +259,9 @@ export default function DashboardScreen() {
                 <Text className={quickActionLabelClass}>{t('recurring')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/budget')}>
+              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/budget')}
+                accessibilityRole="button"
+                accessibilityLabel={t('budget')}>
                 <LinearGradient
                   colors={actualTheme === 'dark' ? ['#7e22ce', '#581c87'] : ['#c084fc', '#9333ea']}
                   className={quickActionIconWrapClass}
@@ -257,7 +271,9 @@ export default function DashboardScreen() {
                 <Text className={quickActionLabelClass}>{t('budget')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity className={quickActionCardClass} style={{ elevation: 2 }} onPress={() => router.push('/(tabs)/reports')}>
+              <TouchableOpacity className={quickActionCardClass} style={{ elevation: 2 }} onPress={() => router.push('/(tabs)/reports')}
+                accessibilityRole="button"
+                accessibilityLabel={t('reports')}>
                 <LinearGradient
                   colors={actualTheme === 'dark' ? ['#4338ca', '#312e81'] : ['#818cf8', '#4f46e5']}
                   className={quickActionIconWrapClass}
@@ -270,7 +286,9 @@ export default function DashboardScreen() {
 
             {/* Second Row */}
             <View className="flex-row justify-between mt-3">
-              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/loans')}>
+              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/loans')}
+                accessibilityRole="button"
+                accessibilityLabel={t('loans')}>
                 <LinearGradient
                   colors={actualTheme === 'dark' ? ['#b91c1c', '#7f1d1d'] : ['#f87171', '#dc2626']}
                   className={quickActionIconWrapClass}
@@ -280,7 +298,9 @@ export default function DashboardScreen() {
                 <Text className={quickActionLabelClass}>{t('loans')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/calculator')}>
+              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/calculator')}
+                accessibilityRole="button"
+                accessibilityLabel={t('calculator')}>
                 <LinearGradient
                   colors={actualTheme === 'dark' ? ['#0f766e', '#134e4a'] : ['#2dd4bf', '#0d9488']}
                   className={quickActionIconWrapClass}
@@ -290,7 +310,9 @@ export default function DashboardScreen() {
                 <Text className={quickActionLabelClass}>{t('calculator')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/settings')}>
+              <TouchableOpacity className={`${quickActionCardClass} mr-3`} style={{ elevation: 2 }} onPress={() => router.push('/settings')}
+                accessibilityRole="button"
+                accessibilityLabel={t('settings')}>
                 <LinearGradient
                   colors={actualTheme === 'dark' ? ['#334155', '#0f172a'] : ['#94a3b8', '#475569']}
                   className={quickActionIconWrapClass}
@@ -300,7 +322,9 @@ export default function DashboardScreen() {
                 <Text className={quickActionLabelClass}>{t('settings')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity className={quickActionCardClass} style={{ elevation: 2 }} onPress={() => router.push('/accounts')}>
+              <TouchableOpacity className={quickActionCardClass} style={{ elevation: 2 }} onPress={() => router.push('/accounts')}
+                accessibilityRole="button"
+                accessibilityLabel={t('accounts')}>
                 <LinearGradient
                   colors={actualTheme === 'dark' ? ['#0e7490', '#164e63'] : ['#22d3ee', '#0891b2']}
                   className={quickActionIconWrapClass}
