@@ -2,6 +2,7 @@ import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { Account, Budget, IDatabase, Loan, Transaction } from '@/types/database';
 import { normalizeTransactionTags } from '@/utils/tags';
 import { generateUUID } from '@/utils/uuid';
+import { money, sumMoney } from '@/utils/finance';
 import { DBSchema, IDBPDatabase, IDBPTransaction, openDB } from 'idb';
 
 interface FinanceDB extends DBSchema {
@@ -132,7 +133,7 @@ export class WebDatabase implements IDatabase {
       // destination receives the net of sender-side fees/VAT (e.g. a
       // CBE → Telebirr transfer credits amount minus service charge + VAT).
       if (isSource) return -transaction.amount;
-      if (isDest) return transaction.amount - (transaction.fees ?? 0) - (transaction.tax ?? 0);
+      if (isDest) return sumMoney([transaction.amount, -(transaction.fees ?? 0), -(transaction.tax ?? 0)]);
     }
     return 0;
   }
@@ -161,9 +162,9 @@ export class WebDatabase implements IDatabase {
       if (!account) continue;
       const reverseDelta = oldTx ? -this.balanceDelta(oldTx, accountId) : 0;
       const forwardDelta = newTx ? this.balanceDelta(newTx, accountId) : 0;
-      const totalDelta = reverseDelta + forwardDelta;
+      const totalDelta = sumMoney([reverseDelta, forwardDelta]);
       if (totalDelta === 0) continue;
-      account.balance = (account.balance ?? 0) + totalDelta;
+      account.balance = sumMoney([account.balance ?? 0, totalDelta]);
       account.updated_at = Date.now();
       await accountsStore.put(account);
     }
@@ -177,17 +178,17 @@ export class WebDatabase implements IDatabase {
     const account = await db.get('accounts', accountId);
     if (!account) return;
     const transactions = await db.getAll('transactions');
-    let balance = 0;
+    const deltas: number[] = [];
     for (const t of transactions) {
       if (t.account_id === accountId) {
-        balance += t.type === 'INCOME' ? t.amount : -t.amount;
+        deltas.push(t.type === 'INCOME' ? t.amount : -t.amount);
       }
       if (t.type === 'TRANSFER' && t.to_account_id === accountId) {
         // Destination receives the net of sender-side fees/VAT.
-        balance += t.amount - (t.fees ?? 0) - (t.tax ?? 0);
+        deltas.push(sumMoney([t.amount, -(t.fees ?? 0), -(t.tax ?? 0)]));
       }
     }
-    account.balance = balance;
+    account.balance = money(sumMoney(deltas));
     account.updated_at = Date.now();
     await db.put('accounts', account);
   }

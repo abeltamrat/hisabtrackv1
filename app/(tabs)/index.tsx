@@ -104,7 +104,7 @@ export default function DashboardScreen() {
   }, [nowTs]);
 
   const balance = useMemo(
-    () => accounts.reduce((sum, account) => sum + account.balance, 0),
+    () => sumMoney(accounts.map(account => account.balance)),
     [accounts]
   );
   const thisMonthTransactions = useMemo(

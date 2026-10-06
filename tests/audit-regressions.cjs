@@ -166,6 +166,17 @@ test('IndexedDB commits ledger and metadata atomically and indexes transfer dest
  await db.writeSyncedMeta('categories',[{id:'food',name:'Food'}]);
  assert.equal((await db.readMeta('synced_meta')).categories.items[0].name,'Food');
 });
+test('database balance mutations stay exact to the cent',async()=>{
+ require('fake-indexeddb/auto');
+ cache.delete(path.join(root,'services/database/web.ts'));
+ const {WebDatabase}=load('./services/database/web.ts');const db=new WebDatabase(`cent-balance-${Date.now()}`);
+ await db.init();
+ const a=await db.createAccount(account('Cash'));
+ for(let i=0;i<10;i++) await db.createTransaction({...transaction(a.id,0.1),description:`Decimal ${i}`});
+ assert.equal((await db.getAccounts())[0].balance,-1,'incremental writes must not accumulate binary float drift');
+ await db.recalculateAccountBalance(a.id);
+ assert.equal((await db.getAccounts())[0].balance,-1,'full repair must produce the same cent-exact balance');
+});
 test('Redux ignores completed writes from a reset session and deduplicates retries',()=>{
  mocks['@/services/database']={getDatabase:async()=>{throw Error('not called');}};
  const slice=load('./store/slices/transactionsSlice.ts');const reducer=slice.default;

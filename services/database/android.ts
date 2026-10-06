@@ -3,6 +3,7 @@ import NativeErrorReporter from '@/services/NativeErrorReporter';
 import { Account, Budget, IDatabase, Loan, Transaction } from '@/types/database';
 import { normalizeTransactionTags } from '@/utils/tags';
 import { generateUUID } from '@/utils/uuid';
+import { money, sumMoney } from '@/utils/finance';
 import * as SQLite from 'expo-sqlite';
 
 /**
@@ -248,7 +249,7 @@ export class AndroidDatabase implements IDatabase {
       // destination receives the net of sender-side fees/VAT (e.g. a
       // CBE → Telebirr transfer credits amount minus service charge + VAT).
       if (isSource) return -transaction.amount;
-      if (isDest) return transaction.amount - (transaction.fees ?? 0) - (transaction.tax ?? 0);
+      if (isDest) return sumMoney([transaction.amount, -(transaction.fees ?? 0), -(transaction.tax ?? 0)]);
     }
     return 0;
   }
@@ -280,12 +281,12 @@ export class AndroidDatabase implements IDatabase {
     for (const accountId of accountIds) {
       const reverseDelta = oldTx ? -this.balanceDelta(oldTx, accountId) : 0;
       const forwardDelta = newTx ? this.balanceDelta(newTx, accountId) : 0;
-      const totalDelta = reverseDelta + forwardDelta;
+      const totalDelta = sumMoney([reverseDelta, forwardDelta]);
       if (totalDelta === 0) continue;
 
       const account = accountMap.get(accountId);
       if (account) {
-        account.balance = (account.balance ?? 0) + totalDelta;
+        account.balance = sumMoney([account.balance ?? 0, totalDelta]);
         account.updated_at = Date.now();
         await db.runAsync(
           'INSERT OR REPLACE INTO accounts (id, data) VALUES (?, ?)',
@@ -493,22 +494,21 @@ export class AndroidDatabase implements IDatabase {
 
   private async recalculateAccountBalanceInternal(accountId: string): Promise<void> {
     const accountTransactions = await this.getTransactions({ account_id: accountId });
-    let balance = 0;
+    const deltas: number[] = [];
     for (const transaction of accountTransactions) {
       if (transaction.account_id === accountId) {
-        if (transaction.type === 'INCOME') balance += transaction.amount;
-        else balance -= transaction.amount;
+        deltas.push(transaction.type === 'INCOME' ? transaction.amount : -transaction.amount);
       }
       if (transaction.type === 'TRANSFER' && transaction.to_account_id === accountId) {
         // Destination receives the net of sender-side fees/VAT.
-        balance += transaction.amount - (transaction.fees ?? 0) - (transaction.tax ?? 0);
+        deltas.push(sumMoney([transaction.amount, -(transaction.fees ?? 0), -(transaction.tax ?? 0)]));
       }
     }
 
     const accounts = await this.getAccounts();
     const account = accounts.find(a => a.id === accountId);
     if (account) {
-      account.balance = balance;
+      account.balance = money(sumMoney(deltas));
       account.updated_at = Date.now();
       await this.setItem('accounts', account);
     }

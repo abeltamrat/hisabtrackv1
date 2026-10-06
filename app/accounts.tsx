@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import { sumMoney } from '@/utils/finance';
 import { useDispatch, useSelector } from 'react-redux';
 import { getDatabase } from '@/services/database';
 import { DraftTransactionService } from '@/services/DraftTransactionService';
@@ -669,7 +670,7 @@ export default function Accounts() {
 
 
   const getTotalBalance = () => {
-    return accounts.reduce((sum, account) => sum + account.balance, 0);
+    return sumMoney(accounts.map(account => account.balance));
   };
 
   const getAccountIcon = (type: string) => {
