@@ -51,3 +51,6 @@ dist.zip
 dependency-audit.json
 functions/dependency-audit.json
 credentials.json
+
+artifacts/
+*.keystore
