@@ -322,6 +322,28 @@ test('the assistant reports the ledger currency, never a hardcoded $', () => {
 });
 
 // ── Text integrity ────────────────────────────────────────────────────────
+test('financial advisor insights use the selected ledger currency', () => {
+  const { FinancialAdvisorService } = load('./services/FinancialAdvisorService.ts');
+  const now = Date.now();
+  const transactions = [
+    { id: 'income', type: 'INCOME', amount: 1000, category: 'Salary', date: now, description: 'Salary' },
+    { id: 'expense', type: 'EXPENSE', amount: 150.01, category: 'Food', date: now, description: 'Groceries' },
+  ];
+  const budgets = [{
+    id: 'food-budget', category: 'Food', period: 'MONTHLY', limit_amount: 100,
+    start_date: now - 1000, end_date: now + 1000,
+  }];
+
+  const insights = FinancialAdvisorService.analyzeTransactions(
+    transactions, [], budgets, [], [], 'KES'
+  );
+  const budgetInsight = insights.find(insight => insight.id === 'budget-exceeded-food-budget');
+  assert.ok(budgetInsight, 'an exceeded budget produces an insight');
+  assert.match(budgetInsight.description, /KES 50/);
+  assert.doesNotMatch(insights.map(insight => insight.description).join('\n'), /\$\s?\d/);
+  cache.clear();
+});
+
 test('no user-facing string uses "?" where an ellipsis or bullet belongs', () => {
   const offenders = [];
   const walk = dir => {

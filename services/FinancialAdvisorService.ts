@@ -13,6 +13,8 @@ export interface FinancialInsight {
 }
 
 export class FinancialAdvisorService {
+  private static currency = 'ETB';
+  private static formatMoney(amount: number) { return `${this.currency} ${amount.toFixed(0)}`; }
   /**
    * Analyze transactions and provide intelligent insights
    */
@@ -21,8 +23,10 @@ export class FinancialAdvisorService {
     previousPeriodTransactions: Transaction[] = [],
     budgets: Budget[] = [],
     loans: Loan[] = [],
-    recurring: RecurringTransaction[] = []
+    recurring: RecurringTransaction[] = [],
+    currency = 'ETB'
   ): FinancialInsight[] {
+    this.currency = currency || 'ETB';
     transactions = operatingTransactions(transactions);
     previousPeriodTransactions = operatingTransactions(previousPeriodTransactions);
     const insights: FinancialInsight[] = [];
@@ -116,7 +120,7 @@ export class FinancialAdvisorService {
         id: 'optimization-tip',
         type: 'suggestion',
         title: '💡 Quick Win',
-        description: `Reducing "${topCat}" spending by prefix 15% would save you $${potentialSaving.toFixed(0)} this period.`,
+        description: `Reducing "${topCat}" spending by 15% would save you ${this.formatMoney(potentialSaving)} this period.`,
         icon: 'lightbulb-o',
         color: '#eab308',
         priority: 48,
@@ -253,11 +257,11 @@ export class FinancialAdvisorService {
     const dayTotals: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
     expenses.forEach(t => {
       const day = new Date(t.date).getDay();
-      dayTotals[day] += t.amount;
+      dayTotals[day] = sumMoney([dayTotals[day], t.amount]);
     });
 
-    const weekendTotal = dayTotals[0] + dayTotals[6]; // Sun + Sat
-    const weekdayTotal = dayTotals[1] + dayTotals[2] + dayTotals[3] + dayTotals[4] + dayTotals[5];
+    const weekendTotal = sumMoney([dayTotals[0], dayTotals[6]]); // Sun + Sat
+    const weekdayTotal = sumMoney([dayTotals[1], dayTotals[2], dayTotals[3], dayTotals[4], dayTotals[5]]);
 
     const weekendAvg = weekendTotal / 2;
     const weekdayAvg = weekdayTotal / 5;
@@ -286,11 +290,11 @@ export class FinancialAdvisorService {
     expenses.forEach(t => {
       const name = (t.description || t.sender_receiver || 'Unknown').split(' ')[0].toLowerCase();
       if (name.length > 2) {
-        merchants[name] = (merchants[name] || 0) + t.amount;
+        merchants[name] = sumMoney([merchants[name] || 0, t.amount]);
       }
     });
 
-    const totalExpense = expenses.reduce((s, t) => s + t.amount, 0);
+    const totalExpense = sumMoney(expenses.map(t => t.amount));
     const topMerchant = Object.entries(merchants).sort((a, b) => b[1] - a[1])[0];
 
     if (topMerchant && topMerchant[1] > totalExpense * 0.2) {
@@ -362,7 +366,7 @@ export class FinancialAdvisorService {
             id: `potential-sub-${key}`,
             type: 'suggestion',
             title: '📅 Hidden Subscription?',
-            description: `We noticed "${desc}" repeats frequently ($${matches[0].amount}). Add it to recurring to track it better.`,
+            description: `We noticed "${desc}" repeats frequently (${this.formatMoney(matches[0].amount)}). Add it to recurring to track it better.`,
             icon: 'refresh',
             color: '#f97316',
             priority: 45,
@@ -377,7 +381,7 @@ export class FinancialAdvisorService {
   private static analyzeDebtRisk(loans: Loan[], monthlyIncome: number): FinancialInsight[] {
     const insights: FinancialInsight[] = [];
     const debts = loans.filter(l => l.type === 'BORROWED' && l.status === 'ACTIVE');
-    const totalDebt = debts.reduce((s, l) => s + l.remaining_balance, 0);
+    const totalDebt = sumMoney(debts.map(l => l.remaining_balance));
 
     if (totalDebt > 0 && monthlyIncome > 0) {
       const debtToIncome = totalDebt / monthlyIncome;
@@ -415,24 +419,24 @@ export class FinancialAdvisorService {
     if (daysLeft < 1) return insights;
 
     // Estimate upcoming recurring costs
-    const upcomingRecurring = recurring
+    const upcomingRecurring = sumMoney(recurring
       .filter(r => r.isActive && r.nextDate <= endOfMonth.getTime())
-      .reduce((s, r) => s + (r.type === 'EXPENSE' ? r.amount : -r.amount), 0);
+      .map(r => r.type === 'EXPENSE' ? r.amount : -r.amount));
 
     // Estimate upcoming loan payments
-    const upcomingLoans = loans
+    const upcomingLoans = sumMoney(loans
       .filter(l => l.status === 'ACTIVE' && l.type === 'BORROWED' && l.due_date <= endOfMonth.getTime())
-      .reduce((s, l) => s + (l.remaining_balance / 3), 0); // Estimate partial payment if not full
+      .map(l => l.remaining_balance / 3)); // Estimate partial payment if not full
 
-    const projectedExpenses = upcomingRecurring + upcomingLoans;
-    const projectedSafeSpend = currentBalance - projectedExpenses;
+    const projectedExpenses = sumMoney([upcomingRecurring, upcomingLoans]);
+    const projectedSafeSpend = sumMoney([currentBalance, -projectedExpenses]);
 
     if (projectedSafeSpend < 0) {
       insights.push({
         id: 'cash-flow-alert',
         type: 'warning',
         title: '📉 Cash Flow Shortfall',
-        description: `Projected expenses ($${projectedExpenses.toFixed(0)}) exceed current balance. You may need to draw from savings.`,
+        description: `Projected expenses (${this.formatMoney(projectedExpenses)}) exceed current balance. You may need to draw from savings.`,
         icon: 'bank',
         color: '#ef4444',
         priority: 98,
@@ -442,7 +446,7 @@ export class FinancialAdvisorService {
         id: 'tight-budget',
         type: 'warning',
         title: '⚠️ Tight Month Ahead',
-        description: `Only $${projectedSafeSpend.toFixed(0)} left for non-essential spending after bills and loans.`,
+        description: `Only ${this.formatMoney(projectedSafeSpend)} left for non-essential spending after bills and loans.`,
         icon: 'clock-o',
         color: '#f97316',
         priority: 85,
@@ -452,7 +456,7 @@ export class FinancialAdvisorService {
         id: 'healthy-outlook',
         type: 'success',
         title: '🌟 Positive Outlook',
-        description: `You're on track to finish the month with roughly $${projectedSafeSpend.toFixed(0)} surplus.`,
+        description: `You're on track to finish the month with roughly ${this.formatMoney(projectedSafeSpend)} surplus.`,
         icon: 'star',
         color: '#10b981',
         priority: 60,
@@ -482,7 +486,7 @@ export class FinancialAdvisorService {
           id: `budget-exceeded-${budget.id}`,
           type: 'warning',
           title: `🚫 Budget Over: ${budget.category}`,
-          description: `You've exceeded your ${budget.category} budget by $${Math.abs(metrics.remaining).toFixed(0)}.`,
+          description: `You've exceeded your ${budget.category} budget by ${this.formatMoney(Math.abs(metrics.remaining))}.`,
           icon: 'close',
           color: '#ef4444',
           priority: 92,
@@ -492,7 +496,7 @@ export class FinancialAdvisorService {
           id: `budget-near-${budget.id}`,
           type: 'warning',
           title: `⚠️ Budget Alert: ${budget.category}`,
-          description: `You've used ${percentage.toFixed(0)}% of your "${budget.category}" budget ($${metrics.remaining.toFixed(0)} left).`,
+          description: `You've used ${percentage.toFixed(0)}% of your "${budget.category}" budget (${this.formatMoney(metrics.remaining)} left).`,
           icon: 'warning',
           color: '#f97316',
           priority: 88,
@@ -571,7 +575,7 @@ export class FinancialAdvisorService {
         id: 'frequent-spending',
         type: 'suggestion',
         title: '🛍️ Frequent Small Purchases',
-        description: `You make ${avgDailyTransactions.toFixed(1)} transactions/day. Consolidating purchases could save ~$${potentialSavings.toFixed(0)}.`,
+        description: `You make ${avgDailyTransactions.toFixed(1)} transactions/day. Consolidating purchases could save about ${this.formatMoney(potentialSavings)}.`,
         icon: 'shopping-cart',
         color: '#f59e0b',
         priority: 50,
@@ -581,7 +585,7 @@ export class FinancialAdvisorService {
     // Analyze large transactions
     const largeTransactions = this.getLargeTransactions(expenses);
     if (largeTransactions.length > 0) {
-      const totalLarge = largeTransactions.reduce((sum, t) => sum + t.amount, 0);
+      const totalLarge = sumMoney(largeTransactions.map(t => t.amount));
       const percentOfTotal = (totalLarge / this.getTotalByType(transactions, 'EXPENSE')) * 100;
 
       insights.push({
@@ -702,7 +706,7 @@ export class FinancialAdvisorService {
 
     if (expenses.length < 5) return insights;
 
-    const avgAmount = expenses.reduce((sum, t) => sum + t.amount, 0) / expenses.length;
+    const avgAmount = sumMoney(expenses.map(t => t.amount)) / expenses.length;
     const unusualTransactions = expenses.filter(t => t.amount > avgAmount * 3);
 
     if (unusualTransactions.length > 0) {
@@ -755,9 +759,7 @@ export class FinancialAdvisorService {
     const insights: FinancialInsight[] = [];
     if (totalExpenses === 0) return insights;
 
-    const fixedCostSum = recurring
-      .filter(r => r.type === 'EXPENSE' && r.isActive)
-      .reduce((sum, r) => sum + r.amount, 0);
+    const fixedCostSum = sumMoney(recurring.filter(r => r.type === 'EXPENSE' && r.isActive).map(r => r.amount));
 
     const ratio = (fixedCostSum / totalExpenses) * 100;
 
@@ -781,13 +783,13 @@ export class FinancialAdvisorService {
     const smallPurchases = transactions.filter(t => t.type === 'EXPENSE' && t.amount < 20); // < $20
 
     if (smallPurchases.length > 5) {
-      const total = smallPurchases.reduce((sum, t) => sum + t.amount, 0);
+      const total = sumMoney(smallPurchases.map(t => t.amount));
       if (total > 100) {
         insights.push({
           id: 'latte-factor',
           type: 'info',
           title: '☕ The Latte Factor',
-          description: `Small purchases (<$20) added up to $${total.toFixed(0)} this period. Mind the little things!`,
+          description: `Small purchases under ${this.formatMoney(20)} added up to ${this.formatMoney(total)} this period. Mind the little things!`,
           icon: 'coffee',
           color: '#f59e0b',
           priority: 50,

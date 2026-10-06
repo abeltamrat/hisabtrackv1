@@ -1,4 +1,5 @@
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FinancialAdvisorService, FinancialInsight } from '@/services/FinancialAdvisorService';
 import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -22,13 +23,14 @@ export default function AIInsights({
   recurring = []
 }: AIInsightsProps) {
   const { actualTheme } = useTheme();
+  const { currency } = useAppSettings();
   const [insights, setInsights] = useState<FinancialInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);
 
   useEffect(() => {
     analyzeData();
-  }, [transactions, previousPeriodTransactions, budgets, loans, recurring]);
+  }, [transactions, previousPeriodTransactions, budgets, loans, recurring, currency]);
 
   const analyzeData = async () => {
     setLoading(true);
@@ -41,7 +43,8 @@ export default function AIInsights({
       previousPeriodTransactions,
       budgets,
       loans,
-      recurring
+      recurring,
+      currency
     );
 
     setInsights(results);

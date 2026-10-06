@@ -494,7 +494,7 @@ export class AIFinancialAssistant {
         const smallPurchaseThreshold = 20;
         const smallPurchases = expenseItems.filter((item) => item.amount > 0 && item.amount <= smallPurchaseThreshold);
         const smallPurchaseCount = smallPurchases.length;
-        const smallPurchaseTotal = smallPurchases.reduce((sum, item) => sum + item.amount, 0);
+        const smallPurchaseTotal = sumMoney(smallPurchases.map(item => item.amount));
 
         const largeExpenseThreshold = averageExpense > 0 ? Math.max(averageExpense * 2, 50) : 100;
         const largeExpenses = expenseItems
