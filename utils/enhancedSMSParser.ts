@@ -13,6 +13,10 @@ export interface ParsedSMSTransaction {
   smsId: string;
   sender: string;
   categoryHint?: string;
+  isTransfer?: boolean;
+  transferToAccountNumber?: string;
+  transferFromAccountNumber?: string;
+  isLoanDisbursement?: boolean;
 }
 
 // Shared terminators that end a merchant name capture
@@ -22,8 +26,9 @@ const ENHANCED_SMS_PATTERNS: Record<string, any> = {
   // ─── Commercial Bank of Ethiopia ───────────────────────────────────────────
   cbe: {
     debit: [
-      // "transferred ETB 560.00" / "debited with ETB25,000.00" (no space before digits OK due to \s*)
-      /(?:transferred?|debited|withdrawn|paid|spent)\s+(?:with\s+)?(?:birr|etb|br)?\s*([\d,]+\.?\d*)/i,
+      // "transferred ETB 560.00" / "transfered ETB 600.00" (CBE's own single-r
+      // spelling) / "debited with ETB25,000.00" (no space before digits OK due to \s*)
+      /(?:transferr?ed|debited|withdrawn|paid|spent)\s+(?:with\s+)?(?:birr|etb|br)?\s*([\d,]+\.?\d*)/i,
       // "total of ETB 25132.00" — overrides base amount (applied separately in parseTransaction)
       /total\s+of\s+(?:birr|etb|br)?\s*([\d,]+\.?\d*)/i,
     ],
@@ -33,39 +38,54 @@ const ENHANCED_SMS_PATTERNS: Record<string, any> = {
       /(?:credited|received|deposited).*?(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     ],
     // "Account 1*4191" or "account 1*****4191"
-    accountNumber: /account\s+([\d*]+)/i,
+    accountNumber: /account\s+([\d*\\]+)/i,
     balance: /(?:current\s+)?balance\s+is\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
-    fees: /s\.charge\s+(?:of\s+)?(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
+    fees: /(?:s\.?\s*charge|service\s+charge)\s+(?:of\s+)?(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     tax: /vat\s*(?:\([^)]+\))?\s+of\s+(?:birr|etb|br)?\s*([\d,]+\.?\d*)/i,
     // "Ref No FT261751639Z" or "?id=FT..." (URL-based, handled in extractReference)
     reference: /(?:ref(?:erence)?\s*no\.?\s*([A-Z0-9]{6,}))/i,
     merchant: [
-      new RegExp(`(?:transferred?\\s+to|to)\\s+([A-Za-z][A-Za-z\\s&.'\\-]+?)${MERCHANT_END}`, 'i'),
+      // "to account 1**8885 (Abduletif Awol Ebrahim)"
+      /to\s+account\s+[\d*]+\s*\(([A-Za-z][A-Za-z\s&.'\-]+)\)/i,
+      // "from account 1**2089 (Abel Getachew Tadessie)"
+      /from\s+account\s+[\d*]+\s*\(([A-Za-z][A-Za-z\s&.'\-]+)\)/i,
+      new RegExp(`(?:transferr?ed\\s+to|to)\\s+([A-Za-z][A-Za-z\\s&.'\\-]+?)${MERCHANT_END}`, 'i'),
       new RegExp(`from\\s+([A-Za-z][A-Za-z\\s&.'\\-]+?)${MERCHANT_END}`, 'i'),
     ],
     date: /(\d{2}\/\d{2}\/\d{4})\s+at\s+(\d{2}:\d{2}:\d{2})/i,
-    receiptUrl: /https?:\/\/apps\.cbe\.com\.et[^\s]*/i,
+    receiptUrl: /https?:\/\/(?:apps|mbreciept)\.cbe\.com\.et[^\s]*/i,
   },
 
   // ─── Telebirr / Ethio Telecom ──────────────────────────────────────────────
   telebirr: {
     debit: [
       // "paid ETB 82.00" / "transferred ETB 700.00"
-      /(?:paid|spent|charged|transferred?)\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
+      /(?:paid|spent|charged|transferr?ed)\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
+      /repaid\s+([\d,]+\.?\d*)\s*(?:birr|etb|br)/i,
+      /paid\s+(?:a\s+)?credit\s+amount\s+of\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
+      /paid\s+for\s+[^.]{0,80}?\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
       // "Transfer of 4,000.00 ETB" (amount before currency — Awash→Telebirr format)
       /(?:transfer(?:red)?)\s+of\s+([\d,]+\.?\d*)/i,
     ],
     credit: [
       // "received  ETB 15,000.00"
       /received\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
+      // "loan of ETB 5,000.00 has been credited"
+      /loan\s+of\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)\s+has\s+been\s+credited/i,
+      // "credited with ETB 5,000.00" / "credited ... ETB 5,000.00"
+      /credited\s+(?:with\s+)?(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     ],
     accountNumber: /(?:account|acc)\s*(\d{6,16})/i,
-    balance: /(?:current.*?)?(?:e-money\s+account\s+)?balance\s+is\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
+    balance: /(?:current.*?)?(?:(?:e-money|telebirr)\s+account\s+)?balance\s+is\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     fees: /service\s+fee\s+is\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     tax: /(?:tax|vat).*?is\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     // "transaction number is  DFO184MOZD" or "by transaction number DFN67FUSM4"
-    reference: /(?:by\s+)?transaction\s+number\s+(?:is\s+)?([A-Z0-9]{6,})/i,
+    reference: /(?:by\s+)?(?:telebirr\s+)?transaction\s+number\s+(?:is\s+)?([A-Z0-9]{6,})/i,
     merchant: [
+      /purchased\s+from\s+\d+\s*-\s*([A-Za-z][A-Za-z\s&.'\-]+?)\s+for\s+plate/i,
+      /\bto\s+\d+\s*-\s*([A-Za-z][A-Za-z\s&.'\-]+?)\s*;\s*with\s+Payment/i,
+      /from\s+([A-Za-z][A-Za-z\s&.'\-]+?)\s+to\s+your\s+telebirr\s+Account/i,
+      /to\s+(Commercial\s+Bank\s+of\s+Ethiopia)\s+account\s+number/i,
       // "to WENDIMU DAMISE (2519****9356)" — name before phone in parens
       new RegExp(`(?:to|from)\\s+([A-Za-z][A-Za-z\\s&.'\\-]+?)\\s*(?:\\(\\d|${MERCHANT_END})`, 'i'),
       // "for package Monthly Internet Package" (bill payment)
@@ -88,12 +108,14 @@ const ENHANCED_SMS_PATTERNS: Record<string, any> = {
       /(?:received|deposited).*?(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     ],
     // "account 1*49" — extract last digit cluster
-    accountNumber: /account\s+([\d*]+)/i,
+    accountNumber: /account\s+([\d*\\]+)/i,
     // "Available Balance: ETB 5,459.42"
     balance: /(?:available\s+)?balance\s*:?\s*(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     // Reference comes from URL ?trx=... (handled in extractReference)
     reference: /receipt\s*:?\s*([A-Z0-9]{6,})/i,
     merchant: [
+      // "credited ... by Mscwt . Available Balance"
+      /\bby\s+([A-Za-z][A-Za-z\s&.'\-]*?)\s*\.\s*Available\s+Balance/i,
       // "by  Abel Tamirat Mengistu" (credit from name)
       new RegExp(`by\\s+([A-Za-z][A-Za-z\\s&.'\\-]+?)${MERCHANT_END}`, 'i'),
       new RegExp(`(?:to|from)\\s+([A-Za-z][A-Za-z\\s&.'\\-]+?)${MERCHANT_END}`, 'i'),
@@ -106,7 +128,7 @@ const ENHANCED_SMS_PATTERNS: Record<string, any> = {
   awash: {
     debit: [
       // "transferred to other bank ETB  40,000"
-      /(?:transferred?|transfer)\s+(?:to\s+other\s+bank\s+)?(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
+      /(?:transferr?ed|transfer)\s+(?:to\s+other\s+bank\s+)?(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
       // "Transfer of 4,000.00 ETB" (amount before currency)
       /transfer(?:red)?\s+of\s+([\d,]+\.?\d*)/i,
       // "withdrawal request of 50,000.00"
@@ -164,7 +186,7 @@ const ENHANCED_SMS_PATTERNS: Record<string, any> = {
   // ─── Generic / fallback ────────────────────────────────────────────────────
   generic: {
     debit: [
-      /(?:debited|withdrawn|paid|spent|deducted|transferred?)\s+(?:with\s+)?(?:rs\.?|inr|₹|birr|etb|br|usd|\$)?\s*([\d,]+\.?\d*)/i,
+      /(?:debited|withdrawn|paid|spent|deducted|transferr?ed)\s+(?:with\s+)?(?:rs\.?|inr|₹|birr|etb|br|usd|\$)?\s*([\d,]+\.?\d*)/i,
       /(?:rs\.?|inr|₹|birr|etb|br|usd|\$)\s*([\d,]+\.?\d*).*?(?:debited|withdrawn|paid|spent|deducted)/i,
       // "withdrawal request of X"
       /withdrawal\s+request\s+of\s+([\d,]+\.?\d*)/i,
@@ -233,7 +255,18 @@ export class EnhancedSMSParser {
 
       if (!type || amount === 0) return null;
 
-      const accountNumber = this.extractAccountNumber(message, patterns.accountNumber);
+      let accountNumber = this.extractAccountNumber(message, patterns.accountNumber);
+      // CBE credit messages mention the sender's account first and the user's
+      // destination account second. Always attach the transaction to the
+      // direction-appropriate user account instead of taking the first match.
+      if (bankType === 'cbe') {
+        const directionalAccount = type === 'INCOME'
+          ? message.match(/to\s+your\s+account\s+([\d*]+)/i)
+          : message.match(/from\s+(?:your\s+)?account\s+([\d*]+)/i);
+        if (directionalAccount?.[1]) {
+          accountNumber = this.extractAccountNumber(`account ${directionalAccount[1]}`, patterns.accountNumber);
+        }
+      }
       const balance = this.extractAmount(message, patterns.balance);
       const fees = this.extractAmount(message, patterns.fees);
       const tax = this.extractAmount(message, patterns.tax);
@@ -249,11 +282,13 @@ export class EnhancedSMSParser {
           const total = this.parseAmount(totalMatch[1]);
           if (total > 0) amount = total;
         } else if (fees || tax) {
-          amount = amount + (fees ?? 0) + (tax ?? 0);
+          amount = Math.round((amount + (fees ?? 0) + (tax ?? 0)) * 100) / 100;
         }
       }
 
       const categoryHint = this.suggestCategoryHint(merchant, message, type);
+      const transferInfo = this.detectSelfTransfer(message, type);
+      const isLoanDisbursement = type === 'INCOME' && this.detectLoanDisbursement(message);
 
       return {
         amount,
@@ -270,6 +305,10 @@ export class EnhancedSMSParser {
         smsId,
         sender,
         categoryHint,
+        isTransfer: transferInfo.isTransfer || undefined,
+        transferToAccountNumber: transferInfo.transferToAccountNumber,
+        transferFromAccountNumber: transferInfo.transferFromAccountNumber,
+        isLoanDisbursement: isLoanDisbursement || undefined,
       };
     } catch (error) {
       console.error('Error parsing SMS:', error);
@@ -281,15 +320,73 @@ export class EnhancedSMSParser {
     const s = sender.toLowerCase();
     const m = message.toLowerCase();
 
-    if (s.includes('cbe') || s === 'cbebirr' || m.includes('commercial bank of ethiopia')) return 'cbe';
     // Telebirr: sender or message mentions telebirr, or ethiotelecom receipt URL
     if (s.includes('telebirr') || s.includes('ethiotelecom') || m.includes('telebirr') || m.includes('transactioninfo.ethiotelecom')) return 'telebirr';
+    if (s.includes('cbe') || s === 'cbebirr' || m.includes('commercial bank of ethiopia')) return 'cbe';
     // BOA: "8397" shortcode, bankofabyssinia URL, or message text
     if (s.includes('abyssinia') || s === 'boa' || s === '8397' || s.includes('8397') || m.includes('bank of abyssinia') || m.includes('bankofabyssinia.com')) return 'boa';
     if (s.includes('awash') || m.includes('awash bank') || m.includes('awashpay') || m.includes('awashbank')) return 'awash';
     if (s.includes('dashen') || m.includes('dashen bank')) return 'dashen';
     // Other Ethiopian banks → generic (still use improved generic patterns)
     return 'generic';
+  }
+
+  static detectLoanDisbursement(message: string): boolean {
+    const text = message.toLowerCase();
+    const loanLanguage = /\b(?:loan|digital\s+loan|credit\s+(?:amount|facility|disbursement)|borrowed|mela\s+\d+\s+days\s+contract|overdraft)\b/i;
+    const incomingLanguage = /\b(?:credited|received|deposited|disbursed|approved|paid\s+to\s+your\s+account)\b/i;
+    const repaymentLanguage = /\b(?:repaid|repayment|paid\s+(?:a\s+)?credit|unpaid\s+credit|outstanding\s+credit)\b/i;
+    return loanLanguage.test(text) && incomingLanguage.test(text) && !repaymentLanguage.test(text);
+  }
+
+  static detectSelfTransfer(message: string, type?: 'INCOME' | 'EXPENSE'): {
+    isTransfer: boolean;
+    transferToAccountNumber?: string;
+    transferFromAccountNumber?: string;
+  } {
+    // "between accounts" / "self transfer"
+    if (/between\s+(?:your\s+)?(?:own\s+)?accounts?/i.test(message) || /self[\s-]transfer/i.test(message)) {
+      return { isTransfer: true };
+    }
+
+    const OWN_ACCOUNT = `your\\s+(?:own\\s+)?(?:(?:cbe|boa|awash|dashen|telebirr|commercial|abyssinia)\\s+)?(?:bank\\s+)?account\\s*([\\d*]+)?`;
+    // Bounded gap between the verb and "to/from your … account": stays inside
+    // the sentence (no ., !, ?) but must let decimal points in amounts through
+    // ("ETB 5,000.00"), so a period is allowed only when a digit follows it.
+    const GAP = `(?:[^.!?]|\\.(?=\\d)){0,80}?`;
+
+    // Keep only the visible digit run after the mask: "1*9876" → "9876".
+    // Joining digits across the mask would corrupt suffix matching later.
+    const tailDigits = (raw?: string): string | undefined => {
+      const runs = (raw ?? '').split(/[^0-9]+/).filter(Boolean);
+      return runs.length ? runs[runs.length - 1] : undefined;
+    };
+
+    // Debit side: a transfer verb sending money TO one of the user's own accounts.
+    // Anchoring on the verb keeps ordinary credits ("credited to your account")
+    // from matching; the type gate keeps this off INCOME messages entirely.
+    if (type !== 'INCOME') {
+      const toMatch = message.match(
+        new RegExp(`(?:transferr?ed|transfer|sent|moved)\\b${GAP}\\bto\\s+${OWN_ACCOUNT}`, 'i')
+      );
+      if (toMatch) {
+        return { isTransfer: true, transferToAccountNumber: tailDigits(toMatch[1]) };
+      }
+    }
+
+    // Credit side: money received FROM one of the user's own accounts.
+    // The type gate keeps ordinary debits ("debited from your account 1*4191")
+    // on EXPENSE messages from being flagged as transfers.
+    if (type !== 'EXPENSE') {
+      const fromMatch = message.match(
+        new RegExp(`(?:received|credited|deposited)\\b${GAP}\\bfrom\\s+${OWN_ACCOUNT}`, 'i')
+      );
+      if (fromMatch) {
+        return { isTransfer: true, transferFromAccountNumber: tailDigits(fromMatch[1]) };
+      }
+    }
+
+    return { isTransfer: false };
   }
 
   private static parseAmount(amountStr: string): number {
@@ -345,6 +442,10 @@ export class EnhancedSMSParser {
     const cbeId = message.match(/[?&]id=([A-Z0-9]+)/i);
     if (cbeId) return cbeId[1];
 
+    // Newer CBE receipt links encode the receipt token in the path.
+    const cbeReceiptToken = message.match(/mbreciept\.cbe\.com\.et\/v2-([A-Z0-9_-]+)/i);
+    if (cbeReceiptToken) return cbeReceiptToken[1];
+
     const boaTrx = message.match(/[?&]trx=([A-Z0-9]+)/i);
     if (boaTrx) return boaTrx[1];
 
@@ -375,6 +476,7 @@ export class EnhancedSMSParser {
         const rawName = m[1].trim().replace(/[,.\s]+$/, '');
         // Skip obvious non-names: short codes, "other bank", "your account"
         if (rawName.length < 3 || /^(other bank|your|the|a|an)$/i.test(rawName)) continue;
+        if (/^Awash\s+International\s+Bank/i.test(rawName)) return rawName;
         const cleaned = this.cleanMerchantName(rawName);
         return cleaned || rawName;
       }
@@ -456,22 +558,31 @@ export class EnhancedSMSParser {
   static suggestCategoryHint(merchant?: string, message?: string, type?: 'INCOME' | 'EXPENSE'): string {
     const text = `${merchant ?? ''} ${message ?? ''}`.toLowerCase();
 
+    // Keywords are anchored on a leading word boundary (plus a trailing one for
+    // short words) — bare substrings misfire badly on bank SMS boilerplate:
+    // "rent" matches "Current Balance", "bus" matches "business".
+
     if (type === 'INCOME') {
-      if (text.match(/salary|payroll|stipend/)) return 'salary';
-      if (text.match(/freelance|contract\s+pay/)) return 'freelance';
-      if (text.match(/transfer|sent\s+by|from\s+[a-z]/)) return 'transfer';
+      if (this.detectLoanDisbursement(message ?? '')) return 'loan';
+      if (text.match(/\b(?:salary|payroll|stipend)/)) return 'salary';
+      if (text.match(/\b(?:freelance|contract\s+pay)/)) return 'freelance';
+      // Note: "received from <name>" alone is ordinary income, not a transfer.
+      if (text.match(/\b(?:transfer|sent\s+by)/)) return 'transfer';
       return 'income';
     }
 
-    if (text.match(/food|restaurant|cafe|coffee|lunch|dinner|breakfast|pizza|burger|shiro|tibs|injera/)) return 'food';
-    if (text.match(/supermarket|grocery|market|shop|store|mall|amazon|jumia/)) return 'shopping';
-    if (text.match(/uber|taxi|bus|fuel|petrol|diesel|transport|parking|ride/)) return 'transport';
-    if (text.match(/electricity|water|gas|internet|phone|mobile|recharge|bill|ethiotelecom|wifi|package/)) return 'bills';
-    if (text.match(/movie|cinema|game|entertainment|netflix|spotify/)) return 'entertainment';
-    if (text.match(/hospital|pharmacy|medical|health|doctor|clinic|medicine/)) return 'health';
-    if (text.match(/rent|lease|mortgage/)) return 'housing';
-    if (text.match(/school|university|course|education|tuition/)) return 'education';
-    if (text.match(/transfer|telebirr|cbe\s*birr|send\s+money|other\s+bank/)) return 'transfer';
+    if (text.match(/\b(?:loan|credit\s+amount|unpaid\s+credit|outstanding\s+credit|mela\s+\d+\s+days\s+contract|repaid)\b/)) return 'loan';
+    if (text.match(/\b(?:food|restaurant|cafe|coffee|lunch|dinner|breakfast|pizza|burger|shiro|tibs|injera)/)) return 'food';
+    if (text.match(/\b(?:supermarket|grocery|market|shop|store|mall|amazon|jumia)/)) return 'shopping';
+    if (text.match(/\b(?:uber|taxi|bus\b|fuel|petrol|diesel|transport|parking|rides?\b)/)) return 'transport';
+    if (text.match(/\b(?:electricity|water|gas\b|internet|phone|mobile|recharge|bill|ethiotelecom|wifi|package)/)) return 'bills';
+    if (text.match(/\b(?:movie|cinema|games?\b|entertainment|netflix|spotify)/)) return 'entertainment';
+    if (text.match(/\b(?:hospital|pharmacy|medical|health|doctor|clinic|medicine)/)) return 'health';
+    if (text.match(/\b(?:rent(?:al|ed)?\b|lease|mortgage)/)) return 'housing';
+    if (text.match(/\b(?:school|university|course|education|tuition)/)) return 'education';
+    // Last-resort fallback: nearly every bank debit says "transferred", so this
+    // must stay below the specific category checks or it swallows them all.
+    if (text.match(/\b(?:transfer|cbe\s*birr|send\s+money|other\s+bank)/)) return 'transfer';
 
     return 'other';
   }
@@ -499,7 +610,8 @@ export class EnhancedSMSParser {
       health: ['health', 'medical', 'hospital', 'pharma'],
       housing: ['hous', 'rent', 'mortgage'],
       education: ['edu', 'school', 'tuition'],
-      other: [],
+      loan: ['loan', 'debt', 'credit', 'repayment'],
+      other: ['other', 'misc', 'general'],
     };
 
     const keywords = hintKeywords[hint] ?? [];

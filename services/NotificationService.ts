@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { AppNotification, AppNotificationService } from '@/services/AppNotificationService';
+import type { DraftTransaction } from '@/services/DraftTransactionService';
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
@@ -140,6 +141,33 @@ export class NotificationService {
         sound: 'coin.wav',
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
+
+      await Notifications.setNotificationChannelAsync('sms_drafts', {
+        name: 'SMS Transaction Drafts',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 150, 250],
+        lightColor: '#10b981',
+        sound: 'coin.wav',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+
+      await Notifications.setNotificationCategoryAsync('SMS_DRAFT', [
+        {
+          identifier: 'RECORD',
+          buttonTitle: '✓ Record',
+          options: { opensAppToForeground: true },
+        },
+        {
+          identifier: 'IGNORE',
+          buttonTitle: '✕ Ignore',
+          options: { opensAppToForeground: true },
+        },
+        {
+          identifier: 'REMIND_LATER',
+          buttonTitle: '⏰ Later (1h)',
+          options: { opensAppToForeground: false },
+        },
+      ]);
 
       await Notifications.setNotificationCategoryAsync('RECURRING_TRANSACTION', [
         {
@@ -319,6 +347,47 @@ export class NotificationService {
     }
   }
 
+  static async scheduleDailyHabitReminder(hour: number, minute: number): Promise<string | null> {
+    if (Platform.OS === 'web') return null;
+    try {
+      const hasPermission = await this.requestPermissions();
+      if (!hasPermission) return null;
+      const metadata = this.resolveMetadata({
+        actionType: 'view_drafts',
+        inAppType: 'tip',
+        icon: 'clock-o',
+        color: '#0ea5e9',
+        channelId: 'reminders',
+        notificationType: 'RECURRING',
+        storeInApp: false,
+        sourceKey: 'smart:habit-reminder',
+      });
+      const content: Notifications.NotificationContentInput = {
+        title: 'Your usual money-check time',
+        body: 'Take a minute to record today’s transactions and review pending SMS drafts.',
+        sound: true,
+        data: metadata,
+      };
+      if (Platform.OS === 'android') (content as any).channelId = 'reminders';
+      return await Notifications.scheduleNotificationAsync({
+        content,
+        trigger: { type: 'daily', hour, minute } as any,
+      });
+    } catch (error) {
+      console.error('Error scheduling habit reminder:', error);
+      return null;
+    }
+  }
+
+  static async cancelScheduledNotification(id?: string | null): Promise<void> {
+    if (!id || Platform.OS === 'web') return;
+    try {
+      await Notifications.cancelScheduledNotificationAsync(id);
+    } catch (error) {
+      console.warn('Failed to cancel scheduled notification:', error);
+    }
+  }
+
   static async snoozeNotification(response: Notifications.NotificationResponse) {
     const data = (response.notification.request.content.data || {}) as NotificationMetadata;
     const title = response.notification.request.content.title || 'Snoozed Reminder';
@@ -405,6 +474,41 @@ export class NotificationService {
       });
     } catch (error) {
       console.error('Error showing immediate notification:', error);
+    }
+  }
+
+  static async showSMSDraftNotification(draft: Pick<DraftTransaction, 'id' | 'type' | 'amount' | 'description' | 'category' | 'is_transfer'>): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    try {
+      const hasPermission = await this.requestPermissions();
+      if (!hasPermission) return;
+
+      const isIncome = draft.type === 'INCOME';
+      const prefix = draft.is_transfer ? '⇄' : isIncome ? '+' : '-';
+      const verb = draft.is_transfer ? 'Transfer' : isIncome ? 'Received' : 'Spent';
+      const title = `${prefix} ETB ${draft.amount.toLocaleString()} ${verb}`;
+      const body = draft.description || draft.category || 'Tap to review';
+
+      const content: Notifications.NotificationContentInput = {
+        title,
+        body,
+        sound: true,
+        categoryIdentifier: 'SMS_DRAFT',
+        data: {
+          draftId: draft.id,
+          actionType: 'view_drafts',
+          storeInApp: false,
+          notificationType: 'IMMEDIATE',
+        },
+      };
+
+      if (Platform.OS === 'android') {
+        (content as any).channelId = 'sms_drafts';
+      }
+
+      await Notifications.scheduleNotificationAsync({ content, trigger: null });
+    } catch (error) {
+      console.error('[NotificationService] showSMSDraftNotification error:', error);
     }
   }
 

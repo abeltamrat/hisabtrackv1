@@ -1,7 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthService, validatePhone } from '@/services/AuthService';
 import { FontAwesome } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,

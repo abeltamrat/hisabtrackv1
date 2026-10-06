@@ -2,7 +2,7 @@ import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import { Alert, Linking, Platform } from 'react-native';
 
-const DEFAULT_UPDATE_JSON_URL = 'http://www.hisab.nonstopplc.com/update.json';
+const DEFAULT_UPDATE_JSON_URL = 'https://www.hisab.nonstopplc.com/update.json';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const FLAG_GRANT_READ_URI_PERMISSION = 1;
 
@@ -125,6 +125,7 @@ export const UpdateService = {
   getUpdateManifestUrl(): string {
     const configuredUrl = Constants.expoConfig?.extra?.updateManifestUrl;
     if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
+      if (!configuredUrl.startsWith('https://')) throw new Error('Update manifests require HTTPS');
       return configuredUrl;
     }
     return DEFAULT_UPDATE_JSON_URL;
@@ -238,6 +239,7 @@ export const UpdateService = {
       const currentBuildNumber = this.getCurrentBuildNumber();
       const latestBuildNumber = this.getBinaryLatestBuild(data);
       const downloadUrl = this.getBinaryDownloadUrl(data);
+      if (downloadUrl && !downloadUrl.startsWith('https://')) throw new Error('Update downloads require HTTPS');
       const isRequired = this.isBinaryUpdateRequired(data, currentVersion, currentBuildNumber);
       const versionCompare = this.compareVersions(data.latestVersion, currentVersion);
       const buildCompare = versionCompare === 0
@@ -285,6 +287,7 @@ export const UpdateService = {
   },
 
   openUpdateUrl(url: string) {
+    if (!url.startsWith('https://')) throw new Error('Update downloads require HTTPS');
     Linking.canOpenURL(url).then(supported => {
       if (supported) {
         Linking.openURL(url);
@@ -353,6 +356,7 @@ export const UpdateService = {
       return;
     }
 
+    if (updateInfo.downloadUrl && !updateInfo.downloadUrl.startsWith('https://')) throw new Error('Update downloads require HTTPS');
     if (!updateInfo.downloadUrl) {
       throw new Error('No download URL was provided for this update.');
     }

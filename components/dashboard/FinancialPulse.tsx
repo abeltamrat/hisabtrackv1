@@ -1,7 +1,7 @@
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { memo } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
 interface FinancialPulseProps {
@@ -17,7 +17,7 @@ interface FinancialPulseProps {
   onOpenAssistant: () => void;
 }
 
-export default function FinancialPulse({
+function FinancialPulse({
   monthlyNet,
   savingsRate,
   overBudgetCount,
@@ -92,6 +92,8 @@ export default function FinancialPulse({
   );
 }
 
+export default memo(FinancialPulse);
+
 function getHeadline({
   monthlyNet,
   savingsRate,
@@ -138,15 +140,21 @@ function MetricPill({
 }) {
   const toneClass =
     tone === 'good'
-      ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-200'
+      ? 'bg-emerald-500/15 border-emerald-400/30'
       : tone === 'warn'
-        ? 'bg-amber-500/15 border-amber-400/30 text-amber-200'
-        : 'bg-rose-500/15 border-rose-400/30 text-rose-200';
+        ? 'bg-amber-500/15 border-amber-400/30'
+        : 'bg-rose-500/15 border-rose-400/30';
+  const toneTextClass =
+    tone === 'good'
+      ? 'text-emerald-100'
+      : tone === 'warn'
+        ? 'text-amber-100'
+        : 'text-rose-100';
 
   return (
     <View className={`flex-1 rounded-xl border p-2.5 mr-2 ${toneClass}`}>
-      <Text className="text-[10px] uppercase tracking-wide opacity-80">{label}</Text>
-      <Text className="font-bold text-xs mt-1">{value}</Text>
+      <Text className={`text-[10px] uppercase tracking-wide opacity-90 ${toneTextClass}`}>{label}</Text>
+      <Text className={`font-bold text-xs mt-1 ${toneTextClass}`}>{value}</Text>
     </View>
   );
 }

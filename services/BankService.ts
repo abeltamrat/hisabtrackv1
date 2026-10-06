@@ -1,6 +1,6 @@
 import BUNDLED_LOGOS from '@/assets/bankLogos/et';
 import { Bank } from '@/types/bank';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 
 const BANKS_STORAGE_KEY = 'hisabtrack_banks';
 

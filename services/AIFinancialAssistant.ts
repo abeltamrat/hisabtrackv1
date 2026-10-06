@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { operatingTransactions } from '@/utils/finance';
 import { Platform } from 'react-native';
 
 export interface FinancialData {
@@ -102,14 +102,15 @@ interface LocalFinanceSnapshot {
 
 export class AIFinancialAssistant {
     private static chatHistory: ChatMessage[] = [];
+    private static chatGeneration = 0;
     private static lastProviderUsed: AssistantProvider = 'none';
     private static readonly ONE_DAY_MS = 24 * 60 * 60 * 1000;
     private static readonly BUDGET_NEAR_THRESHOLD = 0.85;
     private static readonly GEMINI_MODEL_CANDIDATES = [
         'gemini-2.0-flash',
-        'gemini-1.5-flash-latest',
+        'gemini-2.0-flash-lite',
         'gemini-1.5-flash',
-        'gemini-1.5-pro-latest',
+        'gemini-1.5-flash-8b',
     ];
     private static readonly GROQ_MODEL_CANDIDATES = [
         'llama-3.1-8b-instant',
@@ -279,7 +280,7 @@ export class AIFinancialAssistant {
     }
 
     private static buildLocalSnapshot(data: FinancialData): LocalFinanceSnapshot {
-        const transactions = Array.isArray(data.transactions) ? data.transactions : [];
+        const transactions = operatingTransactions(Array.isArray(data.transactions) ? data.transactions : []);
         const budgets = Array.isArray(data.budgets) ? data.budgets : [];
         const loans = Array.isArray(data.loans) ? data.loans : [];
         const now = Date.now();
@@ -842,26 +843,45 @@ export class AIFinancialAssistant {
     }
 
     private static async generateWithGeminiFallback(apiKey: string, prompt: string): Promise<string> {
-        const genAI = new GoogleGenerativeAI(apiKey);
         const cachedModel = this.workingGeminiModelByApiKey.get(apiKey);
         const modelCandidates = cachedModel
-            ? [cachedModel, ...this.GEMINI_MODEL_CANDIDATES.filter((candidate) => candidate !== cachedModel)]
+            ? [cachedModel, ...this.GEMINI_MODEL_CANDIDATES.filter(m => m !== cachedModel)]
             : [...this.GEMINI_MODEL_CANDIDATES];
 
         let lastError: unknown;
 
         for (const modelName of modelCandidates) {
             try {
-                const model = genAI.getGenerativeModel({ model: modelName });
-                const result = await model.generateContent(prompt);
-                const response = await result.response;
+                const res = await fetch(
+                    `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: { maxOutputTokens: 600, temperature: 0.7 },
+                        }),
+                    }
+                );
+
+                if (!res.ok) {
+                    const errBody = await res.json().catch(() => ({})) as any;
+                    const errMsg = errBody?.error?.message || `HTTP ${res.status}`;
+                    if (res.status === 400 || res.status === 404) {
+                        lastError = new Error(errMsg);
+                        continue;
+                    }
+                    throw new Error(errMsg);
+                }
+
+                const data = await res.json() as any;
+                const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) throw new Error('Empty response from Gemini');
                 this.workingGeminiModelByApiKey.set(apiKey, modelName);
-                return response.text();
+                return text;
             } catch (error) {
                 lastError = error;
-                if (!this.shouldTryNextModel(error)) {
-                    break;
-                }
+                if (!this.shouldTryNextModel(error)) break;
             }
         }
 
@@ -970,7 +990,7 @@ export class AIFinancialAssistant {
     }
 
     private static shouldUsePuter(apiKeys: AssistantApiKeys) {
-        return Platform.OS === 'web' && apiKeys.usePuterJs !== false;
+        return Platform.OS === 'web' && apiKeys.usePuterJs === true;
     }
 
     private static async ensurePuterLoaded(): Promise<void> {
@@ -1098,6 +1118,10 @@ export class AIFinancialAssistant {
     }
 
     private static async generateWithProviderFallback(apiKeysInput: AssistantApiKeys | string, prompt: string): Promise<string> {
+        const generation = this.chatGeneration;
+        const { loadStoredAppSettings } = await import('@/contexts/AppSettingsContext');
+        if (!(await loadStoredAppSettings()).aiSharingEnabled) throw new Error('Enable AI data sharing in Settings before sending financial data to a provider.');
+        if (generation !== this.chatGeneration) throw new Error('Session changed');
         const apiKeys = this.normalizeApiKeys(apiKeysInput);
         const errors: string[] = [];
         const hasKeyProvider = !!(apiKeys.geminiApiKey || apiKeys.groqApiKey || apiKeys.openRouterApiKey);
@@ -1105,6 +1129,7 @@ export class AIFinancialAssistant {
         this.lastProviderUsed = 'none';
 
         if (apiKeys.geminiApiKey) {
+            if (generation !== this.chatGeneration || !(await loadStoredAppSettings()).aiSharingEnabled) throw new Error('AI sharing stopped');
             try {
                 const result = await this.generateWithGeminiFallback(apiKeys.geminiApiKey, prompt);
                 this.lastProviderUsed = 'gemini';
@@ -1115,6 +1140,7 @@ export class AIFinancialAssistant {
         }
 
         if (apiKeys.groqApiKey) {
+            if (generation !== this.chatGeneration || !(await loadStoredAppSettings()).aiSharingEnabled) throw new Error('AI sharing stopped');
             try {
                 const result = await this.generateWithGroqFallback(apiKeys.groqApiKey, prompt);
                 this.lastProviderUsed = 'groq';
@@ -1125,6 +1151,7 @@ export class AIFinancialAssistant {
         }
 
         if (apiKeys.openRouterApiKey) {
+            if (generation !== this.chatGeneration || !(await loadStoredAppSettings()).aiSharingEnabled) throw new Error('AI sharing stopped');
             try {
                 const result = await this.generateWithOpenRouterFallback(apiKeys.openRouterApiKey, prompt);
                 this.lastProviderUsed = 'openrouter';
@@ -1135,6 +1162,7 @@ export class AIFinancialAssistant {
         }
 
         if (shouldTryPuter) {
+            if (generation !== this.chatGeneration || !(await loadStoredAppSettings()).aiSharingEnabled) throw new Error('AI sharing stopped');
             try {
                 const result = await this.generateWithPuter(prompt);
                 this.lastProviderUsed = 'puter';
@@ -1161,7 +1189,7 @@ export class AIFinancialAssistant {
 
         // Calculate category breakdown
         const categoryBreakdown: Record<string, number> = {};
-        data.transactions
+        operatingTransactions(data.transactions)
             .filter(t => t.type === 'EXPENSE')
             .forEach(t => {
                 categoryBreakdown[t.category] = (categoryBreakdown[t.category] || 0) + t.amount;
@@ -1177,7 +1205,7 @@ export class AIFinancialAssistant {
 Financial Overview:
 - Total Income: $${monthlyIncome.toFixed(2)}
 - Total Expenses: $${monthlyExpense.toFixed(2)}
-- Net Balance: $${data.balance.toFixed(2)}
+- Operating surplus: $${data.balance.toFixed(2)}
 - Savings Rate: ${savingsRate.toFixed(1)}%
 - Number of Transactions: ${data.transactions.length}
 - Active Budgets: ${data.budgets.length}
@@ -1224,7 +1252,8 @@ Keep your response concise, friendly, and professional.`;
      */
     static async parseSMS(
         rawMessage: string,
-        apiKeys: AssistantApiKeys | string
+        apiKeys: AssistantApiKeys | string,
+        calibrationExamples: Array<{ rawMessage: string; fields: object }> = []
     ): Promise<{
         amount?: number;
         type?: 'INCOME' | 'EXPENSE';
@@ -1234,10 +1263,15 @@ Keep your response concise, friendly, and professional.`;
         balance?: number;
         fees?: number;
         tax?: number;
+        isLoanDisbursement?: boolean;
     } | null> {
         try {
             const normalizedKeys = this.normalizeApiKeys(apiKeys);
+            const verifiedExamples = calibrationExamples.slice(0, 5).map((example, index) =>
+                `Verified example ${index + 1}:\nSMS: ${JSON.stringify(example.rawMessage)}\nCorrect result: ${JSON.stringify(example.fields)}`
+            ).join('\n\n');
             const prompt = `You are a financial parsing engine. Extract the transaction details from the following bank SMS message.
+${verifiedExamples ? `Use these user-verified examples from the same bank as calibration guidance:\n${verifiedExamples}\n` : ''}
 Response must be a raw JSON object only (no markdown, no codeblocks like \`\`\`json) matching this exact format:
 {
   "amount": number or null,
@@ -1247,7 +1281,8 @@ Response must be a raw JSON object only (no markdown, no codeblocks like \`\`\`j
   "referenceNumber": "ref id or transaction id if present or null",
   "balance": number or null,
   "fees": number or null,
-  "tax": number or null
+  "tax": number or null,
+  "isLoanDisbursement": true only when this is incoming borrowed/loan money, otherwise false
 }
 
 SMS: "${rawMessage.replace(/"/g, '\\"')}"`;
@@ -1258,7 +1293,7 @@ SMS: "${rawMessage.replace(/"/g, '\\"')}"`;
             const cleanText = text.replace(/```json|```/gi, '').trim();
             const result = JSON.parse(cleanText);
             
-            if (!result || typeof result.amount !== 'number') {
+            if (!result || typeof result.amount !== 'number' || !Number.isFinite(result.amount) || result.amount <= 0 || !['INCOME', 'EXPENSE'].includes(result.type)) {
                 return null;
             }
             
@@ -1271,6 +1306,7 @@ SMS: "${rawMessage.replace(/"/g, '\\"')}"`;
                 balance: typeof result.balance === 'number' ? result.balance : undefined,
                 fees: typeof result.fees === 'number' ? result.fees : undefined,
                 tax: typeof result.tax === 'number' ? result.tax : undefined
+                ,isLoanDisbursement: result.isLoanDisbursement === true || undefined
             };
         } catch (error) {
             console.error('AI SMS Parsing Error:', error);
@@ -1282,8 +1318,9 @@ SMS: "${rawMessage.replace(/"/g, '\\"')}"`;
      * Chat with AI about finances
      */
     static async chat(userMessage: string, financialData: FinancialData, apiKeys: AssistantApiKeys | string): Promise<string> {
+        const generation = this.chatGeneration;
+        const normalizedKeys = this.normalizeApiKeys(apiKeys);
         try {
-            const normalizedKeys = this.normalizeApiKeys(apiKeys);
             const context = this.generateFinancialContext(financialData);
             const conversationHistory = this.chatHistory
                 .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
@@ -1303,6 +1340,7 @@ Provide a helpful, concise, and actionable response. Be encouraging and supporti
 
             const assistantMessage = await this.generateWithProviderFallback(normalizedKeys, prompt);
 
+            if (generation !== this.chatGeneration) throw new Error("Session changed");
             // Store in chat history
             this.chatHistory.push({
                 id: Date.now().toString() + '-user',
@@ -1326,18 +1364,27 @@ Provide a helpful, concise, and actionable response. Be encouraging and supporti
 
             return assistantMessage;
         } catch (error) {
+            if (generation !== this.chatGeneration) throw new Error("Session changed");
             this.lastProviderUsed = 'local';
+            const hasKey = !!(normalizedKeys.geminiApiKey || normalizedKeys.groqApiKey || normalizedKeys.openRouterApiKey);
+            const errMsg = (error as any)?.message || String(error);
+
             if (this.isMissingKeyError(error)) {
                 return this.getLocalChatFallback(userMessage, financialData);
             }
 
             if (this.isQuotaOrRateLimitError(error)) {
-                console.warn('AI Chat quota/rate limit reached. Falling back to local advice.');
                 const local = this.getLocalChatFallback(userMessage, financialData);
-                return `AI provider quota is currently reached for your configured keys. Here's local advice:\n\n${local}`;
+                return `⚠️ AI quota reached. Local analysis:\n\n${local}`;
             }
 
             console.error('AI Chat Error:', error);
+
+            if (hasKey) {
+                const local = this.getLocalChatFallback(userMessage, financialData);
+                return `⚠️ AI provider failed: ${errMsg}\n\nCheck your API key in Settings, then try again. Local analysis:\n\n${local}`;
+            }
+
             return this.getLocalChatFallback(userMessage, financialData);
         }
     }
@@ -1405,7 +1452,11 @@ Keep it practical and under 150 words.`;
      * Clear chat history
      */
     static clearChatHistory(): void {
+        this.chatGeneration++;
         this.chatHistory = [];
+        this.workingGeminiModelByApiKey.clear();
+        this.workingGroqModelByApiKey.clear();
+        this.workingOpenRouterModelByApiKey.clear();
         this.lastProviderUsed = 'none';
     }
 

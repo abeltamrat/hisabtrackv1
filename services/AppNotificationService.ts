@@ -1,5 +1,6 @@
+import { sessionLocalStorage } from '@/services/SessionStorage';
 import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import { Platform } from 'react-native';
 
 import BudgetService from '@/services/BudgetService';
@@ -189,7 +190,7 @@ export class AppNotificationService {
       let recurring: RecurringTransaction[] = [];
       const recurringKey = Platform.OS === 'web' ? 'recurring_transactions' : '@hisabtrack_recurring_transactions';
       if (Platform.OS === 'web') {
-        const stored = localStorage.getItem(recurringKey);
+        const stored = sessionLocalStorage.getItem(recurringKey);
         if (stored) recurring = JSON.parse(stored);
       } else {
         const stored = await AsyncStorage.getItem(recurringKey);

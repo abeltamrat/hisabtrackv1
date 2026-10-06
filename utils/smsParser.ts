@@ -1,3 +1,7 @@
+/**
+ * @deprecated Dead code — nothing imports this module. The live parser is
+ * utils/enhancedSMSParser.ts (used by SMSSyncService). Safe to delete.
+ */
 // SMS Parser utility for extracting transaction data from SMS messages
 export interface ParsedTransaction {
   amount: number;

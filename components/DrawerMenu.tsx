@@ -1,3 +1,4 @@
+import { sessionLocalStorage } from '@/services/SessionStorage';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useI18n } from '@/contexts/I18nContext';
@@ -37,6 +38,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const { formatCurrency, fontSize } = useAppSettings();
   const { t } = useI18n();
   const [notificationCount, setNotificationCount] = React.useState(0);
+  const [userPhone, setUserPhone] = React.useState<string | null>(null);
   const [, setIsPasswordModalVisible] = React.useState(false);
   const [, setPasswordInput] = React.useState('');
   const [, setIsResetting] = React.useState(false);
@@ -65,12 +67,17 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const destructiveRowClass = `flex-row items-center px-4 ${isVerySmall ? 'py-3' : 'py-4'} rounded-2xl`;
   const destructiveTextClass = `flex-1 font-bold ${isVerySmall ? 'text-sm' : 'text-base'}`;
 
-  // Load notification count
+  // Load notification count and phone
   React.useEffect(() => {
     if (visible) {
       loadNotificationCount();
+      if (user?.uid) {
+        import('@/services/AuthService').then(({ AuthService }) => {
+          AuthService.getUserPhone(user.uid).then(setUserPhone);
+        });
+      }
     }
-  }, [visible]);
+  }, [visible, user?.uid]);
 
   const loadNotificationCount = async () => {
     const count = await AppNotificationService.getUnreadCount();
@@ -105,6 +112,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const menuItems: MenuItem[] = [
     { id: 'dashboard', title: 'Dashboard', icon: 'dashboard', route: '/(tabs)', color: '#6366f1' },
     { id: 'transactions', title: 'Transactions', icon: 'list', route: '/(tabs)/transactions', color: '#8b5cf6' },
+    { id: 'sms-transactions', title: 'SMS Transactions', icon: 'commenting', route: '/draft-transactions', color: '#0d9488' },
     { id: 'reports', title: 'Reports & Analytics', icon: 'bar-chart', route: '/(tabs)/reports', color: '#ec4899' },
   ];
 
@@ -118,6 +126,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   ];
 
   const toolsItems: MenuItem[] = [
+    { id: 'sms-learning', title: 'Teach SMS Parser', icon: 'graduation-cap', route: '/manage-sms-rules', color: '#14b8a6' },
     { id: 'ai-assistant', title: 'AI Assistant', icon: 'magic', route: '/aiassistant', color: '#6366f1' },
     { id: 'export', title: 'Export Data', icon: 'download', route: '/export', color: '#06b6d4' },
     { id: 'backup', title: 'Backup & Restore', icon: 'cloud', color: '#14b8a6' },
@@ -201,71 +210,8 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     try {
       setIsResetting(true);
       setResetError(null);
-      console.log('Verifying password...');
-
-      // Re-authenticate user with password
-      const { getAuth, EmailAuthProvider, reauthenticateWithCredential } = await import('firebase/auth');
-      const auth = getAuth();
-      const currentUser = auth.currentUser;
-
-      if (!currentUser || !currentUser.email) {
-        throw new Error('No user logged in');
-      }
-
-      const credential = EmailAuthProvider.credential(currentUser.email, password);
-      await reauthenticateWithCredential(currentUser, credential);
-
-      console.log('Password verified, resetting account...');
-
-      // Delete remote data from Firestore
-      if (currentUser?.uid) {
-        const { default: SyncService } = await import('@/services/SyncService');
-        await SyncService.deleteRemoteData(currentUser.uid);
-      }
-
-      // Import SecureStorageService and Database
-      const { SecureStorageService } = await import('@/services/SecureStorageService');
-      const { getDatabase } = await import('@/services/database');
-
-      // Clear all data from secure storage
-      await SecureStorageService.clearAll();
-      console.log('Secure storage cleared');
-
-      // Clear all data from database
-      const db = await getDatabase();
-      await db.clearAllData();
-      console.log('Database cleared');
-
-      // Clear Legacy Storage / AsyncStorage
-      try {
-        const { StorageService } = await import('@/utils/storage');
-        await StorageService.clearAll();
-        console.log('StorageService cleared');
-      } catch (e) {
-        console.log('StorageService skip/error', e);
-      }
-
-      // Clear LocalStorage (Web specific for Recurring Transactions)
-      if (Platform.OS === 'web') {
-        try {
-          (window as any).localStorage.removeItem('recurring_transactions');
-          console.log('Recurring transactions cleared from localStorage');
-        } catch (e) {
-          console.error('Error clearing localStorage', e);
-        }
-      }
-
-      // Reset Redux store
-      const { resetTransactions } = await import('@/store/slices/transactionsSlice');
-      const { resetAccounts } = await import('@/store/slices/accountsSlice');
-      const { resetBudgets } = await import('@/store/slices/budgetsSlice');
-      const { resetLoans } = await import('@/store/slices/loansSlice');
-
-      dispatch(resetTransactions());
-      dispatch(resetAccounts());
-      dispatch(resetBudgets());
-      dispatch(resetLoans());
-      console.log('Redux store reset');
+      const { AccountResetService } = await import('@/services/AccountResetService');
+      await AccountResetService.resetWithPassword(password);
 
       // Success message
       if (Platform.OS === 'web') {
@@ -446,6 +392,12 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
                   <Text className={headerEmailClass}>
                     {user?.email || 'user@example.com'}
                   </Text>
+                  {userPhone && (
+                    <View className="flex-row items-center mt-1 gap-1">
+                      <FontAwesome name="link" size={isVerySmall ? 10 : 11} color="rgba(199,210,254,0.8)" />
+                      <Text className={`${headerEmailClass} ml-1`}>{userPhone}</Text>
+                    </View>
+                  )}
                 </View>
               </View>
 

@@ -5,9 +5,20 @@ import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { RootState } from '@/store';
 import { Transaction } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
 import { useSelector } from 'react-redux';
+
+// Build once at module load — avoids O(n) find() inside render
+const BUNDLED_LOGO_MAP = new Map(BUNDLED_LOGOS.map(b => [b.url, b]));
+
+function resolveLogoSrc(src: any): any {
+  if (typeof src === 'number') return src;
+  if (typeof src === 'string') return { uri: src };
+  if (src?.uri) return src;
+  if (src?.default) return { uri: src.default };
+  return src;
+}
 
 interface RecentTransactionsProps {
   transactions: Transaction[];
@@ -23,7 +34,18 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.name, c])), [categories]);
   const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts]);
 
-  const formatDate = (timestamp: number) => {
+  // Pre-resolve logo sources for the visible accounts only (O(accounts) not O(accounts × logos))
+  const logoSourceMap = useMemo(() => {
+    const map = new Map<string, any>();
+    accounts.forEach(a => {
+      if (!a.logo) return;
+      const bundled = BUNDLED_LOGO_MAP.get(a.logo);
+      map.set(a.logo, bundled?.src ? resolveLogoSrc(bundled.src) : { uri: a.logo });
+    });
+    return map;
+  }, [accounts]);
+
+  const formatDate = useCallback((timestamp: number) => {
     const date = new Date(timestamp);
     const today = new Date();
     const yesterday = new Date(today);
@@ -36,28 +58,7 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
     } else {
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
-  };
-
-  // Helper to resolve logo source: checks if the logo URL string matches a bundled bank
-  const getAccountImageSource = (logoUrl: string | null | undefined) => {
-    if (!logoUrl) return undefined;
-
-    // Check if it matches a bundled bank URL
-    const bundled = BUNDLED_LOGOS.find(b => b.url === logoUrl);
-    if (bundled && bundled.src) {
-      if (typeof bundled.src === 'number') return bundled.src;
-      if (typeof bundled.src === 'string') return { uri: bundled.src };
-      if (typeof bundled.src === 'object') {
-        // @ts-ignore
-        if (bundled.src.uri) return bundled.src;
-        // @ts-ignore
-        if (bundled.src.default) return { uri: bundled.src.default };
-        return bundled.src;
-      }
-    }
-
-    return { uri: logoUrl };
-  };
+  }, []);
 
   return (
     <View className="mb-8">
@@ -103,7 +104,7 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
                   <View className="absolute -bottom-2 -left-2 w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full justify-center items-center shadow-sm border border-white dark:border-slate-800 z-10 overflow-hidden">
                     <FontAwesome name="bank" size={12} color="#94a3b8" style={{ position: 'absolute' }} />
                     <Image
-                      source={getAccountImageSource(account.logo) as any}
+                      source={logoSourceMap.get(account.logo) as any}
                       className="w-full h-full"
                       resizeMode="cover"
                     />

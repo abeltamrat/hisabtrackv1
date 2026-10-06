@@ -1,4 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage, { getSessionScope } from '@/services/SessionStorage';
+import { createSerialQueue } from '@/utils/asyncLock';
 
 export type DraftStatus = 'PENDING' | 'RECORDED' | 'REJECTED';
 
@@ -24,6 +25,13 @@ export interface DraftTransaction {
   created_at: number;
   matched_transaction_id?: string;
   categoryHint?: string;
+  is_transfer?: boolean;
+  transfer_to_account_id?: string;
+  transfer_from_account_id?: string;
+  transfer_peer_account_number?: string;
+  is_loan_disbursement?: boolean;
+  /** Id of the opposite-leg draft when this is one side of a paired self-transfer. */
+  paired_draft_id?: string;
 }
 
 export interface SMSReconciliationResult {
@@ -33,11 +41,27 @@ export interface SMSReconciliationResult {
   newDrafts: number;
   alreadyRecorded: number;
   drafts: DraftTransaction[];
+  failed?: boolean;
 }
 
 export class DraftTransactionService {
   private static STORAGE_KEY = 'draft_transactions';
   private static cache: DraftTransaction[] | null = null;
+
+  // All mutations are read-modify-write cycles on one AsyncStorage key;
+  // serialize them so concurrent writers can't drop each other's changes.
+  private static mutationQueue = createSerialQueue();
+  private static mutationScope: string | null = null;
+  private static cacheScope: string | null = null;
+  private static mutate<T>(fn: () => Promise<T>): Promise<T> {
+    const scope = getSessionScope();
+    return this.mutationQueue(async () => {
+      if (getSessionScope() !== scope) throw new Error('Session changed');
+      this.mutationScope = scope;
+      try { return await fn(); } finally { this.mutationScope = null; }
+    });
+  }
+  static settle() { return this.mutationQueue(async () => undefined); }
 
   /**
    * Clear the in-memory cache
@@ -50,17 +74,20 @@ export class DraftTransactionService {
    * Get all draft transactions (utilizes in-memory cache)
    */
   static async getAll(): Promise<DraftTransaction[]> {
+    const scope = getSessionScope();
     try {
-      if (this.cache !== null) {
+      if (this.cache !== null && this.cacheScope === scope) {
         return [...this.cache];
       }
       const stored = await AsyncStorage.getItem(this.STORAGE_KEY);
       const parsed: DraftTransaction[] = stored ? JSON.parse(stored) : [];
+      if (getSessionScope() !== scope) throw new Error('Session changed');
+      this.cacheScope = scope;
       this.cache = parsed;
       return [...parsed];
     } catch (error) {
       console.error('Error loading draft transactions:', error);
-      return [];
+      throw error;
     }
   }
 
@@ -91,16 +118,18 @@ export class DraftTransactionService {
   /**
    * Add a new draft transaction
    */
-  static async add(draft: Omit<DraftTransaction, 'id' | 'created_at'>): Promise<DraftTransaction> {
-    const all = await this.getAll();
-    const newDraft: DraftTransaction = {
-      ...draft,
-      id: this.generateId(),
-      created_at: Date.now(),
-    };
-    all.push(newDraft);
-    await this.saveAll(all);
-    return newDraft;
+  static add(draft: Omit<DraftTransaction, 'id' | 'created_at'>): Promise<DraftTransaction> {
+    return this.mutate(async () => {
+      const all = await this.getAll();
+      const newDraft: DraftTransaction = {
+        ...draft,
+        id: this.generateId(),
+        created_at: Date.now(),
+      };
+      all.push(newDraft);
+      await this.saveAll(all);
+      return newDraft;
+    });
   }
 
   /**
@@ -108,54 +137,81 @@ export class DraftTransactionService {
    */
   static async addMany(drafts: Omit<DraftTransaction, 'id' | 'created_at'>[]): Promise<DraftTransaction[]> {
     if (drafts.length === 0) return [];
-    
-    const all = await this.getAll();
-    const timestamp = Date.now();
-    const newDrafts: DraftTransaction[] = drafts.map((draft, index) => ({
-      ...draft,
-      id: `${this.generateId()}_${index}`,
-      created_at: timestamp,
-    }));
-    
-    all.push(...newDrafts);
-    await this.saveAll(all);
-    return newDrafts;
+
+    return this.mutate(async () => {
+      const all = await this.getAll();
+      const timestamp = Date.now();
+      const newDrafts: DraftTransaction[] = drafts.map((draft, index) => ({
+        ...draft,
+        id: `${this.generateId()}_${index}`,
+        created_at: timestamp,
+      }));
+
+      all.push(...newDrafts);
+      await this.saveAll(all);
+      return newDrafts;
+    });
   }
 
   /**
    * Mark draft as recorded
    */
-  static async markAsRecorded(draftId: string, transactionId: string): Promise<void> {
-    const all = await this.getAll();
-    const draft = all.find(d => d.id === draftId);
-    if (draft) {
-      draft.status = 'RECORDED';
-      draft.is_recorded = true;
-      draft.matched_transaction_id = transactionId;
-      await this.saveAll(all);
-    }
+  static markAsRecorded(draftId: string, transactionId: string): Promise<void> {
+    return this.mutate(async () => {
+      const all = await this.getAll();
+      const draft = all.find(d => d.id === draftId);
+      if (draft) {
+        draft.status = 'RECORDED';
+        draft.is_recorded = true;
+        draft.matched_transaction_id = transactionId;
+        await this.saveAll(all);
+      }
+    });
+  }
+
+  /**
+   * Apply several partial updates in one atomic read-modify-write cycle.
+   */
+  static updateMany(patches: Array<{ id: string; patch: Partial<DraftTransaction> }>): Promise<void> {
+    if (patches.length === 0) return Promise.resolve();
+    return this.mutate(async () => {
+      const all = await this.getAll();
+      let changed = false;
+      for (const { id, patch } of patches) {
+        const index = all.findIndex(d => d.id === id);
+        if (index >= 0) {
+          all[index] = { ...all[index], ...patch };
+          changed = true;
+        }
+      }
+      if (changed) await this.saveAll(all);
+    });
   }
 
   /**
    * Update draft status (e.g. REJECTED)
    */
-  static async updateStatus(draftId: string, status: DraftStatus): Promise<void> {
-    const all = await this.getAll();
-    const draft = all.find(d => d.id === draftId);
-    if (draft) {
-      draft.status = status;
-      if (status === 'RECORDED') draft.is_recorded = true;
-      await this.saveAll(all);
-    }
+  static updateStatus(draftId: string, status: DraftStatus): Promise<void> {
+    return this.mutate(async () => {
+      const all = await this.getAll();
+      const draft = all.find(d => d.id === draftId);
+      if (draft) {
+        draft.status = status;
+        if (status === 'RECORDED') draft.is_recorded = true;
+        await this.saveAll(all);
+      }
+    });
   }
 
   /**
    * Delete a draft transaction
    */
-  static async delete(draftId: string): Promise<void> {
-    const all = await this.getAll();
-    const filtered = all.filter(d => d.id !== draftId);
-    await this.saveAll(filtered);
+  static delete(draftId: string): Promise<void> {
+    return this.mutate(async () => {
+      const all = await this.getAll();
+      const filtered = all.filter(d => d.id !== draftId);
+      await this.saveAll(filtered);
+    });
   }
 
   /**
@@ -170,12 +226,10 @@ export class DraftTransactionService {
    * Save all drafts to storage and update cache
    */
   private static async saveAll(drafts: DraftTransaction[]): Promise<void> {
-    try {
-      this.cache = drafts;
-      await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(drafts));
-    } catch (error) {
-      console.error('Error saving draft transactions:', error);
-    }
+    const scope = getSessionScope();
+    if (this.mutationScope && this.mutationScope !== scope) throw new Error('Session changed');
+    await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(drafts));
+    if (getSessionScope() === scope) { this.cacheScope = scope; this.cache = drafts; }
   }
 
   /**
@@ -210,22 +264,26 @@ export class DraftTransactionService {
   /**
    * Clear all recorded drafts older than specified days
    */
-  static async clearOldRecorded(daysOld: number = 30): Promise<number> {
-    const all = await this.getAll();
-    const cutoffTime = Date.now() - (daysOld * 24 * 60 * 60 * 1000);
-    const filtered = all.filter(draft =>
-      !draft.is_recorded || draft.created_at > cutoffTime
-    );
-    const removedCount = all.length - filtered.length;
-    await this.saveAll(filtered);
-    return removedCount;
+  static clearOldRecorded(daysOld: number = 30): Promise<number> {
+    return this.mutate(async () => {
+      const all = await this.getAll();
+      const cutoffTime = Date.now() - (daysOld * 24 * 60 * 60 * 1000);
+      const filtered = all.filter(draft =>
+        !draft.is_recorded || draft.created_at > cutoffTime
+      );
+      const removedCount = all.length - filtered.length;
+      await this.saveAll(filtered);
+      return removedCount;
+    });
   }
 
   /**
    * Clear all draft transactions
    */
-  static async clearAll(): Promise<void> {
-    this.cache = null;
-    await AsyncStorage.removeItem(this.STORAGE_KEY);
+  static clearAll(): Promise<void> {
+    return this.mutate(async () => {
+      this.cache = null;
+      await AsyncStorage.removeItem(this.STORAGE_KEY);
+    });
   }
 }

@@ -12,7 +12,8 @@ export function useSMSSync() {
    */
   const syncAccount = async (
     account: Account,
-    transactions: Transaction[]
+    transactions: Transaction[],
+    allAccounts: Account[] = [account]
   ): Promise<SMSReconciliationResult | null> => {
     if (!account.sms_number) {
       return null;
@@ -20,7 +21,7 @@ export function useSMSSync() {
 
     try {
       setSyncing(true);
-      const result = await SMSSyncService.syncAccountSMS(account, transactions);
+      const result = await SMSSyncService.syncAccountSMS(account, transactions, { allAccounts });
       setLastSyncTime(Date.now());
       return result;
     } catch (error) {

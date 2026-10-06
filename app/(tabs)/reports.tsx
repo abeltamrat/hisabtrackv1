@@ -1,3 +1,6 @@
+import { useLedgerClock } from '@/hooks/useLedgerClock';
+import { operatingTransactions, reportPeriod, sumMoney } from '@/utils/finance';
+import { sessionLocalStorage } from '@/services/SessionStorage';
 import AIInsights from '@/components/AIInsights';
 import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
@@ -17,11 +20,10 @@ import { fetchLoans } from '@/store/slices/loansSlice';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { StatusBar } from 'expo-status-bar';
 import { RecurringTransaction } from '@/types/database';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Dimensions, Platform, ScrollView, Text, TouchableOpacity, View, Modal } from 'react-native';
+import { Alert, Dimensions, InteractionManager, Platform, ScrollView, Text, TouchableOpacity, View, Modal } from 'react-native';
 import { BarChart, LineChart, PieChart, ProgressChart } from 'react-native-chart-kit';
 
 import { useDispatch, useSelector } from 'react-redux';
@@ -71,6 +73,7 @@ const getForecastEventColor = (event: ForecastEvent) => {
 
 export default function ReportsScreen() {
   const router = useRouter();
+  const ledgerNow = useLedgerClock();
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useAuth();
   const { categories } = useTransactions();
@@ -87,18 +90,20 @@ export default function ReportsScreen() {
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
-    // Load budgets, loans and transactions if not already loaded or to ensure fresh data
-    dispatch(fetchBudgets());
-    dispatch(fetchLoans());
-    dispatch(fetchTransactions());
-    dispatch(fetchAccounts());
-    void loadRecurring();
+    const task = InteractionManager.runAfterInteractions(() => {
+      dispatch(fetchBudgets());
+      dispatch(fetchLoans());
+      dispatch(fetchTransactions());
+      dispatch(fetchAccounts());
+      void loadRecurring();
+    });
 
     const unsubscribe = LocalChangeEmitter.subscribe(async () => {
       await loadRecurring();
     });
 
     return () => {
+      task.cancel();
       if (unsubscribe) {
         unsubscribe();
       }
@@ -108,7 +113,7 @@ export default function ReportsScreen() {
   const loadRecurring = async () => {
     try {
       const stored = Platform.OS === 'web'
-        ? localStorage.getItem('recurring_transactions')
+        ? sessionLocalStorage.getItem('recurring_transactions')
         : await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
       if (stored) setRecurring(JSON.parse(stored));
     } catch (e) {
@@ -224,73 +229,26 @@ export default function ReportsScreen() {
   const expenseDatasetColor = (opacity = 1) => actualTheme === 'dark' ? `rgba(239, 68, 68, ${opacity})` : `rgba(239, 68, 68, ${opacity})`;
   const incomeDatasetColor = (opacity = 1) => actualTheme === 'dark' ? `rgba(16, 185, 129, ${opacity})` : `rgba(16, 185, 129, ${opacity})`;
 
-  // Filter transactions by time range
-  const filteredTransactions = useMemo(() => {
-    const now = new Date();
-    return transactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      switch (timeRange) {
-        case 'week':
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          return transactionDate >= weekAgo;
-        case 'month':
-          const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-          return transactionDate >= monthAgo;
-        case 'year':
-          const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-          return transactionDate >= yearAgo;
-        default:
-          return true;
-      }
-    });
-  }, [transactions, timeRange]);
-
-  // Calculate transactions for the previous period for MoM analysis
-  const previousPeriodTransactions = useMemo(() => {
-    const now = new Date();
-    return transactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      switch (timeRange) {
-        case 'week':
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-          return transactionDate >= twoWeeksAgo && transactionDate < weekAgo;
-        case 'month':
-          const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-          const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, now.getDate());
-          return transactionDate >= twoMonthsAgo && transactionDate < monthAgo;
-        case 'year':
-          const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-          const twoYearsAgo = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
-          return transactionDate >= twoYearsAgo && transactionDate < yearAgo;
-        default:
-          return false;
-      }
-    });
-  }, [transactions, timeRange]);
+  const period = useMemo(() => reportPeriod(timeRange, ledgerNow,
+    transactions.reduce((oldest, tx) => Math.min(oldest, tx.date), ledgerNow)), [timeRange, ledgerNow, transactions]);
+  const filteredTransactions = useMemo(() => operatingTransactions(transactions).filter(tx =>
+    tx.date >= period.start && tx.date <= period.end), [transactions, period]);
+  const previousPeriodTransactions = useMemo(() => operatingTransactions(transactions).filter(tx =>
+    tx.date >= period.previousStart && tx.date < period.start), [transactions, period]);
 
   // Calculate summary statistics
   const summary = useMemo(() => {
-    const income = filteredTransactions
+    const income = sumMoney(filteredTransactions
       .filter(t => (t.type || '').toString().toUpperCase() === 'INCOME')
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
+      .map(t => t.amount || 0));
 
-    const expense = filteredTransactions
+    const expense = sumMoney(filteredTransactions
       .filter(t => (t.type || '').toString().toUpperCase() === 'EXPENSE')
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
+      .map(t => t.amount || 0));
 
     const balance = income - expense;
     const savingsRate = income > 0 ? ((income - expense) / income) * 100 : 0;
-    let days: number;
-    if (timeRange === 'week') days = 7;
-    else if (timeRange === 'month') days = 30;
-    else if (timeRange === 'year') days = 365;
-    else {
-      const oldest = filteredTransactions.length > 0
-        ? Math.min(...filteredTransactions.map(t => t.date))
-        : Date.now();
-      days = Math.max(1, Math.ceil((Date.now() - oldest) / (1000 * 60 * 60 * 24)));
-    }
+    const days = period.days;
     const avgDailyExpense = expense / days;
 
     return {
@@ -301,13 +259,13 @@ export default function ReportsScreen() {
       avgDailyExpense,
       transactionCount: filteredTransactions.length,
     };
-  }, [filteredTransactions, timeRange]);
+  }, [filteredTransactions, timeRange, period]);
 
   // Monthly Aggregation for Analysis
   const monthlyData = useMemo(() => {
     const data: Record<string, { income: number; expense: number; date: Date }> = {};
     // Use ALL transactions for historical analysis
-    transactions.forEach(t => {
+    operatingTransactions(transactions).filter(t => t.date <= ledgerNow).forEach(t => {
       const d = new Date(typeof t.date === 'number' ? t.date : new Date(t.date).getTime());
       const key = `${d.getFullYear()}-${d.getMonth()}`;
       if (!data[key]) data[key] = { income: 0, expense: 0, date: new Date(d.getFullYear(), d.getMonth(), 1) };
@@ -316,8 +274,18 @@ export default function ReportsScreen() {
       else if ((t.type || '').toString().toUpperCase() === 'EXPENSE') data[key].expense += (t.amount || 0);
     });
 
+    const dates = Object.values(data).map(month => month.date.getTime());
+    if (dates.length) {
+      const cursor = new Date(Math.min(...dates));
+      const end = new Date(ledgerNow);
+      while (cursor <= end) {
+        const key = `${cursor.getFullYear()}-${cursor.getMonth()}`;
+        if (!data[key]) data[key] = { income: 0, expense: 0, date: new Date(cursor) };
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    }
     return Object.values(data).sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [transactions]);
+  }, [transactions, ledgerNow]);
 
   // Analysis Stats
   const analysisStats = useMemo(() => {
@@ -334,10 +302,10 @@ export default function ReportsScreen() {
       const monthStr = m.date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
       if (m.income > maxIncome.amount) maxIncome = { amount: m.income, month: monthStr };
-      if (m.income < minIncome.amount && m.income > 0) minIncome = { amount: m.income, month: monthStr };
+      if (m.income < minIncome.amount) minIncome = { amount: m.income, month: monthStr };
 
       if (m.expense > maxExpense.amount) maxExpense = { amount: m.expense, month: monthStr };
-      if (m.expense < minExpense.amount && m.expense > 0) minExpense = { amount: m.expense, month: monthStr };
+      if (m.expense < minExpense.amount) minExpense = { amount: m.expense, month: monthStr };
 
       totalExpense += m.expense;
     });
@@ -348,16 +316,17 @@ export default function ReportsScreen() {
     const avgMonthlyExpense = validMonths > 0 ? totalExpense / validMonths : 0;
 
     return { maxIncome, minIncome, maxExpense, minExpense, avgMonthlyExpense };
-  }, [monthlyData]);
+  }, [monthlyData, ledgerNow]);
 
   // Historical reference (avg of last 3 months)
   const historicalForecast = useMemo(() => {
-    const last3 = monthlyData.slice(-3);
+    const current = new Date(ledgerNow);
+    const last3 = monthlyData.filter(month => month.date < new Date(current.getFullYear(), current.getMonth(), 1)).slice(-3);
     if (last3.length === 0) return { income: 0, expense: 0 };
     const avgInc = last3.reduce((s, m) => s + m.income, 0) / last3.length;
     const avgExp = last3.reduce((s, m) => s + m.expense, 0) / last3.length;
     return { income: avgInc, expense: avgExp };
-  }, [monthlyData]);
+  }, [monthlyData, ledgerNow]);
 
   const accountsById = useMemo(
     () => new Map(accounts.map((account) => [account.id, account])),
@@ -510,7 +479,7 @@ export default function ReportsScreen() {
     });
 
     return data;
-  }, [filteredTransactions, timeRange]);
+  }, [filteredTransactions, timeRange, period]);
 
   const chartConfig = {
     backgroundColor: actualTheme === 'dark' ? '#0f172a' : '#ffffff',
@@ -541,7 +510,6 @@ export default function ReportsScreen() {
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
-      <StatusBar style="auto" />
 
       {/* Header */}
       <LinearGradient
@@ -824,7 +792,7 @@ export default function ReportsScreen() {
                     <View className="flex-1">
                       <Text className="text-amber-800 dark:text-amber-200 font-bold">Loan Payments Due</Text>
                       <Text className="text-amber-700/80 dark:text-amber-100/70 text-xs">
-                        Active borrowed loans reduce projected available cash in this horizon.
+                        Forecast uses unlocked cash, recurring rules, and full outstanding debts due within the horizon, including overdue debts today. It excludes uncertain loan collections. Do not enter the same loan payment as a recurring expense.
                       </Text>
                     </View>
                   </View>

@@ -1,7 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthService, validatePhone } from '@/services/AuthService';
 import { FontAwesome } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Redirect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -74,21 +74,10 @@ export default function LoginScreen() {
 
     let loginEmail = identifier.trim();
 
-    // Phone number path: validate format then look up the associated email
     if (isPhoneNumber(loginEmail)) {
-      const phoneErr = validatePhone(loginEmail);
-      if (phoneErr) {
-        setLoading(false);
-        Alert.alert('Invalid phone number', phoneErr);
-        return;
-      }
-      const found = await AuthService.lookupEmailByPhone(loginEmail);
-      if (!found) {
-        setLoading(false);
-        Alert.alert('Error', 'No account found for this phone number');
-        return;
-      }
-      loginEmail = found;
+      setLoading(false);
+      Alert.alert('Use your email', 'Sign in with your email address. Phone-directory lookup is available only after sign-in.');
+      return;
     }
 
     const result = await AuthService.signIn(loginEmail, password);
@@ -139,6 +128,17 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
     } else {
       Alert.alert('Error', result.error || 'Failed to create account');
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    const result = await AuthService.signInWithGoogle();
+    setLoading(false);
+    if (result.success) {
+      router.replace('/(tabs)');
+    } else if (result.error !== 'Sign-in cancelled') {
+      Alert.alert('Google Sign-In Failed', result.error || 'Could not sign in with Google');
     }
   };
 
@@ -201,9 +201,9 @@ export default function LoginScreen() {
                   <Text className="text-slate-900 text-2xl font-bold mb-2">Sign In</Text>
                   <Text className="text-slate-500 mb-8">Enter your credentials to continue</Text>
 
-                  {/* Email or Phone */}
+                  {/* Email */}
                   <View className="mb-4">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Email or Phone Number</Text>
+                    <Text className="text-slate-500 text-sm font-bold mb-2">Email Number</Text>
                     <TextInput
                       className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
                       placeholder="your@email.com or +251912345678"
@@ -259,6 +259,23 @@ export default function LoginScreen() {
                     <Text className="text-white font-bold text-base">
                       {loading ? 'Signing in...' : 'Sign In'}
                     </Text>
+                  </TouchableOpacity>
+
+                  {/* Divider */}
+                  <View className="flex-row items-center mb-4">
+                    <View className="flex-1 h-px bg-slate-200" />
+                    <Text className="text-slate-400 text-sm mx-3">or</Text>
+                    <View className="flex-1 h-px bg-slate-200" />
+                  </View>
+
+                  {/* Google Sign-In */}
+                  <TouchableOpacity
+                    onPress={handleGoogleSignIn}
+                    disabled={loading}
+                    className={`h-14 rounded-xl justify-center items-center border-2 border-slate-200 bg-white flex-row gap-3 mb-4 ${loading ? 'opacity-50' : ''}`}
+                  >
+                    <FontAwesome name="google" size={20} color="#EA4335" />
+                    <Text className="text-slate-700 font-semibold text-base">Continue with Google</Text>
                   </TouchableOpacity>
 
                   <View className="flex-row justify-center items-center">

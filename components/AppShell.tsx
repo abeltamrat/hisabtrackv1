@@ -1,3 +1,4 @@
+import DataStatusBanner from './DataStatusBanner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AppNotification, AppNotificationService } from '@/services/AppNotificationService';
@@ -48,7 +49,7 @@ export default function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     const iv = setInterval(() => {
       setDisabledUntil(SyncService.disableAutoSyncUntil || 0);
-    }, 2000);
+    }, 30_000); // error banner doesn't need 2-second precision
     return () => clearInterval(iv);
   }, []);
 
@@ -118,6 +119,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
+      <DataStatusBanner />
       {/* Top App Bar */}
       <View
         className="flex-row items-center justify-between px-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800"

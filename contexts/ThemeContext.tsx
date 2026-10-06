@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import { useColorScheme } from 'react-native';
 import { useColorScheme as useNWColorScheme } from 'nativewind';
 

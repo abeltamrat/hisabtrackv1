@@ -11,25 +11,24 @@ import { hasTag } from '@/utils/tags';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, InteractionManager, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
 import { useDispatch, useSelector } from 'react-redux';
 
+const BUNDLED_LOGO_MAP = new Map(BUNDLED_LOGOS.map(b => [b.url, b]));
+
 function getAccountImageSource(logoUrl: string | null | undefined) {
   if (!logoUrl) return undefined;
-  const bundled = BUNDLED_LOGOS.find(b => b.url === logoUrl);
-  if (bundled && bundled.src) {
+  const bundled = BUNDLED_LOGO_MAP.get(logoUrl);
+  if (bundled?.src) {
     if (typeof bundled.src === 'number') return bundled.src;
     if (typeof bundled.src === 'string') return { uri: bundled.src };
-    if (typeof bundled.src === 'object') {
-      const src = bundled.src as { uri?: string; default?: string };
-      if (src.uri) return bundled.src;
-      if (src.default) return { uri: src.default };
-      return bundled.src;
-    }
+    const src = bundled.src as { uri?: string; default?: string };
+    if (src.uri) return bundled.src;
+    if (src.default) return { uri: src.default };
+    return bundled.src;
   }
   return { uri: logoUrl };
 }
@@ -87,18 +86,20 @@ export default function TransactionsScreen() {
   const headerTitleSize = fontSize === 'V.Small' ? 'text-lg' : fontSize === 'Small' ? 'text-xl' : fontSize === 'Large' ? 'text-3xl' : 'text-2xl';
   const labelSize = fontSize === 'V.Small' ? 'text-[11px]' : fontSize === 'Small' ? 'text-xs' : fontSize === 'Large' ? 'text-base' : 'text-sm';
   const denseButtonPadding = isVerySmall ? 'py-1.5' : 'py-2';
-  const categoryChipPadding = isVerySmall ? 'px-2.5 py-1' : 'px-3 py-1.5';
-  const categoryChildChipPadding = isVerySmall ? 'px-2 py-0.5' : 'px-2.5 py-1';
   const summaryValueSize = fontSize === 'V.Small' ? 'text-base' : 'text-lg';
   const [filter, setFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
-  const [filterAccountId, setFilterAccountId] = useState<string | null>(null);
+  const [filterAccountIds, setFilterAccountIds] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState<Date | null>(null);
   const [dateTo, setDateTo] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState<'from' | 'to' | null>(null);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showDateModal, setShowDateModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -108,24 +109,25 @@ export default function TransactionsScreen() {
   const getChildCategories = (parentId: string) => filteredCategories.filter(c => c.parentId === parentId);
 
   // Get all category names that should be included when a category is selected
-  const getCategoryNamesToInclude = (selectedCatName: string | null) => {
-    if (!selectedCatName) return null; // null means include all categories
-
-    const selectedCat = categories.find(c => c.name === selectedCatName);
-    if (!selectedCat) return [selectedCatName]; // fallback
-
-    // If it's a parent category (no parentId), include parent + all children
-    if (!selectedCat.parentId) {
-      const childCategories = getChildCategories(selectedCat.id);
-      return [selectedCat.name, ...childCategories.map(c => c.name)];
+  const getCategoryNamesToInclude = (selectedCatNames: string[]) => {
+    if (selectedCatNames.length === 0) return null;
+    const names = new Set<string>();
+    for (const selectedCatName of selectedCatNames) {
+      const selectedCat = categories.find(c => c.name === selectedCatName);
+      if (!selectedCat) { names.add(selectedCatName); continue; }
+      names.add(selectedCat.name);
+      if (!selectedCat.parentId) {
+        getChildCategories(selectedCat.id).forEach(c => names.add(c.name));
+      }
     }
-
-    // If it's a child category, only include that specific category
-    return [selectedCat.name];
+    return [...names];
   };
 
   useEffect(() => {
-    dispatch(fetchTransactions());
+    const task = InteractionManager.runAfterInteractions(() => {
+      dispatch(fetchTransactions());
+    });
+    return () => task.cancel();
   }, [dispatch]);
 
   useEffect(() => {
@@ -136,7 +138,7 @@ export default function TransactionsScreen() {
 
   useEffect(() => {
     if (typeof tag === 'string' && tag.trim()) {
-      setSelectedTag(tag.trim());
+      setSelectedTags([tag.trim()]);
     }
   }, [tag]);
 
@@ -156,7 +158,7 @@ export default function TransactionsScreen() {
   }, [transactions]);
 
   const filteredTransactions = useMemo(() => {
-    const categoriesToInclude = getCategoryNamesToInclude(selectedCategory);
+    const categoriesToInclude = getCategoryNamesToInclude(selectedCategories);
 
     return transactions.filter((t) => {
       // Type filter
@@ -166,10 +168,10 @@ export default function TransactionsScreen() {
       if (categoriesToInclude && !categoriesToInclude.includes(t.category)) return false;
 
       // Tag filter
-      if (!hasTag(t.tags, selectedTag)) return false;
+      if (selectedTags.length > 0 && !selectedTags.some(st => hasTag(t.tags, st))) return false;
 
       // Account filter (applies to both card and table views)
-      if (filterAccountId && t.account_id !== filterAccountId && t.to_account_id !== filterAccountId) return false;
+      if (filterAccountIds.length > 0 && !filterAccountIds.includes(t.account_id) && !filterAccountIds.includes(t.to_account_id ?? '')) return false;
 
       // Date filter (applies to both card and table views)
       if (dateFrom && t.date < new Date(dateFrom).setHours(0, 0, 0, 0)) return false;
@@ -188,7 +190,7 @@ export default function TransactionsScreen() {
 
       return true;
     });
-  }, [transactions, filter, selectedCategory, selectedTag, searchQuery, categories, filterAccountId, dateFrom, dateTo]);
+  }, [transactions, filter, selectedCategories, selectedTags, searchQuery, categories, filterAccountIds, dateFrom, dateTo]);
 
   // Group by date
   const groupedTransactions = useMemo(() => {
@@ -234,21 +236,22 @@ export default function TransactionsScreen() {
 
   // Running balance per transaction (account-aware)
   const transactionBalances = useMemo(() => {
-    const baseBalance = filterAccountId
-      ? (accounts.find(a => a.id === filterAccountId)?.balance ?? 0)
+    const baseBalance = filterAccountIds.length > 0
+      ? accounts.filter(a => filterAccountIds.includes(a.id)).reduce((sum, a) => sum + (a.balance ?? 0), 0)
       : accounts.reduce((sum, a) => sum + (a.balance ?? 0), 0);
     const sorted = [...transactions].sort((a, b) => a.date - b.date);
     const getTxDelta = (t: typeof sorted[number]) => {
-      if (!filterAccountId) {
+      if (filterAccountIds.length === 0) {
         if (t.type === 'INCOME') return t.amount;
         if (t.type === 'EXPENSE') return -t.amount;
         return 0;
       }
-      if (t.type === 'INCOME' && t.account_id === filterAccountId) return t.amount;
-      if (t.type === 'EXPENSE' && t.account_id === filterAccountId) return -t.amount;
+      if (t.type === 'INCOME' && filterAccountIds.includes(t.account_id)) return t.amount;
+      if (t.type === 'EXPENSE' && filterAccountIds.includes(t.account_id)) return -t.amount;
       if (t.type === 'TRANSFER') {
-        if (t.account_id === filterAccountId) return -t.amount;
-        if (t.to_account_id === filterAccountId) return t.amount;
+        if (filterAccountIds.includes(t.account_id)) return -t.amount;
+        // Destination receives the net of sender-side fees/VAT.
+        if (filterAccountIds.includes(t.to_account_id ?? '')) return t.amount - (t.fees ?? 0) - (t.tax ?? 0);
       }
       return 0;
     };
@@ -260,7 +263,7 @@ export default function TransactionsScreen() {
       map.set(t.id, running);
     }
     return map;
-  }, [transactions, accounts, filterAccountId]);
+  }, [transactions, accounts, filterAccountIds]);
 
   // Table view: oldest first (bank statement order)
   const tableTransactions = useMemo(
@@ -299,7 +302,6 @@ export default function TransactionsScreen() {
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
-      <StatusBar style="auto" />
 
       {/* Header */}
       <View className="px-6 pt-4 pb-2">
@@ -381,175 +383,133 @@ export default function TransactionsScreen() {
           ))}
         </View>
 
-        {/* Category Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6 mb-2">
+        {/* Filter Buttons Row */}
+        <View className="flex-row mb-1" style={{ gap: 6 }}>
+          {/* Category */}
           <TouchableOpacity
-            onPress={() => setSelectedCategory(null)}
-            className={`mr-3 ${categoryChipPadding} rounded-full border-2 ${selectedCategory === null
-              ? 'bg-primary-500 border-primary-500'
-              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-              }`}
-          >
-            <Text className={`${labelSize} font-bold ${selectedCategory === null ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-              All
-            </Text>
-          </TouchableOpacity>
-          {rootCategories.map((category) => {
-            const isParentSelected = selectedCategory === category.name;
-            const childCategories = getChildCategories(category.id);
-
-            return (
-              <View key={category.id} className="flex-col mr-3">
-                {/* Parent Category */}
-                <TouchableOpacity
-                  onPress={() => setSelectedCategory(category.name)}
-                  className={`${categoryChipPadding} rounded-full border-2 flex-row items-center mb-2 ${isParentSelected
-                    ? 'border-primary-500'
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                    }`}
-                  style={isParentSelected ? { backgroundColor: category.color + '20', borderColor: category.color } : {}}
-                >
-                  <CategoryIcon icon={category.icon} size={isVerySmall ? 11 : 12} color={isParentSelected ? category.color : '#64748b'} />
-                  <Text className={`${labelSize} font-bold ml-2 ${isParentSelected ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                    {category.name}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Child Categories - Show only when parent is selected */}
-                {isParentSelected && childCategories.length > 0 && (
-                  <View className="flex-row flex-wrap">
-                    {childCategories.map((childCat) => (
-                      <TouchableOpacity
-                        key={childCat.id}
-                        onPress={() => setSelectedCategory(childCat.name)}
-                        className={`mr-2 mb-1 ${categoryChildChipPadding} rounded-full border flex-row items-center ${selectedCategory === childCat.name
-                          ? 'border-primary-500'
-                          : 'bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
-                          }`}
-                        style={selectedCategory === childCat.name ? { backgroundColor: childCat.color + '20', borderColor: childCat.color } : {}}
-                      >
-                        <CategoryIcon icon={childCat.icon} size={isVerySmall ? 9 : 10} color={selectedCategory === childCat.name ? childCat.color : '#64748b'} />
-                        <Text className={`${isVerySmall ? 'text-[11px]' : 'text-xs'} font-semibold ml-1 ${selectedCategory === childCat.name ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'}`}>
-                          {childCat.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </ScrollView>
-
-        {/* Tag Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6 mb-2">
-          <TouchableOpacity
-            onPress={() => setSelectedTag(null)}
-            className={`mr-2 px-3 py-1 rounded-full border-2 ${selectedTag === null
-              ? 'bg-indigo-500 border-indigo-500'
-              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-              }`}
-          >
-            <Text className={`${labelSize} font-bold ${selectedTag === null ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-              All Tags
-            </Text>
-          </TouchableOpacity>
-          {allTags.map((transactionTag) => {
-            const active = selectedTag?.toLowerCase() === transactionTag.toLowerCase();
-            return (
-              <TouchableOpacity
-                key={transactionTag}
-                onPress={() => setSelectedTag(transactionTag)}
-                className={`mr-2 px-3 py-1 rounded-full border ${active
-                  ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                  }`}
-              >
-                <Text className={`${isVerySmall ? 'text-[11px]' : 'text-xs'} font-semibold ${active ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>
-                  #{transactionTag}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Account Filter - applies to both card and table views */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-6 px-6 mb-2">
-          <TouchableOpacity
-            onPress={() => setFilterAccountId(null)}
-            className={`mr-2 px-3 py-1 rounded-full border-2 ${!filterAccountId ? 'bg-primary-500 border-primary-500' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
-          >
-            <Text className={`${labelSize} font-bold ${!filterAccountId ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>All Accounts</Text>
-          </TouchableOpacity>
-          {accounts.map(acc => (
-            <TouchableOpacity
-              key={acc.id}
-              onPress={() => setFilterAccountId(filterAccountId === acc.id ? null : acc.id)}
-              className={`mr-2 px-3 py-1 rounded-full border-2 ${filterAccountId === acc.id ? 'bg-primary-500 border-primary-500' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
-            >
-              <Text className={`${labelSize} font-bold ${filterAccountId === acc.id ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>{acc.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Date Range Filter - applies to both card and table views */}
-        <View className="flex-row items-center mb-2" style={{ gap: 6 }}>
-          <TouchableOpacity
-            onPress={() => {
-              if (Platform.OS === 'android') {
-                DateTimePickerAndroid.open({
-                  value: dateFrom ?? new Date(),
-                  mode: 'date',
-                  onChange: (event, date) => {
-                    if (event.type === 'set' && date) {
-                      setDateFrom(date);
-                    }
-                  },
-                });
-              } else {
-                setShowDatePicker('from');
-              }
+            onPress={() => setShowCategoryModal(true)}
+            style={{
+              flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+              paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
+              backgroundColor: selectedCategories.length > 0 ? '#6366f1' : (isDark ? '#1e293b' : '#fff'),
+              borderWidth: 1, borderColor: selectedCategories.length > 0 ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+              elevation: 1,
             }}
-            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? '#1e293b' : '#fff', borderWidth: 1, borderColor: dateFrom ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0') }}
           >
-            <FontAwesome name="calendar-o" size={10} color={dateFrom ? '#6366f1' : '#94a3b8'} style={{ marginRight: 5 }} />
-            <Text style={{ fontSize: 11, color: dateFrom ? '#6366f1' : '#94a3b8', fontWeight: '600' }} numberOfLines={1}>
-              {dateFrom ? dateFrom.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : 'From Date'}
+            <FontAwesome name="tag" size={11} color={selectedCategories.length > 0 ? '#fff' : '#94a3b8'} />
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: selectedCategories.length > 0 ? '#fff' : (isDark ? '#94a3b8' : '#64748b') }} numberOfLines={1}>
+              {selectedCategories.length > 1 ? `${selectedCategories.length} Categories` : 'Category'}
             </Text>
+            {selectedCategories.length > 0 && <FontAwesome name="times-circle" size={11} color="#fff" style={{ marginLeft: 4 }} />}
           </TouchableOpacity>
-          <Text style={{ color: '#94a3b8', fontSize: 11 }}>→</Text>
+
+          {/* Tags */}
           <TouchableOpacity
-            onPress={() => {
-              if (Platform.OS === 'android') {
-                DateTimePickerAndroid.open({
-                  value: dateTo ?? new Date(),
-                  mode: 'date',
-                  onChange: (event, date) => {
-                    if (event.type === 'set' && date) {
-                      setDateTo(date);
-                    }
-                  },
-                });
-              } else {
-                setShowDatePicker('to');
-              }
+            onPress={() => setShowTagModal(true)}
+            style={{
+              flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+              paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
+              backgroundColor: selectedTags.length > 0 ? '#6366f1' : (isDark ? '#1e293b' : '#fff'),
+              borderWidth: 1, borderColor: selectedTags.length > 0 ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+              elevation: 1,
             }}
-            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? '#1e293b' : '#fff', borderWidth: 1, borderColor: dateTo ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0') }}
           >
-            <FontAwesome name="calendar-o" size={10} color={dateTo ? '#6366f1' : '#94a3b8'} style={{ marginRight: 5 }} />
-            <Text style={{ fontSize: 11, color: dateTo ? '#6366f1' : '#94a3b8', fontWeight: '600' }} numberOfLines={1}>
-              {dateTo ? dateTo.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : 'To Date'}
+            <FontAwesome name="hashtag" size={11} color={selectedTags.length > 0 ? '#fff' : '#94a3b8'} />
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: selectedTags.length > 0 ? '#fff' : (isDark ? '#94a3b8' : '#64748b') }} numberOfLines={1}>
+              {selectedTags.length > 1 ? `${selectedTags.length} Tags` : 'Tags'}
             </Text>
+            {selectedTags.length > 0 && <FontAwesome name="times-circle" size={11} color="#fff" style={{ marginLeft: 4 }} />}
           </TouchableOpacity>
-          {(dateFrom || dateTo) && (
-            <TouchableOpacity
-              onPress={() => { setDateFrom(null); setDateTo(null); }}
-              style={{ padding: 6, borderRadius: 8, backgroundColor: isDark ? '#1e293b' : '#fff', borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0' }}
-            >
-              <FontAwesome name="times" size={11} color="#94a3b8" />
-            </TouchableOpacity>
-          )}
+
+          {/* Accounts */}
+          <TouchableOpacity
+            onPress={() => setShowAccountModal(true)}
+            style={{
+              flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+              paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
+              backgroundColor: filterAccountIds.length > 0 ? '#6366f1' : (isDark ? '#1e293b' : '#fff'),
+              borderWidth: 1, borderColor: filterAccountIds.length > 0 ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+              elevation: 1,
+            }}
+          >
+            <FontAwesome name="bank" size={11} color={filterAccountIds.length > 0 ? '#fff' : '#94a3b8'} />
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: filterAccountIds.length > 0 ? '#fff' : (isDark ? '#94a3b8' : '#64748b') }} numberOfLines={1}>
+              {filterAccountIds.length > 1 ? `${filterAccountIds.length} Accounts` : 'Account'}
+            </Text>
+            {filterAccountIds.length > 0 && <FontAwesome name="times-circle" size={11} color="#fff" style={{ marginLeft: 4 }} />}
+          </TouchableOpacity>
+
+          {/* Date */}
+          <TouchableOpacity
+            onPress={() => setShowDateModal(true)}
+            style={{
+              flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+              paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
+              backgroundColor: (dateFrom || dateTo) ? '#6366f1' : (isDark ? '#1e293b' : '#fff'),
+              borderWidth: 1, borderColor: (dateFrom || dateTo) ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+              elevation: 1,
+            }}
+          >
+            <FontAwesome name="calendar" size={11} color={(dateFrom || dateTo) ? '#fff' : '#94a3b8'} />
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: (dateFrom || dateTo) ? '#fff' : (isDark ? '#94a3b8' : '#64748b') }} numberOfLines={1}>Date</Text>
+            {(dateFrom || dateTo) && <FontAwesome name="times-circle" size={11} color="#fff" style={{ marginLeft: 4 }} />}
+          </TouchableOpacity>
         </View>
+
+        {/* Active filter pills */}
+        {(selectedCategories.length > 0 || selectedTags.length > 0 || filterAccountIds.length > 0 || dateFrom || dateTo) && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2" style={{ marginHorizontal: -2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2, paddingVertical: 4 }}>
+              {selectedCategories.map(cat => (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => setSelectedCategories(prev => prev.filter(c => c !== cat))}
+                  style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#312e81' : '#eef2ff', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, borderWidth: 1, borderColor: '#6366f1' }}
+                >
+                  <FontAwesome name="tag" size={10} color="#6366f1" style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, color: '#6366f1', fontWeight: '700' }}>{cat}</Text>
+                  <FontAwesome name="times" size={9} color="#6366f1" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              ))}
+              {selectedTags.map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  onPress={() => setSelectedTags(prev => prev.filter(t => t !== tag))}
+                  style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#312e81' : '#eef2ff', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, borderWidth: 1, borderColor: '#6366f1' }}
+                >
+                  <FontAwesome name="hashtag" size={10} color="#6366f1" style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, color: '#6366f1', fontWeight: '700' }}>#{tag}</Text>
+                  <FontAwesome name="times" size={9} color="#6366f1" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              ))}
+              {filterAccountIds.map(id => (
+                <TouchableOpacity
+                  key={id}
+                  onPress={() => setFilterAccountIds(prev => prev.filter(a => a !== id))}
+                  style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#312e81' : '#eef2ff', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, borderWidth: 1, borderColor: '#6366f1' }}
+                >
+                  <FontAwesome name="bank" size={10} color="#6366f1" style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, color: '#6366f1', fontWeight: '700' }}>{accounts.find(a => a.id === id)?.name ?? 'Account'}</Text>
+                  <FontAwesome name="times" size={9} color="#6366f1" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              ))}
+              {(dateFrom || dateTo) && (
+                <TouchableOpacity
+                  onPress={() => { setDateFrom(null); setDateTo(null); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#312e81' : '#eef2ff', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, borderWidth: 1, borderColor: '#6366f1' }}
+                >
+                  <FontAwesome name="calendar" size={10} color="#6366f1" style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, color: '#6366f1', fontWeight: '700' }}>
+                    {dateFrom ? dateFrom.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '…'}
+                    {' → '}
+                    {dateTo ? dateTo.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '…'}
+                  </Text>
+                  <FontAwesome name="times" size={9} color="#6366f1" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </ScrollView>
+        )}
 
         {/* Summary */}
         <View className="flex-row bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
@@ -635,7 +595,7 @@ export default function TransactionsScreen() {
                       {item.tags.slice(0, 4).map((transactionTag) => (
                         <TouchableOpacity
                           key={`${item.id}-${transactionTag}`}
-                          onPress={() => setSelectedTag(transactionTag)}
+                          onPress={() => setSelectedTags(prev => prev.includes(transactionTag) ? prev.filter(t => t !== transactionTag) : [...prev, transactionTag])}
                           className="mr-2 px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800"
                         >
                           <Text className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold">#{transactionTag}</Text>
@@ -806,19 +766,210 @@ export default function TransactionsScreen() {
         </View>
       )}
 
-      {/* Floating Action Button - Add Transaction */}
-      <TouchableOpacity
-        onPress={() => router.push('/modal')}
-        className="absolute right-6 shadow-lg"
-        style={{ elevation: 6, bottom: 8 }}
-      >
-        <LinearGradient
-          colors={['#6366f1', '#4f46e5']}
-          className={`${isVerySmall ? 'w-14 h-14' : 'w-16 h-16'} rounded-full justify-center items-center`}
-        >
-          <FontAwesome name="plus" size={isVerySmall ? 20 : 22} color="#fff" />
-        </LinearGradient>
-      </TouchableOpacity>
+      {/* Category Filter Modal */}
+      <Modal visible={showCategoryModal} transparent animationType="slide" onRequestClose={() => setShowCategoryModal(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowCategoryModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '75%' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
+            <TouchableOpacity onPress={() => { setSelectedCategories([]); setShowCategoryModal(false); }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>Category</Text>
+            <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#6366f1' }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ paddingHorizontal: 16, paddingTop: 8 }} contentContainerStyle={{ paddingBottom: 32 }}>
+            {rootCategories.map((cat) => {
+              const children = getChildCategories(cat.id);
+              const isSelected = selectedCategories.includes(cat.name);
+              return (
+                <View key={cat.id}>
+                  <TouchableOpacity
+                    onPress={() => setSelectedCategories(prev => prev.includes(cat.name) ? prev.filter(c => c !== cat.name) : [...prev, cat.name])}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 2, backgroundColor: isSelected ? (isDark ? '#312e81' : '#eef2ff') : 'transparent' }}
+                  >
+                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: cat.color + '30', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                      <CategoryIcon icon={cat.icon} size={15} color={cat.color} />
+                    </View>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: isSelected ? '#6366f1' : (isDark ? '#e2e8f0' : '#1e293b'), flex: 1 }}>{cat.name}</Text>
+                    {isSelected && <FontAwesome name="check" size={14} color="#6366f1" />}
+                  </TouchableOpacity>
+                  {children.map((child) => {
+                    const isChildSelected = selectedCategories.includes(child.name);
+                    return (
+                      <TouchableOpacity
+                        key={child.id}
+                        onPress={() => setSelectedCategories(prev => prev.includes(child.name) ? prev.filter(c => c !== child.name) : [...prev, child.name])}
+                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, paddingLeft: 28, borderRadius: 12, marginBottom: 2, backgroundColor: isChildSelected ? (isDark ? '#312e81' : '#eef2ff') : 'transparent' }}
+                      >
+                        <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: child.color + '25', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                          <CategoryIcon icon={child.icon} size={12} color={child.color} />
+                        </View>
+                        <Text style={{ fontSize: 13, fontWeight: '500', color: isChildSelected ? '#6366f1' : (isDark ? '#cbd5e1' : '#475569'), flex: 1 }}>{child.name}</Text>
+                        {isChildSelected && <FontAwesome name="check" size={12} color="#6366f1" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Tag Filter Modal */}
+      <Modal visible={showTagModal} transparent animationType="slide" onRequestClose={() => setShowTagModal(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowTagModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
+            <TouchableOpacity onPress={() => { setSelectedTags([]); setShowTagModal(false); }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>Tags</Text>
+            <TouchableOpacity onPress={() => setShowTagModal(false)}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#6366f1' }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ paddingHorizontal: 16, paddingTop: 8 }} contentContainerStyle={{ paddingBottom: 32 }}>
+            {allTags.length === 0 ? (
+              <Text style={{ textAlign: 'center', color: '#94a3b8', marginTop: 24, fontSize: 14 }}>No tags found</Text>
+            ) : allTags.map((tag) => {
+              const isActive = selectedTags.some(t => t.toLowerCase() === tag.toLowerCase());
+              return (
+                <TouchableOpacity
+                  key={tag}
+                  onPress={() => setSelectedTags(prev => prev.some(t => t.toLowerCase() === tag.toLowerCase()) ? prev.filter(t => t.toLowerCase() !== tag.toLowerCase()) : [...prev, tag])}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 2, backgroundColor: isActive ? (isDark ? '#312e81' : '#eef2ff') : 'transparent' }}
+                >
+                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isActive ? '#6366f1' : (isDark ? '#1e293b' : '#e2e8f0'), justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                    <FontAwesome name="hashtag" size={14} color={isActive ? '#fff' : '#94a3b8'} />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? '#6366f1' : (isDark ? '#e2e8f0' : '#1e293b'), flex: 1 }}>#{tag}</Text>
+                  {isActive && <FontAwesome name="check" size={14} color="#6366f1" />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Account Filter Modal */}
+      <Modal visible={showAccountModal} transparent animationType="slide" onRequestClose={() => setShowAccountModal(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowAccountModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
+            <TouchableOpacity onPress={() => { setFilterAccountIds([]); setShowAccountModal(false); }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>Account</Text>
+            <TouchableOpacity onPress={() => setShowAccountModal(false)}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#6366f1' }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ paddingHorizontal: 16, paddingTop: 8 }} contentContainerStyle={{ paddingBottom: 32 }}>
+            {accounts.map((acc) => {
+              const isActive = filterAccountIds.includes(acc.id);
+              return (
+                <TouchableOpacity
+                  key={acc.id}
+                  onPress={() => setFilterAccountIds(prev => prev.includes(acc.id) ? prev.filter(a => a !== acc.id) : [...prev, acc.id])}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 2, backgroundColor: isActive ? (isDark ? '#312e81' : '#eef2ff') : 'transparent' }}
+                >
+                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isActive ? '#6366f1' : (isDark ? '#1e293b' : '#e2e8f0'), justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                    <FontAwesome name="credit-card" size={14} color={isActive ? '#fff' : '#94a3b8'} />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? '#6366f1' : (isDark ? '#e2e8f0' : '#1e293b'), flex: 1 }}>{acc.name}</Text>
+                  {isActive && <FontAwesome name="check" size={14} color="#6366f1" />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Date Filter Modal */}
+      <Modal visible={showDateModal} transparent animationType="slide" onRequestClose={() => setShowDateModal(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowDateModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>Date Range</Text>
+            <TouchableOpacity onPress={() => setShowDateModal(false)}>
+              <FontAwesome name="times" size={18} color="#94a3b8" />
+            </TouchableOpacity>
+          </View>
+          <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 32, gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => {
+                if (Platform.OS === 'android') {
+                  DateTimePickerAndroid.open({
+                    value: dateFrom ?? new Date(),
+                    mode: 'date',
+                    onChange: (event, date) => { if (event.type === 'set' && date) setDateFrom(date); },
+                  });
+                } else {
+                  setShowDatePicker('from');
+                }
+              }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateFrom ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0') }}
+            >
+              <FontAwesome name="calendar-o" size={16} color={dateFrom ? '#6366f1' : '#94a3b8'} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, color: '#94a3b8', fontWeight: '500', marginBottom: 2 }}>From Date</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: dateFrom ? (isDark ? '#e2e8f0' : '#1e293b') : '#94a3b8' }}>
+                  {dateFrom ? dateFrom.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Select start date'}
+                </Text>
+              </View>
+              {dateFrom && (
+                <TouchableOpacity onPress={() => setDateFrom(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <FontAwesome name="times-circle" size={16} color="#94a3b8" />
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                if (Platform.OS === 'android') {
+                  DateTimePickerAndroid.open({
+                    value: dateTo ?? new Date(),
+                    mode: 'date',
+                    onChange: (event, date) => { if (event.type === 'set' && date) setDateTo(date); },
+                  });
+                } else {
+                  setShowDatePicker('to');
+                }
+              }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateTo ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0') }}
+            >
+              <FontAwesome name="calendar-o" size={16} color={dateTo ? '#6366f1' : '#94a3b8'} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, color: '#94a3b8', fontWeight: '500', marginBottom: 2 }}>To Date</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: dateTo ? (isDark ? '#e2e8f0' : '#1e293b') : '#94a3b8' }}>
+                  {dateTo ? dateTo.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Select end date'}
+                </Text>
+              </View>
+              {dateTo && (
+                <TouchableOpacity onPress={() => setDateTo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <FontAwesome name="times-circle" size={16} color="#94a3b8" />
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              <TouchableOpacity
+                onPress={() => { setDateFrom(null); setDateTo(null); setShowDateModal(false); }}
+                style={{ flex: 1, paddingVertical: 13, borderRadius: 14, backgroundColor: isDark ? '#1e293b' : '#f1f5f9', alignItems: 'center', borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0' }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#94a3b8' }}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowDateModal(false)}
+                style={{ flex: 2, paddingVertical: 13, borderRadius: 14, backgroundColor: '#6366f1', alignItems: 'center' }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Export menu */}
       {showExportMenu && (

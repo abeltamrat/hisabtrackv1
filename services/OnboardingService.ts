@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 
 const ONBOARDING_KEY = '@hisabtrack_onboarding_completed';
 

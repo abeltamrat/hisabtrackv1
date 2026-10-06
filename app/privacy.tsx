@@ -18,7 +18,7 @@ export default function PrivacyPolicyScreen() {
                     <FontAwesome name="arrow-left" size={24} color="#fff" />
                 </TouchableOpacity>
                 <Text className="text-white text-3xl font-bold">Privacy Policy</Text>
-                <Text className="text-emerald-100 mt-2">Last updated: January 8, 2026</Text>
+                <Text className="text-emerald-100 mt-2">Last updated: October 5, 2026</Text>
             </LinearGradient>
 
             <ScrollView className="flex-1 px-6 py-6">
@@ -44,7 +44,7 @@ export default function PrivacyPolicyScreen() {
                         },
                         {
                             subtitle: "SMS Messages (Android Only)",
-                            text: "If you grant permission, HisabTrack can read SMS messages to automatically extract bank transaction information. We only process messages from recognized financial institutions and do not store or transmit the full content of your SMS messages."
+                            text: "If you grant permission, HisabTrack can read SMS messages to automatically extract bank transaction information. We scan configured financial senders and retain full SMS text in local drafts and saved parsing examples. If you enable AI data sharing and configure a provider, unparsed messages and up to five saved examples may be sent to that provider."
                         },
                         {
                             subtitle: "Device Information",
@@ -71,15 +71,15 @@ export default function PrivacyPolicyScreen() {
                     content={[
                         {
                             subtitle: "Local Storage",
-                            text: "All financial data is primarily stored locally on your device using encrypted SQLite databases. This ensures your sensitive information remains under your control."
+                            text: "Financial records use SQLite on native devices and IndexedDB on the web. These databases are not encrypted by the app. Device protection and app lock provide separate safeguards. Raw SMS drafts are stored locally, scoped to your signed-in account."
                         },
                         {
                             subtitle: "Cloud Backup (Optional)",
-                            text: "If you enable cloud synchronization, your data is encrypted and stored on Firebase servers with industry-standard security measures. We use AES-256 encryption for data at rest and TLS for data in transit."
+                            text: "Cloud synchronization is opt-in in Settings. It uploads accounts, transactions, budgets, categories and loans to Firebase. Shared loans, chat, phone lookup and push notifications use cloud services when you use those features."
                         },
                         {
                             subtitle: "Security Measures",
-                            text: "We implement appropriate technical and organizational security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction."
+                            text: "Cloud access is restricted to the signed-in owner or shared-loan participants. App lock hides the interface; it does not encrypt the ledger. Exported backups contain financial data in plain text, exclude AI keys, and should be stored privately."
                         }
                     ]}
                 />
@@ -93,7 +93,7 @@ export default function PrivacyPolicyScreen() {
                             text: "We do not sell, trade, or rent your personal information to third parties. We may share your information only in the following circumstances:"
                         },
                         {
-                            text: "• With your explicit consent\n• To comply with legal obligations or valid legal requests\n• To protect and defend our rights or property\n• To prevent or investigate possible wrongdoing\n• With service providers who assist in app operations (under strict confidentiality agreements)"
+                            text: "• With your explicit consent\n• To comply with legal obligations or valid legal requests\n• To protect and defend our rights or property\n• To prevent or investigate possible wrongdoing\n• With service providers who assist in app operations (as described below)"
                         }
                     ]}
                 />
@@ -107,7 +107,7 @@ export default function PrivacyPolicyScreen() {
                             text: "You have the following rights regarding your personal information:"
                         },
                         {
-                            text: "• Access: Request a copy of your personal data\n• Correction: Update or correct inaccurate information\n• Deletion: Request deletion of your account and associated data\n• Export: Download your financial data in standard formats\n• Opt-out: Disable cloud synchronization or SMS reading at any time\n• Withdraw Consent: Revoke permissions granted to the app"
+                            text: "• Access: Request a copy of your personal data\n• Correction: Update or correct inaccurate information\n• Deletion: Delete your sign-in account and private records in Settings. Shared financial records remain available to the other participant after your identity is anonymized\n• Export: Download your financial data in standard formats\n• Opt-out: Disable cloud synchronization or SMS reading at any time\n• Withdraw Consent: Revoke permissions granted to the app"
                         }
                     ]}
                 />
@@ -121,7 +121,7 @@ export default function PrivacyPolicyScreen() {
                             text: "HisabTrack uses the following third-party services:"
                         },
                         {
-                            text: "• Firebase (Google): For authentication and cloud storage\n• Expo: For app development and updates\n\nThese services have their own privacy policies, and we encourage you to review them."
+                            text: "• Firebase (Google): For authentication and cloud storage\n• Expo: For app updates and push notifications\n? Optional AI providers: Gemini, Groq, OpenRouter and Puter receive the financial context or SMS text required by enabled AI features after you enable AI sharing.\n\nThese services have their own privacy policies, and we encourage you to review them."
                         }
                     ]}
                 />
@@ -157,7 +157,7 @@ export default function PrivacyPolicyScreen() {
                             text: "If you have any questions or concerns about this Privacy Policy or our data practices, please contact us at:"
                         },
                         {
-                            text: "Email: privacy@hisabtrack.com\nWebsite: www.hisabtrack.com/privacy\nAddress: HisabTrack Privacy Team"
+                            text: "Use the contact details provided by your app distributor."
                         }
                     ]}
                 />

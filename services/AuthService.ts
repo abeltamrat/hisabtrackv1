@@ -1,21 +1,31 @@
+import { Platform } from 'react-native';
 import { firebaseConfig } from '@/config/firebase';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { initializeApp } from 'firebase/app';
 import {
+  GoogleAuthProvider,
   createUserWithEmailAndPassword,
   getAuth,
   // @ts-ignore
   getReactNativePersistence,
   initializeAuth,
   sendPasswordResetEmail,
+  signInWithCredential,
+  signInWithPopup,
   signInWithEmailAndPassword,
   updateProfile,
   User
 } from 'firebase/auth';
 import { doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
 
+const GOOGLE_WEB_CLIENT_ID = '891851135453-injmmpfl3qncm01q9c6c78t3a2mjmjq8.apps.googleusercontent.com';
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Configure Google Sign-In once at module load
+if (Platform.OS !== 'web') GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
 
 let auth: any;
 try {
@@ -91,38 +101,22 @@ export class AuthService {
   }
 
   /**
-   * Look up a user's email by their phone number.
-   * Returns null if no account is associated with that phone number.
-   */
-  static async lookupEmailByPhone(phone: string): Promise<string | null> {
-    try {
-      const normalized = normalizePhone(phone);
-      if (!normalized) return null;
-      const firestore = getFirestoreInstance();
-      const snap = await getDoc(doc(firestore, 'phoneIndex', normalized));
-      if (snap.exists()) {
-        return (snap.data() as { email: string }).email ?? null;
-      }
-      return null;
-    } catch (err) {
-      console.warn('[AuthService] lookupEmailByPhone failed:', err);
-      return null;
-    }
-  }
-
-  /**
    * Write (or update) the phoneIndex entry so the phone number can be used to sign in.
    * Also stores the phone number on the user's profile document.
    */
   static async savePhoneIndex(uid: string, email: string, phone: string): Promise<void> {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return;
+    const firestore = getFirestoreInstance();
+
+    // Profile write is the authoritative store — must succeed.
+    await setDoc(doc(firestore, 'users', uid, 'meta', 'profile'), { phoneNumber: normalized }, { merge: true });
+
+    // phoneIndex lets other users find this account by phone — best-effort.
     try {
-      const normalized = normalizePhone(phone);
-      if (!normalized) return;
-      const firestore = getFirestoreInstance();
-      await setDoc(doc(firestore, 'phoneIndex', normalized), { uid, email }, { merge: true });
-      await setDoc(doc(firestore, 'users', uid, 'meta', 'profile'), { phoneNumber: normalized }, { merge: true });
+      if (auth.currentUser?.phoneNumber === normalized) await setDoc(doc(firestore, 'phoneIndex', normalized), { uid, email }, { merge: true });
     } catch (err) {
-      console.warn('[AuthService] savePhoneIndex failed:', err);
+      console.warn('[AuthService] savePhoneIndex: phoneIndex write failed (check Firestore rules):', err);
     }
   }
 
@@ -204,6 +198,31 @@ export class AuthService {
       }
 
       return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Sign in with Google using native Google Sign-In + Firebase credential
+   */
+  static async signInWithGoogle(): Promise<{ success: boolean; user?: User; error?: string }> {
+    try {
+      if (Platform.OS === 'web') {
+        const result = await signInWithPopup(auth, new GoogleAuthProvider());
+        return { success: true, user: result.user };
+      }
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      const idToken = (response as any)?.data?.idToken ?? (response as any)?.idToken;
+      if (!idToken) throw new Error('No ID token returned from Google');
+      const credential = GoogleAuthProvider.credential(idToken);
+      const userCredential = await signInWithCredential(auth, credential);
+      return { success: true, user: userCredential.user };
+    } catch (error: any) {
+      console.error('Google sign-in error:', error);
+      if (error.code === 'SIGN_IN_CANCELLED') {
+        return { success: false, error: 'Sign-in cancelled' };
+      }
+      return { success: false, error: error.message || 'Google sign-in failed' };
     }
   }
 

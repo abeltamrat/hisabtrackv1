@@ -1,5 +1,6 @@
 import { useTransactions } from '@/context/TransactionContext';
 import CategoryIcon from '@/components/CategoryIcon';
+import FloatingCalculator from '@/components/FloatingCalculator';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import BudgetService from '@/services/BudgetService';
 import { AppDispatch, RootState } from '@/store';
@@ -292,6 +293,7 @@ export default function AddBudgetScreen() {
           ))}
         </View>
       </ScrollView>
+      <FloatingCalculator onUseAmount={setAmount} />
     </KeyboardAvoidingView>
   );
 }

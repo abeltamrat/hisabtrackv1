@@ -1,10 +1,11 @@
+import Storage from '@/services/SessionStorage';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState } from 'react';
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 
 interface Goal {
@@ -22,6 +23,9 @@ export default function FinancialGoalsScreen() {
   const router = useRouter();
   const { formatCurrency } = useAppSettings();
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { Storage.getItem('financial_goals').then(raw => { if (raw) setGoals(JSON.parse(raw)); setLoaded(true); }).catch(() => Alert.alert('Goals unavailable', 'Saved goals could not be loaded. Reopen this screen to retry.')); }, []);
+  useEffect(() => { if (loaded) void Storage.setItem('financial_goals', JSON.stringify(goals)).catch(() => Alert.alert('Save failed', 'Goal changes could not be saved. Please retry.')); }, [goals, loaded]);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
@@ -46,7 +50,7 @@ export default function FinancialGoalsScreen() {
   ];
 
   const getProgress = (current: number, target: number) => {
-    return Math.min((current / target) * 100, 100);
+    return target > 0 ? Math.max(0, Math.min((current / target) * 100, 100)) : 0;
   };
 
   const getDaysRemaining = (deadline: string) => {
@@ -57,7 +61,10 @@ export default function FinancialGoalsScreen() {
     return diffDays;
   };
 
+  const validForm = () => loaded && !!formData.title.trim() && Number.isFinite(Number(formData.targetAmount)) && Number(formData.targetAmount) > 0 && Number.isFinite(Number(formData.currentAmount || 0)) && Number(formData.currentAmount || 0) >= 0 && Number.isFinite(Date.parse(formData.deadline));
   const handleAddGoal = () => {
+    if (!validForm()) { Alert.alert('Invalid goal', 'Enter a title, positive target, non-negative saved amount and valid deadline.'); return; }
+    if (!formData.title.trim() || !Number.isFinite(Number(formData.targetAmount)) || Number(formData.targetAmount) <= 0 || !Number.isFinite(Date.parse(formData.deadline))) return;
     const newGoal: Goal = {
       id: Date.now().toString(),
       title: formData.title,
@@ -73,7 +80,7 @@ export default function FinancialGoalsScreen() {
   };
 
   const handleEditGoal = () => {
-    if (!editingGoal) return;
+    if (!editingGoal || !validForm()) { Alert.alert('Invalid goal', 'Check the amounts, title and deadline.'); return; }
     setGoals(goals.map(g =>
       g.id === editingGoal.id
         ? {

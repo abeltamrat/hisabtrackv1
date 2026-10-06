@@ -1,3 +1,4 @@
+import { advanceDate, money, sumMoney } from '@/utils/finance';
 import { Account, Loan, RecurringFrequency, RecurringTransaction } from '@/types/database';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -60,20 +61,20 @@ export class ForecastService {
 
   static generateForecast(options: ForecastOptions): ForecastResult {
     const startDate = this.startOfDay(options.startDate ?? Date.now());
-    const safeDays = Math.max(1, options.days);
+    const safeDays = Number.isFinite(options.days) ? Math.max(1, Math.min(730, Math.floor(options.days))) : 30;
     const endDate = this.endOfDay(startDate + (safeDays - 1) * DAY_MS);
 
     const accountNames = new Map(options.accounts.map((account) => [account.id, account.name]));
-    const currentBalances = new Map(options.accounts.map((account) => [account.id, account.balance]));
+    const currentBalances = new Map(options.accounts.map((account) => [account.id, money(account.balance - (account.locked_amount || 0))]));
     const projectedBalances = new Map(currentBalances);
 
-    const startingBalance = options.accounts.reduce((sum, account) => sum + account.balance, 0);
+    const startingBalance = sumMoney(options.accounts.map(account => money(account.balance - (account.locked_amount || 0))));
     let runningBalance = startingBalance;
     let lowestBalance = startingBalance;
     let lowestBalanceDate: number | null = startDate;
 
     const events = [
-      ...this.generateRecurringEvents(options.recurring, startDate, endDate),
+      ...this.generateRecurringEvents(options.recurring.filter(r => options.accounts.some(a => a.id === r.accountId) && (r.type !== 'TRANSFER' || (r.accountId !== r.toAccountId && options.accounts.some(a => a.id === r.toAccountId)))), startDate, endDate),
       ...this.generateLoanEvents(options.loans, startDate, endDate),
     ].sort((left, right) => left.date - right.date || left.amount - right.amount);
 
@@ -233,11 +234,11 @@ export class ForecastService {
           break;
         }
 
-        currentDate = this.incrementDate(recurring.frequency, currentDate);
+        currentDate = advanceDate(recurring.frequency, currentDate, recurring.startDate);
         generatedCount += 1;
       }
 
-      while (currentDate <= endDate && generatedCount < MAX_FORECAST_OCCURRENCES) {
+      while (currentDate >= startDate && currentDate <= endDate && generatedCount < MAX_FORECAST_OCCURRENCES) {
         if (recurring.endDate && currentDate > recurring.endDate) break;
         if (
           recurring.totalRepetitions &&
@@ -258,7 +259,7 @@ export class ForecastService {
           toAccountId: recurring.toAccountId,
         });
 
-        currentDate = this.incrementDate(recurring.frequency, currentDate);
+        currentDate = advanceDate(recurring.frequency, currentDate, recurring.startDate);
         generatedCount += 1;
       }
     }
@@ -272,7 +273,6 @@ export class ForecastService {
         (loan) =>
           loan.status === 'ACTIVE' &&
           loan.type === 'BORROWED' &&
-          loan.due_date >= startDate &&
           loan.due_date <= endDate &&
           loan.remaining_balance > 0
       )
@@ -281,31 +281,10 @@ export class ForecastService {
         title: `Loan payment - ${loan.lender_borrower_name}`,
         category: 'Loan Repayment',
         amount: loan.remaining_balance,
-        date: loan.due_date,
+        date: Math.max(startDate, loan.due_date),
         type: 'LOAN_DUE' as const,
         source: 'loan' as const,
       }));
-  }
-
-  private static incrementDate(frequency: RecurringFrequency, dateMs: number): number {
-    const nextDate = new Date(dateMs);
-
-    switch (frequency) {
-      case 'DAILY':
-        nextDate.setDate(nextDate.getDate() + 1);
-        break;
-      case 'WEEKLY':
-        nextDate.setDate(nextDate.getDate() + 7);
-        break;
-      case 'MONTHLY':
-        nextDate.setMonth(nextDate.getMonth() + 1);
-        break;
-      case 'YEARLY':
-        nextDate.setFullYear(nextDate.getFullYear() + 1);
-        break;
-    }
-
-    return nextDate.getTime();
   }
 
   private static startOfDay(timestamp: number) {

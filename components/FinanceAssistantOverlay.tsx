@@ -3,7 +3,7 @@ import BudgetService from '@/services/BudgetService';
 import { RootState } from '@/store';
 import { Budget, Loan, Transaction } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import { usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {

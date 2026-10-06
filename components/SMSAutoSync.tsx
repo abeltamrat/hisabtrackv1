@@ -1,52 +1,76 @@
+import * as BackgroundFetch from 'expo-background-fetch';
+import * as TaskManager from 'expo-task-manager';
 import React, { useEffect, useRef } from 'react';
+import { AppState, Platform } from 'react-native';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { SMSSyncService } from '@/services/SMSSyncService';
-import { Platform, AppState } from 'react-native';
+import { NotificationService } from '@/services/NotificationService';
+
+// Background (suspended-app) SMS sync is owned by BackgroundService's
+// BACKGROUND_SYNC_TASK, which respects the Settings reminder toggles.
+// This id is kept only so installs that registered the old task can clean it up.
+const LEGACY_SMS_BACKGROUND_TASK = 'SMS_BACKGROUND_SYNC';
 
 /**
- * Global headless component: auto-syncs SMS on app start and foreground resume.
- * Uses syncAllAccountsBackground() so it always reads fresh data from the DB
- * rather than capturing potentially stale Redux state in a closure.
+ * Global headless component: auto-syncs SMS on app start and foreground resume,
+ * and sends a push notification with Record / Ignore / Later actions for each
+ * new draft. Background syncing while the app is suspended is handled by
+ * BackgroundService, not here.
  */
 export const SMSAutoSync: React.FC = () => {
-    const accountsLoaded = useSelector((state: RootState) => state.accounts.status === 'succeeded');
-    const hasSmsAccounts = useSelector((state: RootState) =>
-        state.accounts.items.some(a => !!a.sms_number)
-    );
+  const accountsLoaded = useSelector((state: RootState) => state.accounts.status === 'succeeded');
+  const hasSmsAccounts = useSelector((state: RootState) =>
+    state.accounts.items.some(a => !!a.sms_number)
+  );
 
-    // Keep a ref so performSync always reads the latest value without re-triggering the effect.
-    const hasSmsRef = useRef(hasSmsAccounts);
-    useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
+  const hasSmsRef = useRef(hasSmsAccounts);
+  useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
 
-    useEffect(() => {
-        if (Platform.OS !== 'android') return;
-        if (!accountsLoaded) return;
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    if (!accountsLoaded) return;
 
-        const performSync = async () => {
-            if (!hasSmsRef.current) return;
-            try {
-                await SMSSyncService.syncAllAccountsBackground();
-            } catch (err) {
-                console.error('[SMSAutoSync] Auto-sync failed:', err);
-            }
-        };
+    // Unregister the background task older app versions registered here;
+    // leaving it active caused double syncs and duplicate notifications
+    // alongside BackgroundService's task.
+    TaskManager.isTaskRegisteredAsync(LEGACY_SMS_BACKGROUND_TASK)
+      .then(registered => registered
+        ? BackgroundFetch.unregisterTaskAsync(LEGACY_SMS_BACKGROUND_TASK)
+        : undefined)
+      .catch(() => {
+        // Fails gracefully in Expo Go / web
+      });
 
-        const timer = setTimeout(performSync, 3000);
-        const interval = setInterval(performSync, 5 * 60 * 1000);
+    const performSync = async () => {
+      if (!hasSmsRef.current) return;
+      try {
+        const result = await SMSSyncService.syncAllAccountsBackground();
+        const pending = result.drafts.filter(d => d.status === 'PENDING');
+        for (const draft of pending) {
+          await NotificationService.showSMSDraftNotification(draft);
+        }
+      } catch (err) {
+        console.error('[SMSAutoSync] Auto-sync failed:', err);
+      }
+    };
 
-        const subscription = AppState.addEventListener('change', (nextState: string) => {
-            if (nextState === 'active') performSync();
-        });
+    // Initial sync after 3 s, then every 5 minutes while app is in foreground
+    const timer = setTimeout(performSync, 3000);
+    const interval = setInterval(performSync, 5 * 60 * 1000);
 
-        return () => {
-            clearTimeout(timer);
-            clearInterval(interval);
-            subscription.remove();
-        };
-    }, [accountsLoaded]);
+    const subscription = AppState.addEventListener('change', (nextState: string) => {
+      if (nextState === 'active') performSync();
+    });
 
-    return null;
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [accountsLoaded]);
+
+  return null;
 };
 
 export default SMSAutoSync;

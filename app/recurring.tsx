@@ -1,3 +1,5 @@
+import { advanceDate } from '@/utils/finance';
+import { sessionLocalStorage } from '@/services/SessionStorage';
 import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { NotificationService } from '@/services/NotificationService';
@@ -5,8 +7,10 @@ import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
 import { generateUUID } from '@/utils/uuid';
+import ScreenInfoCard from '@/components/ScreenInfoCard';
+import FloatingCalculator from '@/components/FloatingCalculator';
 import { FontAwesome } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -248,14 +252,9 @@ export default function RecurringTransactionsScreen() {
         });
 
         if (t.type === 'INCOME') grouped[monthKey].totalIncome += t.amount;
-        else grouped[monthKey].totalExpense += t.amount;
+        else if (t.type === 'EXPENSE') grouped[monthKey].totalExpense += t.amount;
 
-        switch (t.frequency) {
-          case 'DAILY': current.setDate(current.getDate() + 1); break;
-          case 'WEEKLY': current.setDate(current.getDate() + 7); break;
-          case 'MONTHLY': current.setMonth(current.getMonth() + 1); break;
-          case 'YEARLY': current.setFullYear(current.getFullYear() + 1); break;
-        }
+        current = new Date(advanceDate(t.frequency, current.getTime(), t.startDate));
         count++;
       }
     });
@@ -285,6 +284,24 @@ export default function RecurringTransactionsScreen() {
     return keys;
   }, [allAvailableMonths, selectedFilterMonths]);
 
+  const monthlySummary = useMemo(() => {
+    const monthlyFactor: Record<RecurringFrequency, number> = {
+      DAILY: 30.4375,
+      WEEKLY: 52 / 12,
+      MONTHLY: 1,
+      YEARLY: 1 / 12,
+    };
+    return recurringTransactions.reduce((summary, item) => {
+      if (!item.isActive) return summary;
+      const monthlyAmount = item.amount * monthlyFactor[item.frequency];
+      if (item.type === 'INCOME') summary.income += monthlyAmount;
+      else summary.expense += monthlyAmount;
+      summary.activeCount += 1;
+      if (!summary.nextDate || item.nextDate < summary.nextDate) summary.nextDate = item.nextDate;
+      return summary;
+    }, { income: 0, expense: 0, activeCount: 0, nextDate: 0 });
+  }, [recurringTransactions]);
+
   const toggleMonthFilter = (month: string) => {
     setSelectedFilterMonths(prev => {
       if (prev.includes(month)) {
@@ -299,7 +316,7 @@ export default function RecurringTransactionsScreen() {
     try {
       let loaded: RecurringTransaction[] = [];
       if (Platform.OS === 'web') {
-        const stored = localStorage.getItem('recurring_transactions');
+        const stored = sessionLocalStorage.getItem('recurring_transactions');
         if (stored) loaded = JSON.parse(stored);
       } else {
         const stored = await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
@@ -316,7 +333,7 @@ export default function RecurringTransactionsScreen() {
   const saveRecurringTransactions = async (transactions: RecurringTransaction[]) => {
     try {
       if (Platform.OS === 'web') {
-        localStorage.setItem('recurring_transactions', JSON.stringify(transactions));
+        sessionLocalStorage.setItem('recurring_transactions', JSON.stringify(transactions));
       } else {
         await AsyncStorage.setItem('@hisabtrack_recurring_transactions', JSON.stringify(transactions));
       }
@@ -364,27 +381,15 @@ export default function RecurringTransactionsScreen() {
             break;
           }
 
-          // Check for existing transaction matching the recurring transaction instance
-          const isDuplicate = dbTransactions.some(tx => {
-            if (current.type === 'TRANSFER') {
-              return tx.account_id === current.accountId &&
-                     tx.to_account_id === current.toAccountId &&
-                     tx.amount === current.amount &&
-                     tx.type === 'TRANSFER' &&
-                     tx.date === current.nextDate;
-            } else {
-              return tx.account_id === current.accountId &&
-                     tx.amount === current.amount &&
-                     tx.type === current.type &&
-                     tx.date === current.nextDate;
-            }
-          });
-
+          const operationId = `recurring-${current.id}-${current.nextDate}`;
+          const isDuplicate = dbTransactions.some(tx => tx.operation_id === operationId);
+          if (current.type === 'TRANSFER' && !current.toAccountId) return current;
           if (!isDuplicate) {
             try {
               if (current.type === 'TRANSFER' && current.toAccountId) {
                 await dispatch(addTransaction({
                   account_id: current.accountId,
+                  operation_id: operationId,
                   to_account_id: current.toAccountId,
                   type: 'TRANSFER',
                   amount: current.amount,
@@ -392,20 +397,22 @@ export default function RecurringTransactionsScreen() {
                   tags: current.tags,
                   description: `${current.name} (Recurring - catch-up)`,
                   date: current.nextDate,
-                }));
+                })).unwrap();
               } else if (current.type !== 'TRANSFER') {
                 await dispatch(addTransaction({
                   account_id: current.accountId,
+                  operation_id: operationId,
                   type: current.type,
                   amount: current.amount,
                   category: current.category,
                   tags: current.tags,
                   description: `${current.name} (Recurring - catch-up)`,
                   date: current.nextDate,
-                }));
+                })).unwrap();
               }
             } catch (err) {
               console.warn('[Recurring catch-up] Failed to create transaction:', err);
+              return current;
             }
           } else {
             console.log(`[Recurring catch-up] Skipping duplicate transaction for ${current.name} on ${new Date(current.nextDate).toLocaleDateString()}`);
@@ -413,7 +420,7 @@ export default function RecurringTransactionsScreen() {
 
           current = {
             ...current,
-            nextDate: incrementDate(current.frequency, current.nextDate),
+            nextDate: advanceDate(current.frequency, current.nextDate, current.startDate),
             completedRepetitions: current.completedRepetitions + 1,
           };
           catchUpCount++;
@@ -427,7 +434,7 @@ export default function RecurringTransactionsScreen() {
     if (anyUpdated) {
       const raw = JSON.stringify(updated);
       if (Platform.OS === 'web') {
-        localStorage.setItem('recurring_transactions', raw);
+        sessionLocalStorage.setItem('recurring_transactions', raw);
       } else {
         await AsyncStorage.setItem('@hisabtrack_recurring_transactions', raw);
       }
@@ -568,17 +575,6 @@ export default function RecurringTransactionsScreen() {
     if (accounts.length > 0) setSelectedAccountId(accounts[0].id);
   };
 
-  const incrementDate = (freq: RecurringFrequency, dateMs: number): number => {
-    const date = new Date(dateMs);
-    switch (freq) {
-      case 'DAILY': date.setDate(date.getDate() + 1); break;
-      case 'WEEKLY': date.setDate(date.getDate() + 7); break;
-      case 'MONTHLY': date.setMonth(date.getMonth() + 1); break;
-      case 'YEARLY': date.setFullYear(date.getFullYear() + 1); break;
-    }
-    return date.getTime();
-  };
-
   const handleToggleActive = async (id: string) => {
     const updated = recurringTransactions.map(rt =>
       rt.id === id ? { ...rt, isActive: !rt.isActive } : rt
@@ -616,6 +612,8 @@ export default function RecurringTransactionsScreen() {
     try {
       const txResult = await dispatch(addTransaction({
         account_id: recurring.accountId,
+        to_account_id: recurring.toAccountId,
+        operation_id: `recurring-${recurring.id}-${recurring.nextDate}`,
         type: recurring.type,
         amount: recurring.amount,
         category: recurring.category,
@@ -631,8 +629,9 @@ export default function RecurringTransactionsScreen() {
 
       const updated = await Promise.all(recurringTransactions.map(async rt => {
         if (rt.id === recurring.id) {
-          const nextDate = incrementDate(recurring.frequency, rt.nextDate);
-          const updatedRt = { ...rt, nextDate };
+          const nextDate = advanceDate(recurring.frequency, rt.nextDate, rt.startDate);
+          const completedRepetitions = rt.completedRepetitions + 1;
+          const updatedRt = { ...rt, nextDate, completedRepetitions, isActive: (!rt.totalRepetitions || completedRepetitions < rt.totalRepetitions) && (!rt.endDate || nextDate <= rt.endDate) };
 
           // Reschedule notification for the next date
           if (updatedRt.notificationId) {
@@ -729,6 +728,46 @@ export default function RecurringTransactionsScreen() {
       </LinearGradient>
 
       <ScrollView className="flex-1 px-6 mt-4" showsVerticalScrollIndicator={false}>
+
+        {recurringTransactions.length === 0 ? (
+          <ScreenInfoCard
+            icon="repeat"
+            title="Make regular money movements easier"
+            description="Recurring transactions automatically remind you about income, bills, subscriptions, and transfers that happen on a schedule."
+            suggestions={[
+              'Add rent, salary, subscriptions, or regular family support payments.',
+              'Choose a frequency and next date so the app can project upcoming months.',
+              'Use Execute Now when a scheduled transaction happens earlier than planned.',
+            ]}
+          />
+        ) : (
+          <View className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-5 shadow-lg border border-slate-100 dark:border-slate-700">
+            <View className="flex-row items-center justify-between mb-4">
+              <View>
+                <Text className="text-slate-900 dark:text-white font-bold text-lg">Monthly outlook</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">Based on {monthlySummary.activeCount} active recurring item{monthlySummary.activeCount === 1 ? '' : 's'}</Text>
+              </View>
+              <FontAwesome name="line-chart" size={20} color="#6366f1" />
+            </View>
+            <View className="flex-row">
+              <View className="flex-1 bg-red-50 dark:bg-red-900/20 rounded-2xl p-3 mr-2">
+                <Text className="text-red-600 dark:text-red-300 text-xs">Expected out</Text>
+                <Text className="text-red-700 dark:text-red-200 font-bold mt-1">{formatCurrency(monthlySummary.expense)}</Text>
+              </View>
+              <View className="flex-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-3 mr-2">
+                <Text className="text-emerald-600 dark:text-emerald-300 text-xs">Expected in</Text>
+                <Text className="text-emerald-700 dark:text-emerald-200 font-bold mt-1">{formatCurrency(monthlySummary.income)}</Text>
+              </View>
+              <View className="flex-1 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-3">
+                <Text className="text-indigo-600 dark:text-indigo-300 text-xs">Net / month</Text>
+                <Text className={`font-bold mt-1 ${monthlySummary.income - monthlySummary.expense >= 0 ? 'text-indigo-700 dark:text-indigo-200' : 'text-rose-600 dark:text-rose-300'}`}>{formatCurrency(monthlySummary.income - monthlySummary.expense)}</Text>
+              </View>
+            </View>
+            {monthlySummary.nextDate > 0 && (
+              <Text className="text-slate-500 dark:text-slate-400 text-xs mt-4">Next scheduled item: {new Date(monthlySummary.nextDate).toLocaleDateString()}</Text>
+            )}
+          </View>
+        )}
 
         {viewMode === 'LIST' ? (
           <>
@@ -1202,6 +1241,7 @@ export default function RecurringTransactionsScreen() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
+            <FloatingCalculator onUseAmount={setAmount} />
           </View>
         </View>
       )}

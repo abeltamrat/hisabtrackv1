@@ -16,6 +16,7 @@ import * as SQLite from 'expo-sqlite';
  * 3. removeDuplicateTransactions  — properly implemented (was a stub returning 0).
  */
 export class AndroidDatabase implements IDatabase {
+  constructor(private name = 'hisabtrack.db') {}
   private db: SQLite.SQLiteDatabase | null = null;
   private initialized = false;
   // Mutex: if init is already in progress, all concurrent callers wait for the same promise
@@ -38,8 +39,10 @@ export class AndroidDatabase implements IDatabase {
     for (let attempt = 1; attempt <= 3; attempt++) {
       let dbHandle: SQLite.SQLiteDatabase | null = null;
       try {
-        dbHandle = await SQLite.openDatabaseAsync('hisabtrack.db');
+        dbHandle = await SQLite.openDatabaseAsync(this.name);
 
+        await dbHandle.execAsync('BEGIN IMMEDIATE');
+        await dbHandle.runAsync('CREATE TABLE IF NOT EXISTS metadata (id TEXT PRIMARY KEY, data TEXT NOT NULL)');
         // Create tables individually — execAsync with multiple semicolon-separated
         // statements causes NullPointerException on Android New Architecture (Fabric/JSI).
         await dbHandle.runAsync('CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, data TEXT NOT NULL)');
@@ -76,6 +79,7 @@ export class AndroidDatabase implements IDatabase {
         await dbHandle.runAsync('CREATE INDEX IF NOT EXISTS idx_transactions_to_account ON transactions(to_account_id)');
         await dbHandle.runAsync('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
 
+        await dbHandle.execAsync('COMMIT');
         this.db = dbHandle;
         this.initialized = true;
         console.log('AndroidDatabase: SQLite initialized successfully');
@@ -83,6 +87,7 @@ export class AndroidDatabase implements IDatabase {
       } catch (e: any) {
         console.error(`AndroidDatabase init attempt ${attempt} failed:`, e);
         if (dbHandle) {
+          try { await dbHandle.execAsync('ROLLBACK'); } catch {}
           try { await dbHandle.closeAsync(); } catch (_) {}
         }
         this.db = null;
@@ -187,23 +192,39 @@ export class AndroidDatabase implements IDatabase {
   // Transaction storage — dedicated columns for fast filtering
   // ─────────────────────────────────────────────────────────────
 
-  private async setTransaction(transaction: Transaction): Promise<void> {
-    const sql = `
-      INSERT OR REPLACE INTO transactions (id, account_id, to_account_id, type, amount, date, data)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-    const params = [
+  private async setTransactionSql(db: SQLite.SQLiteDatabase, transaction: Transaction): Promise<void> {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO transactions (id, account_id, to_account_id, type, amount, date, data)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       transaction.id,
       transaction.account_id,
-      transaction.type === 'TRANSFER' ? transaction.to_account_id : null,
+      transaction.type === 'TRANSFER' ? (transaction.to_account_id ?? null) : null,
       transaction.type,
       transaction.amount,
       transaction.date,
       JSON.stringify(transaction),
-    ];
-    await this.runWithRetry(async (db) => {
-      await db.runAsync(sql, ...params);
-    });
+    );
+  }
+
+  private async setTransaction(transaction: Transaction): Promise<void> {
+    await this.runWithRetry(async (db) => this.setTransactionSql(db, transaction));
+  }
+
+  /**
+   * Runs `work` inside an explicit SQL transaction so a crash between the
+   * transaction write and its balance update can't leave them inconsistent.
+   * Uses single-statement BEGIN/COMMIT/ROLLBACK (multi-statement execAsync
+   * breaks on Android New Architecture — see init()).
+   */
+  private async withSqlTransaction(db: SQLite.SQLiteDatabase, work: () => Promise<void>): Promise<void> {
+    await db.execAsync('BEGIN IMMEDIATE');
+    try {
+      await work();
+      await db.execAsync('COMMIT');
+    } catch (e) {
+      try { await db.execAsync('ROLLBACK'); } catch (_) {}
+      throw e;
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -223,8 +244,11 @@ export class AndroidDatabase implements IDatabase {
     if (transaction.type === 'INCOME' && isSource) return transaction.amount;
     if (transaction.type === 'EXPENSE' && isSource) return -transaction.amount;
     if (transaction.type === 'TRANSFER') {
+      // Convention: amount is the gross debit on the source account; the
+      // destination receives the net of sender-side fees/VAT (e.g. a
+      // CBE → Telebirr transfer credits amount minus service charge + VAT).
       if (isSource) return -transaction.amount;
-      if (isDest) return transaction.amount;
+      if (isDest) return transaction.amount - (transaction.fees ?? 0) - (transaction.tax ?? 0);
     }
     return 0;
   }
@@ -232,8 +256,11 @@ export class AndroidDatabase implements IDatabase {
   /**
    * Applies an incremental balance delta to each affected account.
    * old/new transaction may be undefined (create = only new, delete = only old).
+   * Operates directly on the given db handle so it can run inside an
+   * explicit SQL transaction alongside the transaction-row write.
    */
-  private async applyBalanceDelta(
+  private async applyBalanceDeltaSql(
+    db: SQLite.SQLiteDatabase,
     oldTx: Partial<Transaction> | undefined,
     newTx: Partial<Transaction> | undefined
   ): Promise<void> {
@@ -244,8 +271,11 @@ export class AndroidDatabase implements IDatabase {
     if (newTx?.to_account_id) accountIds.add(newTx.to_account_id);
 
     if (accountIds.size === 0) return;
-    const allAccounts = await this.getAccounts();
-    const accountMap = new Map(allAccounts.map(a => [a.id, a]));
+    const rows = await db.getAllAsync<{ data: string }>('SELECT data FROM accounts');
+    const accountMap = new Map(rows.map(r => {
+      const account = JSON.parse(r.data) as Account;
+      return [account.id, account] as const;
+    }));
 
     for (const accountId of accountIds) {
       const reverseDelta = oldTx ? -this.balanceDelta(oldTx, accountId) : 0;
@@ -257,7 +287,10 @@ export class AndroidDatabase implements IDatabase {
       if (account) {
         account.balance = (account.balance ?? 0) + totalDelta;
         account.updated_at = Date.now();
-        await this.setItem('accounts', account);
+        await db.runAsync(
+          'INSERT OR REPLACE INTO accounts (id, data) VALUES (?, ?)',
+          account.id, JSON.stringify(account)
+        );
       }
     }
   }
@@ -279,6 +312,7 @@ export class AndroidDatabase implements IDatabase {
       sms_id: transaction.sms_id,
       fees: transaction.fees,
       tax: transaction.tax,
+      receipt_url: transaction.receipt_url,
       tags: normalizeTransactionTags(transaction.tags),
       updated_at: Date.now(),
     };
@@ -307,6 +341,7 @@ export class AndroidDatabase implements IDatabase {
       sms_id: updates.sms_id ?? existing.sms_id,
       fees: updates.fees ?? existing.fees,
       tax: updates.tax ?? existing.tax,
+      receipt_url: updates.receipt_url ?? existing.receipt_url,
       tags: updates.tags !== undefined ? normalizeTransactionTags(updates.tags) : existing.tags,
       updated_at: Date.now(),
     };
@@ -360,8 +395,12 @@ export class AndroidDatabase implements IDatabase {
 
   async createTransaction(transaction: Omit<Transaction, 'id'>): Promise<Transaction> {
     const newTransaction = this.buildStoredTransaction(transaction);
-    await this.setTransaction(newTransaction);
-    await this.applyBalanceDelta(undefined, newTransaction);
+    await this.runWithRetry(async (db) => {
+      await this.withSqlTransaction(db, async () => {
+        await this.setTransactionSql(db, newTransaction);
+        await this.applyBalanceDeltaSql(db, undefined, newTransaction);
+      });
+    });
     LocalChangeEmitter.emit();
     return newTransaction;
   }
@@ -403,8 +442,10 @@ export class AndroidDatabase implements IDatabase {
 
       const existingTx = JSON.parse(row.data) as Transaction;
       const updated = this.mergeStoredTransaction(existingTx, updates);
-      await this.setTransaction(updated);
-      await this.applyBalanceDelta(existingTx, updated);
+      await this.withSqlTransaction(db, async () => {
+        await this.setTransactionSql(db, updated);
+        await this.applyBalanceDeltaSql(db, existingTx, updated);
+      });
       LocalChangeEmitter.emit();
       return updated;
     });
@@ -415,11 +456,12 @@ export class AndroidDatabase implements IDatabase {
       const row = await db.getFirstAsync<{ data: string }>(`SELECT data FROM transactions WHERE id = ?`, id);
       const transaction = row ? JSON.parse(row.data) as Transaction : null;
 
-      await this.deleteItem('transactions', id);
-
-      if (transaction && !silent) {
-        await this.applyBalanceDelta(transaction, undefined);
-      }
+      await this.withSqlTransaction(db, async () => {
+        await db.runAsync('DELETE FROM transactions WHERE id = ?', id);
+        if (transaction && !silent) {
+          await this.applyBalanceDeltaSql(db, transaction, undefined);
+        }
+      });
       LocalChangeEmitter.emit();
     });
   }
@@ -446,7 +488,8 @@ export class AndroidDatabase implements IDatabase {
         else balance -= transaction.amount;
       }
       if (transaction.type === 'TRANSFER' && transaction.to_account_id === accountId) {
-        balance += transaction.amount;
+        // Destination receives the net of sender-side fees/VAT.
+        balance += transaction.amount - (transaction.fees ?? 0) - (transaction.tax ?? 0);
       }
     }
 
@@ -473,9 +516,20 @@ export class AndroidDatabase implements IDatabase {
       const transactions = rows.map(r => JSON.parse(r.data) as Transaction);
 
       const seen = new Set<string>();
+      const seenRefs = new Set<string>();
       const toDelete: string[] = [];
 
       for (const t of transactions) {
+        // Bank reference numbers are authoritative: equal refs are duplicates,
+        // differing refs are distinct transactions even in the same minute
+        // with the same amount (two identical coffee payments are not dupes).
+        const ref = (t.reference_number ?? '').trim().toUpperCase();
+        if (ref) {
+          const refSig = `${t.account_id}|${t.type}|${t.amount}|${ref}`;
+          if (seenRefs.has(refSig)) toDelete.push(t.id);
+          else seenRefs.add(refSig);
+          continue;
+        }
         const minuteBucket = Math.floor(t.date / 60_000);
         const sig = `${t.account_id}|${t.type}|${t.amount}|${t.category}|${t.description ?? ''}|${minuteBucket}`;
         if (seen.has(sig)) {
@@ -575,4 +629,24 @@ export class AndroidDatabase implements IDatabase {
     });
     LocalChangeEmitter.emit();
   }
+  async readMeta(id: string): Promise<any> {
+    return this.runWithRetry(async db => {
+      const row = await db.getFirstAsync<{ data: string }>('SELECT data FROM metadata WHERE id = ?', id);
+      return row ? JSON.parse(row.data) : undefined;
+    });
+  }
+  async commitRows(rows: Array<{ table: 'accounts' | 'transactions' | 'budgets' | 'loans'; id: string; value?: any }>, metadata: Record<string, any> = {}): Promise<void> {
+    await this.runWithRetry(async db => {
+      await this.withSqlTransaction(db, async () => {
+        for (const row of rows) {
+          if (!['accounts', 'transactions', 'budgets', 'loans'].includes(row.table)) throw new Error('Invalid table');
+          if (row.value === undefined) await db.runAsync(`DELETE FROM ${row.table} WHERE id = ?`, row.id);
+          else if (row.table === 'transactions') await this.setTransactionSql(db, row.value);
+          else await db.runAsync(`INSERT OR REPLACE INTO ${row.table} (id, data) VALUES (?, ?)`, row.id, JSON.stringify(row.value));
+        }
+        for (const [id, value] of Object.entries(metadata)) await db.runAsync('INSERT OR REPLACE INTO metadata (id, data) VALUES (?, ?)', id, JSON.stringify(value));
+      });
+    });
+  }
+
 }

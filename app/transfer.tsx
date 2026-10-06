@@ -81,10 +81,13 @@ export default function TransferScreen() {
       router.back();
     };
 
-    if (sourceAcc && sourceAcc.balance < value) {
+    // Guard against the available (unlocked) balance, not the raw balance.
+    const lockedAmount = sourceAcc?.locked_amount ?? 0;
+    const available = (sourceAcc?.balance ?? 0) - lockedAmount;
+    if (sourceAcc && available < value) {
       Alert.alert(
         'Insufficient Balance',
-        `${sourceAcc.name} only has ${formatCurrency(sourceAcc.balance)}. Do you want to proceed anyway?`,
+        `${sourceAcc.name} only has ${formatCurrency(Math.max(available, 0))} available${lockedAmount > 0 ? ` (${formatCurrency(lockedAmount)} is locked)` : ''}. Do you want to proceed anyway?`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Proceed', onPress: doTransfer },

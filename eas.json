@@ -20,7 +20,8 @@
       },
       "env": {
         "EAS_BUILD_NPM_INSTALL_ARGS": "--legacy-peer-deps"
-      }
+      },
+      "autoIncrement": true
     },
     "production": {
       "channel": "production",

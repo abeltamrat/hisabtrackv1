@@ -49,14 +49,17 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
+import AppLockScreen from '@/components/AppLockScreen';
 import AppShell from '@/components/AppShell';
 import { TransactionProvider } from '@/context/TransactionContext';
 import { AppSettingsProvider } from '@/contexts/AppSettingsContext';
+import { AppLockProvider } from '@/contexts/AppLockContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { BackgroundService } from '@/services/BackgroundService';
 import { NotificationService } from '@/services/NotificationService';
+import { DraftTransactionService } from '@/services/DraftTransactionService';
 import SyncService from '@/services/SyncService';
 import { useRouter } from 'expo-router';
 import SMSAutoSync from '@/components/SMSAutoSync';
@@ -139,13 +142,36 @@ function RootLayoutNav() {
       await NotificationService.syncNotificationResponse(response);
 
       // Handle custom actions
+      if (actionIdentifier === 'RECORD') {
+        const draftId = data?.draftId as string | undefined;
+        router.push({ pathname: '/draft-transactions', params: draftId ? { draftId } : {} } as any);
+        return;
+      }
+
+      if (actionIdentifier === 'IGNORE') {
+        const draftId = data?.draftId as string | undefined;
+        if (draftId) await DraftTransactionService.updateStatus(draftId, 'REJECTED');
+        return;
+      }
+
+      if (actionIdentifier === 'REMIND_LATER') {
+        const draftId = data?.draftId as string | undefined;
+        const title = notification.request.content.title || 'Transaction Reminder';
+        const body = notification.request.content.body || 'You have a pending transaction to record.';
+        await NotificationService.scheduleOneTimeReminder(title, body, new Date(Date.now() + 60 * 60 * 1000), {
+          draftId,
+          actionType: 'view_drafts',
+          storeInApp: false,
+        });
+        return;
+      }
+
       if (actionIdentifier === 'SNOOZE') {
         await NotificationService.snoozeNotification(response);
         return;
       }
 
       if (actionIdentifier === 'DISMISS') {
-        // Just dismiss, nothing to do
         return;
       }
 
@@ -186,7 +212,7 @@ function RootLayoutNav() {
     // Check Permissions on launch
     const checkPermissions = async () => {
       try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const AsyncStorage = require('@/services/SessionStorage').default;
         const hasChecked = await AsyncStorage.getItem('has_checked_initial_permissions');
 
         if (!hasChecked) {
@@ -240,53 +266,56 @@ function RootLayoutNav() {
     <Provider store={store}>
       <AuthProvider>
         <CustomThemeProvider>
-          <AppSettingsProvider>
-            <TransactionProvider>
-              <I18nProvider>
-                <View style={{ flex: 1 }}>
-                  <SMSAutoSync />
-                  <PhonePromptManager />
-                  <UpdateModal
-                    visible={!!updateInfo}
-                    updateInfo={updateInfo}
-                    onClose={() => setUpdateInfo(null)}
-                  />
-                  {isAuthPage ? (
-                    <ThemedStack />
-                  ) : (
-                    <AppShell>
+          <AppLockProvider>
+            <AppSettingsProvider>
+              <TransactionProvider>
+                <I18nProvider>
+                  <View style={{ flex: 1 }}>
+                    <SMSAutoSync />
+                    <PhonePromptManager />
+                    <UpdateModal
+                      visible={!!updateInfo}
+                      updateInfo={updateInfo}
+                      onClose={() => setUpdateInfo(null)}
+                    />
+                    {isAuthPage ? (
                       <ThemedStack />
-                    </AppShell>
-                  )}
-                  {!!updateStatus && (
-                    <View
-                      style={{
-                        position: 'absolute',
-                        bottom: 8,
-                        left: 0,
-                        right: 0,
-                        alignItems: 'center',
-                        pointerEvents: 'none',
-                      }}
-                    >
-                      <Text
+                    ) : (
+                      <AppShell>
+                        <ThemedStack />
+                      </AppShell>
+                    )}
+                    {!!updateStatus && (
+                      <View
                         style={{
-                          fontSize: 11,
-                          color: 'rgba(128,128,128,0.8)',
-                          backgroundColor: 'rgba(0,0,0,0.04)',
-                          paddingHorizontal: 10,
-                          paddingVertical: 3,
-                          borderRadius: 8,
+                          position: 'absolute',
+                          bottom: 8,
+                          left: 0,
+                          right: 0,
+                          alignItems: 'center',
+                          pointerEvents: 'none',
                         }}
                       >
-                        {updateStatus}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </I18nProvider>
-            </TransactionProvider>
-          </AppSettingsProvider>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: 'rgba(128,128,128,0.8)',
+                            backgroundColor: 'rgba(0,0,0,0.04)',
+                            paddingHorizontal: 10,
+                            paddingVertical: 3,
+                            borderRadius: 8,
+                          }}
+                        >
+                          {updateStatus}
+                        </Text>
+                      </View>
+                    )}
+                    <AppLockScreen />
+                  </View>
+                </I18nProvider>
+              </TransactionProvider>
+            </AppSettingsProvider>
+          </AppLockProvider>
         </CustomThemeProvider>
       </AuthProvider>
     </Provider>
@@ -295,10 +324,11 @@ function RootLayoutNav() {
 
 function ThemedStack() {
   const { actualTheme } = useTheme();
+  const isDark = actualTheme === 'dark';
 
   return (
-    <ThemeProvider value={actualTheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+      <Stack screenOptions={{ statusBarStyle: 'dark' }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="account" options={{ headerShown: false }} />
@@ -323,6 +353,7 @@ function ThemedStack() {
         <Stack.Screen name="categories" options={{ headerShown: false }} />
         <Stack.Screen name="cards" options={{ headerShown: false }} />
         <Stack.Screen name="draft-transactions" options={{ headerShown: false }} />
+        <Stack.Screen name="manage-sms-rules" options={{ headerShown: false }} />
         <Stack.Screen name="aiassistant" options={{ headerShown: false }} />
         <Stack.Screen name="about" options={{ headerShown: false }} />
         <Stack.Screen name="privacy" options={{ headerShown: false }} />

@@ -1,0 +1,49 @@
+# HisabTrack remediation ? 6 October 2026
+
+The findings in PROJECT_AUDIT_2026-10-05.md describe the pre-fix working tree. This document records implemented changes and remaining release work. Existing unrelated edits were preserved. No Firebase deployment, account deletion, production-data mutation, or release publication was performed.
+
+## Implemented
+
+| Audit findings | Changes |
+|---|---|
+| 1, 7: session privacy and races | Per-user databases and settings namespaces; quarantine unassigned legacy data; drain sync, SMS, draft and linked-payment queues before changing scope; reset Redux and remount user contexts; reject stale database writes and stale Redux completions; prevent old AI responses repopulating chat. |
+| 2: phone directory | Only verified phone owners can register a number. Directory reads are owner-only. Linked-user discovery uses an authenticated, hourly rate-limited callable, verifies the target phone against Firebase Auth, and returns no email. Email sign-in replaces the broken unauthenticated phone-to-email lookup. |
+| 3: shared records | Consent-based participant rules; pending terms editable only by initiator; accepted terms immutable; counterparty-only repayment review; server transaction caps aggregate confirmed and pending payments; idempotent payment/audit IDs; constrained chat edits. |
+| 4, 5: privacy and backups | Cloud and AI sharing are opt-in; Puter disabled by default; accurate local-storage/SMS disclosures; backup settings use an allowlist and omit provider credentials and sharing consent. |
+| 6: reset/deletion | Financial reset drains work and writes cloud tombstones; separate recent-authentication account-deletion callable removes private cloud data and anonymizes retained shared history; scoped local cleanup includes pending restore/payment state. |
+| 8: app lock | Initial render waits for preferences; storage errors fail closed; salted PIN hashes with legacy migration and persisted cooldown after failed attempts. Lock is an interface safeguard, not ledger encryption. |
+| 9, 10: release configuration | HTTPS update URLs; aligned native Expo update project; Android backup disabled; unnecessary requested permissions reduced; persistent Expo release-signing plugin requires private signing credentials; global pushDevices access denied. |
+| 11?16, 21: accounting and loans | Integer minor-unit arithmetic; validated postings; explicit operating/financing/adjustment classification; opening balances and principal excluded from earnings; transfer charges included in spending; zero-interest amortization; conserving flat-interest schedules; atomic ordinary loan creation/payment; durable linked-payment retries; confirmed shared interest allocations; loan posting/term mutation safeguards. |
+| 17, 18: recurrence | Stable operation IDs, failed writes do not advance the cursor, anchored month/year dates for execution and previews, repetition limits, transfer destination validation. |
+| 19: forecasts | Unlocked cash, missing-account validation, overdue debt obligations, bounded horizon, explicit exclusions and duplicate-loan-entry assumption displayed. |
+| 20: currency | Existing ledger currency cannot be relabeled; cross-currency transfer/restore rejected; display currency follows the ledger. No exchange-rate accounting is invented. |
+| 22: budgets/categories | Zero-limit spending displays as exceeded; rollover only between adjacent periods; operating expenses include fees; referenced categories cannot be renamed/deleted through partial multi-store cascades; category-cycle/duplicate validation. |
+| 23: reports | Explicit upper bounds, calendar reporting periods, calendar-day denominators, zero-activity months included, live date clock, operating summaries for exports/advice. Cash runway claims based only on period surplus removed. |
+| 24?26: SMS | Evidence-based transfer pairing; strong SMS/reference deduplication; paged reads; fixed scan cutoff with overlap; failed scans preserve their watermark; serialized draft writes. |
+| 27?30: persistence/sync | Serialized database facade; atomic rows, derived balances and outbox; transactional native schema changes; indexed transfer destinations; explicit tombstones; revision-checked cloud transactions; durable acknowledgement tokens; reviewable conflicts; local/cloud legacy opening-balance preservation. |
+| 31, 32: data display | Account-specific reads no longer replace the global transaction list; request IDs and mutation guards; retry deduplication; session-wide refresh after writes; shared loading/error banner. |
+| 33, 34: restore | Supported legacy Expo file read import; structural/reference/monetary validation; atomic ledger restore; durable auxiliary-restore journal resumed on next authentication initialization; explicit incomplete-restore errors. |
+| 35: goals/cards | Goals persist per user and are included in backups; invalid goal amounts rejected; cards explicitly identified as demo data. |
+| 36: scheduled jobs | Transactional push-job claims, failures recorded, stale missing receipts expired, device tokens disabled only for DeviceNotRegistered, absolute reminder instants and ledger currency stored with loans. |
+
+## Validation
+
+- `npm test`: 26 passing tests covering finance, failure rollback, idempotency, session isolation, IndexedDB transactions, Redux races, cloud conflict/retry behavior, callable authorization/payment limits/phone privacy, legacy balances and release signing generation.
+- Tests execute the actual TypeScript services/JavaScript callables using in-memory adapters and Firebase mocks. Browser persistence tests use the actual WebDatabase adapter with fake-indexeddb. These are not Firestore emulator or native SQLite integration tests.
+- TypeScript check, functions syntax check and tracked diff whitespace check passed.
+- Production web export passed with 39 routes. Main bundle approximately 4.93 MB before compression. The web push-listener warning remains because Expo does not support that native listener on web.
+- Dependency patches removed the four initially reported critical vulnerabilities. SheetJS moved from npm 0.18.5 to the vendor's 0.20.3 package, following https://docs.sheetjs.com/docs/example/ . Compatible overrides pin gRPC, PostCSS and ws fixes and keep nested Expo Router within SDK 54.
+- Latest root npm audit: 57 affected packages (31 high, 26 moderate, zero critical), including transitive advisory propagation. See dependency-audit.json. This is not a clean dependency audit.
+
+## Remaining work and release constraints
+
+1. Deploy and emulator-test `firestore.rules` together with functions `mutateLinkedRepayment`, `lookupLinkedUser`, `deleteMyAccount` and the existing push jobs. The revised client depends on these callables; releasing it against old functions will break linked payments and lookup. Production rules were not inspected. No Java/Firestore emulator or Android runtime was available in the checked environment.
+2. Run device tests for SQLite migration/rollback, SMS pagination under new-message arrival, app-lock lifecycle/biometrics, notifications, account switching and backup import. Supply `HISAB_RELEASE_STORE_FILE`, `HISAB_RELEASE_STORE_PASSWORD`, `HISAB_RELEASE_KEY_ALIAS`, `HISAB_RELEASE_KEY_PASSWORD` in the release build environment. Never commit the key or passwords. Native generated directories are ignored; the tracked signing plugin and app.json preserve the security settings across prebuild.
+3. Resolve remaining dependency advisories with a reviewed Expo/React Native/tooling migration or upstream patches. Blanket forced upgrades/downgrades were not applied. Some advisory ranges currently include every release of a transitive package. The backend lockfile was separately patched: initially 22 findings including 3 critical and 6 high, reduced to 8 moderate advisories, zero high and zero critical (functions/dependency-audit.json). The declared Node 20 runtime still requires deployment/runtime testing; the available local Node runtime is 24. Use the validated npm lockfile; the pre-existing yarn lockfile was not regenerated.
+4. Cloud pulls/listeners still read whole financial collections. Large-ledger pagination/incremental change feeds, operational limits and load tests remain open. Client outbox writes are batched, but this does not solve full-download scaling. Push delivery remains at-most-once attempted after the claim; a crash during transport requires operational review rather than an unsafe blind retry.
+5. Forecasts do not associate a recurring entry with a specific loan or infer uncertain collections. The UI states the assumptions; entering the same loan payment in both places still double counts it. Multi-currency valuation and zero-/three-decimal currency support are not implemented (ledger uses two decimal places).
+6. Phone discovery now requires a verified Firebase Auth phone number; the existing profile phone text field does not verify ownership. A verification/linking UI and interactive web/native authentication walkthrough are still needed for users who have only email/Google authentication.
+7. Backup auxiliary writes are recoverable through a journal, not one physical transaction across SQLite/IndexedDB, settings and SecureStore. Restart is requested after preference restore. Validate this recovery path on devices. Historical interest allocations without evidence are not retroactively rewritten.
+8. Shared accounting/identity deletion needs two-user integration testing, including rejection/disputes, offline recovery, simultaneous payments and partial deletion retries. Exported backups and offline copies on other devices cannot be remotely erased. Existing categories remain name-referenced; mutation restrictions preserve history while an ID migration remains future work.
+
+These remaining items prevent declaring every audit finding fully closed or the application production-ready.

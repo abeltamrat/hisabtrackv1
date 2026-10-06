@@ -1,3 +1,4 @@
+import { operatingTransactions, sumMoney } from '@/utils/finance';
 import { Budget, BudgetPeriod, BudgetRolloverMode, Transaction } from '@/types/database';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -32,16 +33,16 @@ export class BudgetService {
     transactions: Transaction[],
     options?: BudgetMetricOptions
   ) {
-    return transactions
+    return sumMoney(operatingTransactions(transactions)
       .filter(
         (transaction) =>
           transaction.type === 'EXPENSE' &&
           transaction.category === budget.category &&
           transaction.date >= budget.start_date &&
-          transaction.date <= budget.end_date &&
+          transaction.date <= Math.min(budget.end_date, Date.now()) &&
           (!options?.excludeTransactionId || transaction.id !== options.excludeTransactionId)
       )
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
+      .map(transaction => transaction.amount));
   }
 
   static calculateBudgetMetrics(
@@ -133,7 +134,7 @@ export class BudgetService {
     const effectiveLimit = Math.max(0, baseLimit + rolloverDelta);
     const spent = this.calculateBudgetSpent(budget, transactions, options);
     const remaining = effectiveLimit - spent;
-    const progress = effectiveLimit > 0 ? Math.min((spent / effectiveLimit) * 100, 100) : 0;
+    const progress = effectiveLimit > 0 ? Math.min((spent / effectiveLimit) * 100, 100) : spent > 0 ? 100 : 0;
 
     const metrics: BudgetMetrics = {
       budget,
@@ -158,7 +159,8 @@ export class BudgetService {
           candidate.id !== budget.id &&
           candidate.category === budget.category &&
           candidate.period === budget.period &&
-          candidate.end_date < budget.start_date
+          candidate.end_date < budget.start_date &&
+          budget.start_date - candidate.end_date <= 1
       )
       .sort((left, right) => right.end_date - left.end_date)[0];
   }

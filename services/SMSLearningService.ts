@@ -1,4 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
+import { createSerialQueue } from '@/utils/asyncLock';
 
 export interface SMSRule {
   merchant?: string;
@@ -13,6 +14,11 @@ export interface SMSRule {
 export class SMSLearningService {
   private static STORAGE_KEY = 'sms_learning_rules';
 
+  // Rule mutations are read-modify-write on a single AsyncStorage key;
+  // serialize them so concurrent writers (bulk record loop, background
+  // learning) can't drop each other's rules.
+  private static mutate = createSerialQueue();
+
   /**
    * Save a learning rule from user correction or acceptance.
    *
@@ -21,7 +27,19 @@ export class SMSLearningService {
    *   2. reference key (account + sender + first-6 chars of ref number)
    *   3. sender key    (account + sender — catches transactions with no merchant)
    */
-  static async learn(input: {
+  static learn(input: {
+    accountId: string;
+    sender: string;
+    rawMerchant?: string;
+    referenceNumber?: string;
+    correctedDescription: string;
+    correctedCategory: string;
+    isCorrection?: boolean;
+  }): Promise<void> {
+    return this.mutate(() => this.doLearn(input));
+  }
+
+  private static async doLearn(input: {
     accountId: string;
     sender: string;
     rawMerchant?: string;
@@ -172,36 +190,44 @@ export class SMSLearningService {
     }
   }
 
-  static async clearRulesForAccount(accountId: string): Promise<void> {
-    const rules = await this.getAllRules();
-    const newRules: Record<string, SMSRule> = {};
-    for (const k in rules) {
-      if (!k.startsWith(`${accountId}_`)) newRules[k] = rules[k];
-    }
-    await this.saveAllRules(newRules);
+  static clearRulesForAccount(accountId: string): Promise<void> {
+    return this.mutate(async () => {
+      const rules = await this.getAllRules();
+      const newRules: Record<string, SMSRule> = {};
+      for (const k in rules) {
+        if (!k.startsWith(`${accountId}_`)) newRules[k] = rules[k];
+      }
+      await this.saveAllRules(newRules);
+    });
   }
 
-  static async clearAllRules(): Promise<void> {
-    await AsyncStorage.removeItem(this.STORAGE_KEY);
+  static clearAllRules(): Promise<void> {
+    return this.mutate(async () => {
+      await AsyncStorage.removeItem(this.STORAGE_KEY);
+    });
   }
 
-  static async deleteRule(key: string): Promise<void> {
-    const rules = await this.getAllRules();
-    if (rules[key]) {
-      delete rules[key];
-      await this.saveAllRules(rules);
-    }
+  static deleteRule(key: string): Promise<void> {
+    return this.mutate(async () => {
+      const rules = await this.getAllRules();
+      if (rules[key]) {
+        delete rules[key];
+        await this.saveAllRules(rules);
+      }
+    });
   }
 
-  static async updateRule(key: string, updated: Partial<SMSRule>): Promise<void> {
-    const rules = await this.getAllRules();
-    if (rules[key]) {
-      rules[key] = {
-        ...rules[key],
-        ...updated,
-        confidence: 1.0,
-      } as SMSRule;
-      await this.saveAllRules(rules);
-    }
+  static updateRule(key: string, updated: Partial<SMSRule>): Promise<void> {
+    return this.mutate(async () => {
+      const rules = await this.getAllRules();
+      if (rules[key]) {
+        rules[key] = {
+          ...rules[key],
+          ...updated,
+          confidence: 1.0,
+        } as SMSRule;
+        await this.saveAllRules(rules);
+      }
+    });
   }
 }

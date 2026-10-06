@@ -2,9 +2,10 @@ import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { Account, Budget, IDatabase, Loan, Transaction } from '@/types/database';
 import { normalizeTransactionTags } from '@/utils/tags';
 import { generateUUID } from '@/utils/uuid';
-import { DBSchema, IDBPDatabase, openDB } from 'idb';
+import { DBSchema, IDBPDatabase, IDBPTransaction, openDB } from 'idb';
 
 interface FinanceDB extends DBSchema {
+  metadata: { key: string; value: { id: string; value: any } };
   accounts: {
     key: string;
     value: Account;
@@ -12,7 +13,7 @@ interface FinanceDB extends DBSchema {
   transactions: {
     key: string;
     value: Transaction;
-    indexes: { 'by-account': string; 'by-date': number };
+    indexes: { 'by-account': string; 'by-date': number; 'by-destination': string };
   };
   budgets: {
     key: string;
@@ -27,9 +28,13 @@ interface FinanceDB extends DBSchema {
 export class WebDatabase implements IDatabase {
   private dbPromise: Promise<IDBPDatabase<FinanceDB>> | null = null;
 
+  constructor(private name = 'finance-db') {}
+
   async init(): Promise<void> {
-    this.dbPromise = openDB<FinanceDB>('finance-db', 1, {
-      upgrade(db) {
+    if (this.dbPromise) { await this.dbPromise; return; }
+    this.dbPromise = openDB<FinanceDB>(this.name, 2, {
+      upgrade(db, oldVersion, newVersion, tx) {
+        if (!db.objectStoreNames.contains('metadata')) db.createObjectStore('metadata', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'id' });
         }
@@ -44,9 +49,11 @@ export class WebDatabase implements IDatabase {
         if (!db.objectStoreNames.contains('loans')) {
           db.createObjectStore('loans', { keyPath: 'id' });
         }
+        const transactions = tx.objectStore('transactions');
+        if (!transactions.indexNames.contains('by-destination')) transactions.createIndex('by-destination', 'to_account_id');
       },
     });
-    await this.dbPromise;
+    try { await this.dbPromise; } catch (e) { this.dbPromise = null; throw e; }
   }
 
   private async getDB() {
@@ -69,6 +76,7 @@ export class WebDatabase implements IDatabase {
       sms_id: transaction.sms_id,
       fees: transaction.fees,
       tax: transaction.tax,
+      receipt_url: transaction.receipt_url,
       tags: normalizeTransactionTags(transaction.tags),
       updated_at: Date.now(),
     };
@@ -96,6 +104,7 @@ export class WebDatabase implements IDatabase {
       sms_id: updates.sms_id ?? existing.sms_id,
       fees: updates.fees ?? existing.fees,
       tax: updates.tax ?? existing.tax,
+      receipt_url: updates.receipt_url ?? existing.receipt_url,
       tags: updates.tags !== undefined ? normalizeTransactionTags(updates.tags) : existing.tags,
       updated_at: Date.now(),
     };
@@ -119,8 +128,11 @@ export class WebDatabase implements IDatabase {
     if (transaction.type === 'INCOME' && isSource) return transaction.amount;
     if (transaction.type === 'EXPENSE' && isSource) return -transaction.amount;
     if (transaction.type === 'TRANSFER') {
+      // Convention: amount is the gross debit on the source account; the
+      // destination receives the net of sender-side fees/VAT (e.g. a
+      // CBE → Telebirr transfer credits amount minus service charge + VAT).
       if (isSource) return -transaction.amount;
-      if (isDest) return transaction.amount;
+      if (isDest) return transaction.amount - (transaction.fees ?? 0) - (transaction.tax ?? 0);
     }
     return 0;
   }
@@ -129,9 +141,11 @@ export class WebDatabase implements IDatabase {
    * Incremental balance update — O(accounts affected) instead of O(all transactions).
    * oldTx: the version being replaced/deleted (undefined on create).
    * newTx: the version being added/replacing (undefined on delete).
+   * Operates on an open readwrite transaction covering 'transactions' and
+   * 'accounts' so the row write and its balance update commit atomically.
    */
-  private async applyBalanceDelta(
-    db: IDBPDatabase<FinanceDB>,
+  private async applyBalanceDeltaTx(
+    tx: IDBPTransaction<FinanceDB, ('transactions' | 'accounts')[], 'readwrite'>,
     oldTx: Partial<Transaction> | undefined,
     newTx: Partial<Transaction> | undefined
   ): Promise<void> {
@@ -141,8 +155,9 @@ export class WebDatabase implements IDatabase {
     if (newTx?.account_id) accountIds.add(newTx.account_id);
     if (newTx?.to_account_id) accountIds.add(newTx.to_account_id);
 
+    const accountsStore = tx.objectStore('accounts');
     for (const accountId of accountIds) {
-      const account = await db.get('accounts', accountId);
+      const account = await accountsStore.get(accountId);
       if (!account) continue;
       const reverseDelta = oldTx ? -this.balanceDelta(oldTx, accountId) : 0;
       const forwardDelta = newTx ? this.balanceDelta(newTx, accountId) : 0;
@@ -150,7 +165,7 @@ export class WebDatabase implements IDatabase {
       if (totalDelta === 0) continue;
       account.balance = (account.balance ?? 0) + totalDelta;
       account.updated_at = Date.now();
-      await db.put('accounts', account);
+      await accountsStore.put(account);
     }
   }
 
@@ -168,7 +183,8 @@ export class WebDatabase implements IDatabase {
         balance += t.type === 'INCOME' ? t.amount : -t.amount;
       }
       if (t.type === 'TRANSFER' && t.to_account_id === accountId) {
-        balance += t.amount;
+        // Destination receives the net of sender-side fees/VAT.
+        balance += t.amount - (t.fees ?? 0) - (t.tax ?? 0);
       }
     }
     account.balance = balance;
@@ -212,8 +228,10 @@ export class WebDatabase implements IDatabase {
   async createTransaction(transaction: Omit<Transaction, 'id'>): Promise<Transaction> {
     const db = await this.getDB();
     const newTransaction = this.buildStoredTransaction(transaction);
-    await db.put('transactions', newTransaction);
-    await this.applyBalanceDelta(db, undefined, newTransaction);
+    const tx = db.transaction(['transactions', 'accounts'], 'readwrite');
+    await tx.objectStore('transactions').put(newTransaction);
+    await this.applyBalanceDeltaTx(tx, undefined, newTransaction);
+    await tx.done;
     LocalChangeEmitter.emit();
     return newTransaction;
   }
@@ -230,7 +248,7 @@ export class WebDatabase implements IDatabase {
       // Use the index for the primary account_id lookup
       const byAccount = await db.getAllFromIndex('transactions', 'by-account', filters.account_id);
       // TRANSFER destinations are not covered by the by-account index — add them
-      const all = await db.getAll('transactions');
+      const all = await db.getAllFromIndex('transactions', 'by-destination', filters.account_id);
       const seenIds = new Set(byAccount.map(t => t.id));
       const transferDests = all.filter(
         t => t.type === 'TRANSFER' && t.to_account_id === filters.account_id && !seenIds.has(t.id)
@@ -248,24 +266,35 @@ export class WebDatabase implements IDatabase {
 
   async updateTransaction(id: string, updates: Partial<Omit<Transaction, 'id'>>): Promise<Transaction> {
     const db = await this.getDB();
-    const existing = await db.get('transactions', id);
-    if (!existing) throw new Error('Transaction not found');
+    const tx = db.transaction(['transactions', 'accounts'], 'readwrite');
+    const txStore = tx.objectStore('transactions');
+    const existing = await txStore.get(id);
+    if (!existing) {
+      await tx.done;
+      throw new Error('Transaction not found');
+    }
 
     const updated = this.mergeStoredTransaction(existing, updates);
-    await db.put('transactions', updated);
-    await this.applyBalanceDelta(db, existing, updated);
+    await txStore.put(updated);
+    await this.applyBalanceDeltaTx(tx, existing, updated);
+    await tx.done;
     LocalChangeEmitter.emit();
     return updated;
   }
 
   async deleteTransaction(id: string, silent?: boolean): Promise<void> {
     const db = await this.getDB();
-    const transaction = await db.get('transactions', id);
+    const tx = db.transaction(['transactions', 'accounts'], 'readwrite');
+    const txStore = tx.objectStore('transactions');
+    const transaction = await txStore.get(id);
     if (transaction) {
-      await db.delete('transactions', id);
+      await txStore.delete(id);
       if (!silent) {
-        await this.applyBalanceDelta(db, transaction, undefined);
+        await this.applyBalanceDeltaTx(tx, transaction, undefined);
       }
+    }
+    await tx.done;
+    if (transaction) {
       LocalChangeEmitter.emit();
     }
   }
@@ -287,9 +316,20 @@ export class WebDatabase implements IDatabase {
     const transactions = [...byAccount, ...transferDests];
 
     const seen = new Set<string>();
+    const seenRefs = new Set<string>();
     const duplicates = new Set<string>();
 
     for (const t of transactions) {
+      // Bank reference numbers are authoritative: equal refs are duplicates,
+      // differing refs are distinct transactions even in the same minute
+      // with the same amount (two identical coffee payments are not dupes).
+      const ref = (t.reference_number ?? '').trim().toUpperCase();
+      if (ref) {
+        const refSig = `${t.account_id}|${t.type}|${t.amount}|${ref}`;
+        if (seenRefs.has(refSig)) duplicates.add(t.id);
+        else seenRefs.add(refSig);
+        continue;
+      }
       const minuteBucket = Math.floor(t.date / 60_000);
       const sig = `${t.account_id}|${t.type}|${t.amount}|${t.category}|${t.description ?? ''}|${minuteBucket}`;
       if (seen.has(sig)) {
@@ -408,4 +448,19 @@ export class WebDatabase implements IDatabase {
     await db.clear('budgets');
     await db.clear('loans');
   }
+  async readMeta(id: string): Promise<any> { return (await (await this.getDB()).get('metadata', id))?.value; }
+  async commitRows(rows: Array<{ table: 'accounts' | 'transactions' | 'budgets' | 'loans'; id: string; value?: any }>, metadata: Record<string, any> = {}): Promise<void> {
+    const db = await this.getDB();
+    const tx = db.transaction(['accounts', 'transactions', 'budgets', 'loans', 'metadata'], 'readwrite');
+    try {
+      for (const row of rows) {
+        const store = tx.objectStore(row.table);
+        if (row.value === undefined) await store.delete(row.id);
+        else await store.put(row.value);
+      }
+      for (const [id, value] of Object.entries(metadata)) await tx.objectStore('metadata').put({ id, value });
+      await tx.done;
+    } catch (error) { try { tx.abort(); } catch {} await tx.done.catch(() => undefined); throw error; }
+  }
+
 }

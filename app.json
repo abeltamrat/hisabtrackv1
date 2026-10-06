@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hisab Track",
     "slug": "hisabtrackv1",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -28,19 +28,13 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
         "REQUEST_INSTALL_PACKAGES",
         "READ_SMS",
-        "RECEIVE_SMS",
-        "SEND_SMS",
-        "CAMERA",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "READ_CALENDAR",
-        "WRITE_CALENDAR",
-        "READ_CONTACTS",
-        "WRITE_CONTACTS"
+        "RECEIVE_SMS"
       ],
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
@@ -50,7 +44,8 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.abeltamrat.hisabtrackv1",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "allowBackup": false
     },
     "web": {
       "bundler": "metro",
@@ -67,6 +62,13 @@
       "expo-router",
       "expo-sqlite",
       "expo-updates",
+      "expo-local-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.891851135453-injmmpfl3qncm01q9c6c78t3a2mjmjq8"
+        }
+      ],
       [
         "expo-notifications",
         {
@@ -76,7 +78,8 @@
             "./assets/sounds/coin.wav"
           ]
         }
-      ]
+      ],
+      "./plugins/withReleaseSigning"
     ],
     "experiments": {
       "typedRoutes": true
@@ -84,7 +87,7 @@
     "owner": "andriondsystems",
     "extra": {
       "router": {},
-      "updateManifestUrl": "http://www.hisab.nonstopplc.com/update.json",
+      "updateManifestUrl": "https://www.hisab.nonstopplc.com/update.json",
       "eas": {
         "projectId": "5655ab27-5678-493b-812a-fef473382b1b"
       }

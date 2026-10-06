@@ -1,3 +1,4 @@
+import { getSessionScope, sessionLocalStorage } from '@/services/SessionStorage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -7,9 +8,18 @@ import { Platform } from 'react-native';
  * Falls back to AsyncStorage on web (with encryption recommended for production)
  */
 export class SecureStorageService {
-  private static readonly TOKEN_KEY = 'auth_token';
-  private static readonly USER_KEY = 'user_data';
-  private static readonly REFRESH_TOKEN_KEY = 'refresh_token';
+  static async migrateLegacy() {
+    if (Platform.OS === 'web') return;
+    for (const [oldKey, key] of [['user_data', this.USER_KEY], ['auth_token', this.TOKEN_KEY], ['refresh_token', this.REFRESH_TOKEN_KEY], ['app_lock_pin_hash', `app_lock_pin_${getSessionScope()}`]]) {
+      const value = await SecureStore.getItemAsync(oldKey);
+      if (value !== null && !(await SecureStore.getItemAsync(key))) await SecureStore.setItemAsync(key, value);
+      if (value !== null) await SecureStore.deleteItemAsync(oldKey);
+    }
+  }
+
+  private static get TOKEN_KEY() { return `auth_token_${getSessionScope()}`; }
+  private static get USER_KEY() { return `user_data_${getSessionScope()}`; }
+  private static get REFRESH_TOKEN_KEY() { return `refresh_token_${getSessionScope()}`; }
 
   /**
    * Save authentication token
@@ -18,7 +28,7 @@ export class SecureStorageService {
     try {
       if (Platform.OS === 'web') {
         // For web, use localStorage (consider encryption for production)
-        localStorage.setItem(this.TOKEN_KEY, token);
+        sessionLocalStorage.setItem(this.TOKEN_KEY, token);
       } else {
         await SecureStore.setItemAsync(this.TOKEN_KEY, token);
       }
@@ -34,7 +44,7 @@ export class SecureStorageService {
   static async getToken(): Promise<string | null> {
     try {
       if (Platform.OS === 'web') {
-        return localStorage.getItem(this.TOKEN_KEY);
+        return sessionLocalStorage.getItem(this.TOKEN_KEY);
       } else {
         return await SecureStore.getItemAsync(this.TOKEN_KEY);
       }
@@ -50,7 +60,7 @@ export class SecureStorageService {
   static async deleteToken(): Promise<void> {
     try {
       if (Platform.OS === 'web') {
-        localStorage.removeItem(this.TOKEN_KEY);
+        sessionLocalStorage.removeItem(this.TOKEN_KEY);
       } else {
         await SecureStore.deleteItemAsync(this.TOKEN_KEY);
       }
@@ -66,7 +76,7 @@ export class SecureStorageService {
     try {
       const userString = JSON.stringify(userData);
       if (Platform.OS === 'web') {
-        localStorage.setItem(this.USER_KEY, userString);
+        sessionLocalStorage.setItem(this.USER_KEY, userString);
       } else {
         await SecureStore.setItemAsync(this.USER_KEY, userString);
       }
@@ -83,7 +93,7 @@ export class SecureStorageService {
     try {
       let userString: string | null;
       if (Platform.OS === 'web') {
-        userString = localStorage.getItem(this.USER_KEY);
+        userString = sessionLocalStorage.getItem(this.USER_KEY);
       } else {
         userString = await SecureStore.getItemAsync(this.USER_KEY);
       }
@@ -101,7 +111,7 @@ export class SecureStorageService {
   static async deleteUserData(): Promise<void> {
     try {
       if (Platform.OS === 'web') {
-        localStorage.removeItem(this.USER_KEY);
+        sessionLocalStorage.removeItem(this.USER_KEY);
       } else {
         await SecureStore.deleteItemAsync(this.USER_KEY);
       }
@@ -116,7 +126,7 @@ export class SecureStorageService {
   static async saveRefreshToken(token: string): Promise<void> {
     try {
       if (Platform.OS === 'web') {
-        localStorage.setItem(this.REFRESH_TOKEN_KEY, token);
+        sessionLocalStorage.setItem(this.REFRESH_TOKEN_KEY, token);
       } else {
         await SecureStore.setItemAsync(this.REFRESH_TOKEN_KEY, token);
       }
@@ -132,7 +142,7 @@ export class SecureStorageService {
   static async getRefreshToken(): Promise<string | null> {
     try {
       if (Platform.OS === 'web') {
-        return localStorage.getItem(this.REFRESH_TOKEN_KEY);
+        return sessionLocalStorage.getItem(this.REFRESH_TOKEN_KEY);
       } else {
         return await SecureStore.getItemAsync(this.REFRESH_TOKEN_KEY);
       }
@@ -150,7 +160,7 @@ export class SecureStorageService {
       await this.deleteToken();
       await this.deleteUserData();
       if (Platform.OS === 'web') {
-        localStorage.removeItem(this.REFRESH_TOKEN_KEY);
+        sessionLocalStorage.removeItem(this.REFRESH_TOKEN_KEY);
       } else {
         await SecureStore.deleteItemAsync(this.REFRESH_TOKEN_KEY);
       }

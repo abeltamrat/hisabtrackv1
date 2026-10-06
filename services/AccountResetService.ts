@@ -1,4 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { sessionLocalStorage } from '@/services/SessionStorage';
+import AsyncStorage from '@/services/SessionStorage';
 import { EmailAuthProvider, getAuth, reauthenticateWithCredential } from 'firebase/auth';
 import { Platform } from 'react-native';
 
@@ -17,32 +18,6 @@ import { SecureStorageService } from './SecureStorageService';
 import SyncService from './SyncService';
 import { getDatabase } from './database';
 
-const EXTRA_ASYNC_KEYS = new Set([
-  'draft_transactions',
-  'rememberedEmail',
-  'has_checked_initial_permissions',
-  'notifications',
-  'app_notifications',
-  'editedBundledLogos',
-  'global_loan_reminders_enabled',
-  'global_reminders_enabled',
-]);
-
-const EXTRA_WEB_KEYS = new Set([
-  'app_settings',
-  'recurring_transactions',
-  'global_loan_reminders_enabled',
-  'global_reminders_enabled',
-  'rememberedEmail',
-  'has_checked_initial_permissions',
-  'draft_transactions',
-  'notifications',
-  'app_notifications',
-  'editedBundledLogos',
-]);
-
-const APP_KEY_PREFIXES = ['@hisabtrack_', 'sms_last_sync_'];
-
 const makeResetError = (code: string, message: string) => {
   const error = new Error(message) as Error & { code: string };
   error.code = code;
@@ -50,6 +25,25 @@ const makeResetError = (code: string, message: string) => {
 };
 
 export class AccountResetService {
+  static async deleteAccount(): Promise<void> {
+    const { getFunctions, httpsCallable } = await import('firebase/functions');
+    SyncService.stopAutoSync(); await SyncService.settle();
+    await (await import('./BackgroundService')).BackgroundService.suspend();
+    await (await import('./SMSSyncService')).SMSSyncService.suspend();
+    await (await import('./LinkedPaymentService')).default.suspend();
+    await DraftTransactionService.settle();
+    try { await httpsCallable(getFunctions(), 'deleteMyAccount', { timeout: 540000 })({}); }
+    catch (error) { await this.resumeServices(); throw error; }
+    const db = await getDatabase();
+    await db.clearAllData(); await db.writeMeta('outbox', {}); await db.writeMeta('linked_payment_jobs', []);
+    await db.writeMeta('pending_restore', null); await db.writeMeta('sync_conflicts', []);
+    await NotificationService.cancelAllNotifications();
+    await (await import('./AppLockService')).AppLockService.clearPin();
+    await SecureStorageService.clearAll(); await AsyncStorage.clear();
+    if (Platform.OS === 'web') sessionLocalStorage.clear();
+    await (await import('./AuthService')).AuthService.signOut();
+  }
+
   static getResetErrorMessage(error: unknown): string {
     const code = (error as { code?: string })?.code;
     if (code === 'reset/empty-password') return 'Password is required.';
@@ -57,36 +51,62 @@ export class AccountResetService {
     if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') return 'Incorrect password. Please try again.';
     if (code === 'auth/too-many-requests') return 'Too many attempts. Try again later.';
     if (code === 'auth/network-request-failed') return 'Network error while verifying credentials. Check your internet and try again.';
+    if (code === 'unavailable' || code === 'deadline-exceeded') return 'Network error while deleting cloud data. Check your internet connection and try again.';
     return (error as { message?: string })?.message || 'Failed to reset account. Please try again.';
   }
 
-  static async resetWithPassword(password: string): Promise<void> {
-    const normalizedPassword = password.trim();
-    if (!normalizedPassword) {
-      throw makeResetError('reset/empty-password', 'Password is required.');
-    }
-
+  /**
+   * Returns true when the current Firebase user signed in with email/password.
+   * Phone-auth users have no 'password' provider in providerData.
+   */
+  static isEmailPasswordUser(): boolean {
     const auth = getAuth();
     const currentUser = auth.currentUser;
-    if (!currentUser?.email) {
+    if (!currentUser) return false;
+    return currentUser.providerData.some(p => p.providerId === 'password');
+  }
+
+  static async resetWithPassword(password?: string): Promise<void> {
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
       throw makeResetError('reset/user-not-found', 'No signed-in account was found.');
     }
 
-    const credential = EmailAuthProvider.credential(currentUser.email, normalizedPassword);
-    await reauthenticateWithCredential(currentUser, credential);
+    const hasEmailProvider = currentUser.providerData.some(p => p.providerId === 'password');
 
-    if (currentUser.uid) {
-      try {
-        await SyncService.deleteRemoteData(currentUser.uid);
-      } catch (err) {
-        console.warn('[AccountResetService] Failed to delete remote data, continuing with local reset:', err);
+    if (hasEmailProvider) {
+      const normalizedPassword = password ?? '';
+      if (!normalizedPassword) {
+        throw makeResetError('reset/empty-password', 'Password is required.');
       }
+      if (!currentUser.email) {
+        throw makeResetError('reset/user-not-found', 'No email found for this account.');
+      }
+      const credential = EmailAuthProvider.credential(currentUser.email, normalizedPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+    }
+    // Phone-auth users: already authenticated on device — no additional verification needed.
+
+    SyncService.stopAutoSync();
+    await SyncService.settle();
+    await (await import('./BackgroundService')).BackgroundService.suspend();
+    await (await import('./SMSSyncService')).SMSSyncService.suspend();
+    await (await import('./LinkedPaymentService')).default.suspend();
+    await DraftTransactionService.settle();
+    if (currentUser.uid) {
+      // Propagate Firestore deletion errors — silent failure means data returns on next sign-in.
+      try { await SyncService.deleteRemoteData(currentUser.uid); }
+      catch (error) { await this.resumeServices(); throw error; }
     }
 
     SyncService.stopAutoSync();
 
     const db = await getDatabase();
     await db.clearAllData();
+    await db.writeMeta('outbox', {});
+    await db.writeMeta('linked_payment_jobs', []);
+    await db.writeMeta('pending_restore', null); await db.writeMeta('sync_conflicts', []);
 
     try {
       await NotificationService.cancelAllNotifications();
@@ -106,11 +126,12 @@ export class AccountResetService {
       console.warn('Reset: failed to clear draft transactions', error);
     }
 
+    await (await import('./AppLockService')).AppLockService.clearPin();
     await SecureStorageService.clearAll();
+    await AsyncStorage.clear();
+    if (Platform.OS === 'web') sessionLocalStorage.clear();
     await StorageService.clearAll();
 
-    await this.clearAsyncStorageKeys();
-    this.clearWebLocalStorageKeys();
 
     store.dispatch(resetTransactions());
     store.dispatch(resetAccounts());
@@ -124,38 +145,12 @@ export class AccountResetService {
     }
   }
 
-  private static async clearAsyncStorageKeys() {
-    try {
-      const allKeys = await AsyncStorage.getAllKeys();
-      const keysToRemove = allKeys.filter((key) => {
-        if (EXTRA_ASYNC_KEYS.has(key)) return true;
-        return APP_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
-      });
-
-      if (keysToRemove.length > 0) {
-        await AsyncStorage.multiRemove(keysToRemove);
-      }
-    } catch (error) {
-      console.warn('Reset: failed to clear AsyncStorage keys', error);
-    }
-  }
-
-  private static clearWebLocalStorageKeys() {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') {
-      return;
-    }
-
-    try {
-      const keys = Object.keys(window.localStorage);
-      for (const key of keys) {
-        const shouldRemove = EXTRA_WEB_KEYS.has(key) || APP_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
-        if (shouldRemove) {
-          window.localStorage.removeItem(key);
-        }
-      }
-    } catch (error) {
-      console.warn('Reset: failed to clear web localStorage keys', error);
-    }
+  private static async resumeServices() {
+    if (!getAuth().currentUser) return;
+    (await import('./BackgroundService')).BackgroundService.resume();
+    (await import('./SMSSyncService')).SMSSyncService.resume();
+    (await import('./LinkedPaymentService')).default.resume();
+    if ((await (await import('@/contexts/AppSettingsContext')).loadStoredAppSettings()).cloudSyncEnabled) SyncService.startAutoSync(getAuth().currentUser!.uid);
   }
 }
 

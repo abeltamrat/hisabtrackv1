@@ -7,7 +7,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
-import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 
 export default function TransactionDetail() {
@@ -194,6 +194,16 @@ export default function TransactionDetail() {
               <View className="flex-row justify-between">
                 <Text className="text-slate-500 text-sm">Reference</Text>
                 <Text className="text-slate-900 dark:text-white font-medium">{transaction.reference_number}</Text>
+              </View>
+            ) : null}
+
+            {transaction.receipt_url ? (
+              <View className="flex-row justify-between items-center">
+                <Text className="text-slate-500 text-sm">Receipt</Text>
+                <TouchableOpacity onPress={() => Linking.openURL(transaction.receipt_url!)} className="flex-row items-center">
+                  <FontAwesome name="external-link" size={12} color="#6366f1" />
+                  <Text className="text-indigo-600 dark:text-indigo-400 font-medium ml-1">View Receipt</Text>
+                </TouchableOpacity>
               </View>
             ) : null}
 

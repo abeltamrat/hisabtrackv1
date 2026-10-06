@@ -1,0 +1,100 @@
+/**
+ * Cross-account self-transfer pairing.
+ *
+ * When money moves between two of the user's own accounts at different
+ * institutions (e.g. CBE → Telebirr), both banks send an SMS within minutes:
+ * a debit ("transferred/sent") on the source and a credit ("received") on the
+ * destination. Neither message says "your account", so text-based detection
+ * can't link them — but a matching amount landing on two different accounts
+ * at nearly the same time is a strong signal they are two legs of one transfer.
+ */
+
+export interface PairableDraft {
+  id: string;
+  account_id: string;
+  type: 'INCOME' | 'EXPENSE';
+  status: string;
+  amount: number;
+  date: number;
+  fees?: number;
+  tax?: number;
+  is_transfer?: boolean;
+  transfer_to_account_id?: string;
+  transfer_from_account_id?: string;
+  paired_draft_id?: string;
+}
+
+export interface TransferPair {
+  expenseId: string;
+  incomeId: string;
+  expenseAccountId: string;
+  incomeAccountId: string;
+}
+
+/** Both bank SMS for one transfer arrive within minutes of each other. */
+export const TRANSFER_PAIR_WINDOW_MS = 15 * 60 * 1000;
+
+const AMOUNT_EPSILON = 0.01;
+
+/**
+ * The debit leg's amount may include the sender bank's fees + VAT (CBE's
+ * "total of ETB X"), while the credit leg carries the base amount — so match
+ * the income against either the gross or the net (gross minus fees/tax).
+ */
+function amountsMatch(expense: PairableDraft, income: PairableDraft): boolean {
+  const gross = expense.amount;
+  const net = expense.amount - (expense.fees ?? 0) - (expense.tax ?? 0);
+  return (
+    Math.abs(income.amount - gross) < AMOUNT_EPSILON ||
+    Math.abs(income.amount - net) < AMOUNT_EPSILON
+  );
+}
+
+/**
+ * Find debit/credit draft pairs that represent one transfer between the
+ * user's own accounts. Greedy on the smallest time gap, so when several
+ * candidates exist the closest-in-time legs pair up first.
+ */
+export function findSelfTransferPairs(
+  drafts: PairableDraft[],
+  windowMs: number = TRANSFER_PAIR_WINDOW_MS
+): TransferPair[] {
+  const pending = drafts.filter(d => d.status === 'PENDING' && !d.paired_draft_id);
+  const expenses = pending.filter(d => d.type === 'EXPENSE');
+  const incomes = pending.filter(d => d.type === 'INCOME');
+
+  const candidates: Array<{ e: PairableDraft; i: PairableDraft; gap: number }> = [];
+  for (const e of expenses) {
+    for (const i of incomes) {
+      if (i.account_id === e.account_id) continue;
+      // Time and amount alone are insufficient evidence of an own-account transfer.
+      if (e.transfer_to_account_id !== i.account_id && i.transfer_from_account_id !== e.account_id) continue;
+      // When a leg already names its peer account (text-detected
+      // "to/from your X account"), only accept that account as the partner.
+      if (e.transfer_to_account_id && e.transfer_to_account_id !== i.account_id) continue;
+      if (i.transfer_from_account_id && i.transfer_from_account_id !== e.account_id) continue;
+      const gap = Math.abs(e.date - i.date);
+      if (gap > windowMs) continue;
+      if (!amountsMatch(e, i)) continue;
+      candidates.push({ e, i, gap });
+    }
+  }
+
+  candidates.sort((a, b) => a.gap - b.gap);
+
+  const usedExpenses = new Set<string>();
+  const usedIncomes = new Set<string>();
+  const pairs: TransferPair[] = [];
+  for (const c of candidates) {
+    if (usedExpenses.has(c.e.id) || usedIncomes.has(c.i.id)) continue;
+    usedExpenses.add(c.e.id);
+    usedIncomes.add(c.i.id);
+    pairs.push({
+      expenseId: c.e.id,
+      incomeId: c.i.id,
+      expenseAccountId: c.e.account_id,
+      incomeAccountId: c.i.account_id,
+    });
+  }
+  return pairs;
+}

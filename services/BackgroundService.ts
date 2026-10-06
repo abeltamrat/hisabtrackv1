@@ -1,4 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createSerialQueue } from '@/utils/asyncLock';
+import AsyncStorage from '@/services/SessionStorage';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
@@ -8,7 +9,10 @@ import { AppNotificationService } from './AppNotificationService';
 import { DraftTransactionService } from './DraftTransactionService';
 import { NotificationMetadata, NotificationService } from './NotificationService';
 import { SMSSyncService } from './SMSSyncService';
+import { SmartReminderService } from './SmartReminderService';
 
+const maintenanceQueue = createSerialQueue();
+let maintenanceSuspended = true;
 const BACKGROUND_SYNC_TASK = 'BACKGROUND_SYNC_TASK';
 const BACKGROUND_STATE_KEY = '@hisabtrack_background_state';
 
@@ -107,7 +111,14 @@ export const BackgroundService = {
     await saveState(state);
   },
 
+  async suspend() { maintenanceSuspended = true; await maintenanceQueue(async () => undefined); },
+  resume() { maintenanceSuspended = false; },
   async runMaintenance(source: MaintenanceSource = 'foreground', options?: { force?: boolean }): Promise<boolean> {
+    if (maintenanceSuspended) return false;
+    return maintenanceQueue(() => maintenanceSuspended ? Promise.resolve(false) : this.doMaintenance(source, options));
+  },
+  async doMaintenance(source: MaintenanceSource, options?: { force?: boolean }): Promise<boolean> {
+    await (await import('./LinkedPaymentService')).default.retryPending();
     if (Platform.OS === 'web') return false;
 
     const appSettings = await loadStoredAppSettings();
@@ -144,8 +155,11 @@ export const BackgroundService = {
       if (source === 'background' && Platform.OS === 'android' && reminderSettings.backgroundSmsSyncEnabled) {
         const shouldSyncSms = now - (state.lastSmsSyncAt ?? 0) >= SMS_BACKGROUND_SYNC_COOLDOWN_MS;
         if (shouldSyncSms) {
-          const result = await SMSSyncService.syncAllAccountsBackground({ historicalDays: 0 });
-          state.lastSmsSyncAt = now;
+          // No options: each account scans from its last successful sync
+          // (30 days back on first sync).
+          const result = await SMSSyncService.syncAllAccountsBackground();
+          // Failed reads should remain eligible for the next maintenance run.
+          if (!result.failed) state.lastSmsSyncAt = now;
 
           if (result.newDrafts > 0) {
             const latestDraftAt = Math.max(...result.drafts.map((draft) => draft.created_at), now);
@@ -258,6 +272,7 @@ export const BackgroundService = {
 
       if (now - (state.lastInsightsCheckAt ?? 0) >= INSIGHTS_CHECK_COOLDOWN_MS) {
         await AppNotificationService.checkAll();
+        await SmartReminderService.maybeSendSmartNotification(now);
         state.lastInsightsCheckAt = now;
         hasWork = true;
       }

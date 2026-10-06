@@ -1,18 +1,20 @@
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useTransactions } from '@/context/TransactionContext';
 import CategoryIcon from '@/components/CategoryIcon';
+import ScreenInfoCard from '@/components/ScreenInfoCard';
 import { BackgroundService } from '@/services/BackgroundService';
 import { DraftTransaction, DraftTransactionService } from '@/services/DraftTransactionService';
 import { SMSLearningService } from '@/services/SMSLearningService';
 import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
+import { addLoan } from '@/store/slices/loansSlice';
 import { FontAwesome } from '@expo/vector-icons';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { parseTagInput } from '@/utils/tags';
@@ -42,6 +44,9 @@ export default function DraftTransactionsScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const params = useLocalSearchParams();
   const accountId = typeof params.accountId === 'string' ? params.accountId : undefined;
+  const draftIdParam = typeof params.draftId === 'string' ? params.draftId : undefined;
+  const shouldRecalibrate = params.recalibrate === '1';
+  const recalibrationStarted = useRef(false);
 
   const { formatCurrency } = useAppSettings();
   const { categories } = useTransactions();
@@ -65,6 +70,9 @@ export default function DraftTransactionsScreen() {
   const [note, setNote] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [recordAsLoan, setRecordAsLoan] = useState(false);
+  const [loanCounterparty, setLoanCounterparty] = useState('');
+  const [loanDueDate, setLoanDueDate] = useState('');
   const [syncStatus, setSyncStatus] = useState({ status: 'Idle', progress: 0 });
 
   // Bulk selection
@@ -143,6 +151,31 @@ export default function DraftTransactionsScreen() {
     void BackgroundService.markReconciliationReview();
   }, [accountId, filter]);
 
+  useEffect(() => {
+    if (!shouldRecalibrate || !account || recalibrationStarted.current) return;
+    recalibrationStarted.current = true;
+    void handleSync(false, 30).then(() => {
+      Alert.alert(
+        'Ready to teach',
+        `Review ${account.name}'s SMS drafts below. Correct the description or category before recording, and HisabTrack will learn your choice.`
+      );
+    });
+  }, [shouldRecalibrate, account]);
+
+  // When navigated from a notification tap, auto-open the confirm modal for that draft
+  useEffect(() => {
+    if (!draftIdParam || loading) return;
+    const target = drafts.find(d => d.id === draftIdParam && d.status === 'PENDING');
+    if (target) {
+      setSelectedDraft(target);
+      setEditedDescription(target.description);
+      setEditedCategory(target.category);
+      setNote('');
+      setTagsInput('');
+      setShowConfirmModal(true);
+    }
+  }, [draftIdParam, loading, drafts]);
+
   const checkInitialSync = async () => {
     if (!account) return;
     const lastSync = await SMSSyncService.getLastSuccessfulSync(account.id);
@@ -165,9 +198,13 @@ export default function DraftTransactionsScreen() {
     setRefreshing(true);
     try {
       if (account) {
-        await SMSSyncService.syncAccountSMS(account, transactions, {
-          historicalDays: historicalDays ?? (historical ? 90 : undefined)
+        const result = await SMSSyncService.syncAccountSMS(account, transactions, {
+          historicalDays: historicalDays ?? (historical ? 90 : undefined),
+          allAccounts: accounts,
         });
+        if (result.failed) {
+          Alert.alert('Sync Problem', 'Some SMS messages could not be read. Pull down to try again.');
+        }
       } else {
         await SMSSyncService.checkAllNow(accounts, transactions);
       }
@@ -267,6 +304,10 @@ export default function DraftTransactionsScreen() {
     setEditedCategory(draft.category);
     setNote('');
     setTagsInput('');
+    setRecordAsLoan(!!draft.is_loan_disbursement);
+    setLoanCounterparty(draft.sender_receiver || 'SMS loan');
+    const defaultDue = new Date(draft.date + 30 * 24 * 60 * 60 * 1000);
+    setLoanDueDate(defaultDue.toISOString().slice(0, 10));
     setShowConfirmModal(true);
   };
 
@@ -281,7 +322,9 @@ export default function DraftTransactionsScreen() {
         editedCategory !== selectedDraft.category;
       const learnedSender = selectedDraft.sms_sender || account?.sms_number?.split(',')[0] || '';
 
-      if (learnedSender && (selectedDraft.sender_receiver || selectedDraft.reference_number)) {
+      // Transfers carry the forced "Transfer" category — learning them would
+      // poison merchant rules that regular drafts from the same sender rely on.
+      if (learnedSender && !selectedDraft.is_transfer && (selectedDraft.sender_receiver || selectedDraft.reference_number)) {
         await SMSLearningService.learn({
           accountId: selectedDraft.account_id,
           sender: learnedSender,
@@ -300,10 +343,20 @@ export default function DraftTransactionsScreen() {
 
       const parsedTags = parseTagInput(tagsInput);
 
+      // Outgoing leg knows its destination; incoming leg knows its source —
+      // either one records as a single TRANSFER from source to destination.
+      const isTransferDraft = selectedDraft.is_transfer && selectedDraft.transfer_to_account_id;
+      const isIncomingTransferDraft = !isTransferDraft && selectedDraft.is_transfer && selectedDraft.transfer_from_account_id;
       const result = await dispatch(addTransaction({
-        account_id: selectedDraft.account_id,
-        type: selectedDraft.type,
-        amount: selectedDraft.amount,
+        account_id: isIncomingTransferDraft ? selectedDraft.transfer_from_account_id! : selectedDraft.account_id,
+        type: (isTransferDraft || isIncomingTransferDraft) ? 'TRANSFER' : selectedDraft.type,
+        ...(isTransferDraft ? { to_account_id: selectedDraft.transfer_to_account_id } : {}),
+        ...(isIncomingTransferDraft ? { to_account_id: selectedDraft.account_id } : {}),
+        // The incoming leg carries the net received; TRANSFER stores the gross
+        // source debit and the DB nets fees/tax off the destination credit.
+        amount: isIncomingTransferDraft
+          ? selectedDraft.amount + (selectedDraft.fees ?? 0) + (selectedDraft.tax ?? 0)
+          : selectedDraft.amount,
         category: editedCategory,
         description: finalDescription,
         tags: parsedTags,
@@ -313,6 +366,7 @@ export default function DraftTransactionsScreen() {
         sms_id: selectedDraft.sms_id,
         fees: selectedDraft.fees,
         tax: selectedDraft.tax,
+        receipt_url: selectedDraft.receipt_url,
       }));
 
       if (addTransaction.rejected.match(result)) {
@@ -325,11 +379,47 @@ export default function DraftTransactionsScreen() {
       const transactionId = (result.payload as any)?.id;
       if (transactionId) {
         await DraftTransactionService.markAsRecorded(selectedDraft.id, transactionId);
+        // The opposite leg of a paired self-transfer is covered by the same
+        // TRANSFER transaction — close it too so it can't be double-recorded.
+        if (selectedDraft.paired_draft_id) {
+          await DraftTransactionService.markAsRecorded(selectedDraft.paired_draft_id, transactionId);
+        }
+      }
+
+      // Loan creation tracks the liability/receivable only; it does not mutate
+      // the account balance, which was already updated by the cash transaction.
+      let loanCreated = false;
+      if (recordAsLoan && !selectedDraft.is_transfer) {
+        const loanPrincipal = selectedDraft.type === 'EXPENSE'
+          ? Math.max(0, Math.round((selectedDraft.amount - (selectedDraft.fees ?? 0) - (selectedDraft.tax ?? 0)) * 100) / 100)
+          : selectedDraft.amount;
+        const parsedDueDate = new Date(`${loanDueDate}T12:00:00`).getTime();
+        const dueDate = Number.isFinite(parsedDueDate)
+          ? parsedDueDate
+          : selectedDraft.date + 30 * 24 * 60 * 60 * 1000;
+        const loanResult = await dispatch(addLoan({
+          type: selectedDraft.type === 'INCOME' ? 'BORROWED' : 'LENT',
+          principal_amount: loanPrincipal,
+          interest_rate: 0,
+          start_date: selectedDraft.date,
+          due_date: dueDate,
+          lender_borrower_name: loanCounterparty.trim() || selectedDraft.sender_receiver || 'SMS loan',
+          status: 'ACTIVE',
+          remaining_balance: loanPrincipal,
+        }));
+        loanCreated = addLoan.fulfilled.match(loanResult);
       }
       await BackgroundService.markReconciliationReview();
       setShowConfirmModal(false);
       await loadDrafts();
-      Alert.alert('Success', 'Transaction recorded!');
+      Alert.alert(
+        'Success',
+        recordAsLoan
+          ? loanCreated
+            ? `Transaction recorded and ${selectedDraft.type === 'INCOME' ? 'borrowed loan' : 'loan given'} added to Loans.`
+            : 'Transaction recorded, but the loan record could not be created. You can add it manually from Loans.'
+          : 'Transaction recorded!'
+      );
     } catch (error) {
       console.error('Error recording transaction:', error);
       Alert.alert('Error', 'Failed to record transaction');
@@ -389,12 +479,24 @@ export default function DraftTransactionsScreen() {
   const handleBulkRecord = async () => {
     setIsBulkProcessing(true);
     let successCount = 0;
+    // Legs already closed as the pair of an earlier-recorded draft in this batch.
+    const closedPairIds = new Set<string>();
     for (const draft of selectedDrafts) {
+      if (closedPairIds.has(draft.id)) {
+        successCount++;
+        continue;
+      }
       try {
+        const isBulkTransfer = draft.is_transfer && draft.transfer_to_account_id;
+        const isBulkIncomingTransfer = !isBulkTransfer && draft.is_transfer && draft.transfer_from_account_id;
         const result = await dispatch(addTransaction({
-          account_id: draft.account_id,
-          type: draft.type,
-          amount: draft.amount,
+          account_id: isBulkIncomingTransfer ? draft.transfer_from_account_id! : draft.account_id,
+          type: (isBulkTransfer || isBulkIncomingTransfer) ? 'TRANSFER' : draft.type,
+          ...(isBulkTransfer ? { to_account_id: draft.transfer_to_account_id } : {}),
+          ...(isBulkIncomingTransfer ? { to_account_id: draft.account_id } : {}),
+          amount: isBulkIncomingTransfer
+            ? draft.amount + (draft.fees ?? 0) + (draft.tax ?? 0)
+            : draft.amount,
           category: draft.category,
           description: draft.description,
           tags: [],
@@ -404,11 +506,29 @@ export default function DraftTransactionsScreen() {
           sms_id: draft.sms_id,
           fees: draft.fees,
           tax: draft.tax,
+          receipt_url: draft.receipt_url,
         }));
         if (!addTransaction.rejected.match(result)) {
           const transactionId = (result.payload as any)?.id;
           if (transactionId) {
             await DraftTransactionService.markAsRecorded(draft.id, transactionId);
+            if (draft.paired_draft_id) {
+              await DraftTransactionService.markAsRecorded(draft.paired_draft_id, transactionId);
+              closedPairIds.add(draft.paired_draft_id);
+            }
+          }
+          // Reinforce (not correct) learning rules: accepting a draft as-is is a
+          // confirmation the suggested description/category were right.
+          if (!draft.is_transfer && draft.sms_sender && (draft.sender_receiver || draft.reference_number)) {
+            await SMSLearningService.learn({
+              accountId: draft.account_id,
+              sender: draft.sms_sender,
+              rawMerchant: draft.sender_receiver,
+              referenceNumber: draft.reference_number,
+              correctedDescription: draft.description,
+              correctedCategory: draft.category,
+              isCorrection: false,
+            });
           }
           successCount++;
         }
@@ -554,11 +674,23 @@ export default function DraftTransactionsScreen() {
 
       {/* Privacy Note */}
       <View className="px-6 py-3 bg-emerald-50 dark:bg-emerald-900/10 border-b border-emerald-100 dark:border-emerald-800">
-        <View className="flex-row items-center">
-          <FontAwesome name="shield" size={14} color="#059669" />
-          <Text className="text-emerald-700 dark:text-emerald-400 text-xs font-medium ml-2">
-            Privacy: SMS messages are parsed locally on your device.
-          </Text>
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center flex-1 mr-3">
+            <FontAwesome name="shield" size={14} color="#059669" />
+            <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-medium ml-2 flex-1">
+              Parsed on-device first. AI fallback is used only when enabled in Settings.
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push({
+              pathname: '/manage-sms-rules',
+              params: accountId ? { accountId } : {},
+            } as any)}
+            className="bg-emerald-600 rounded-xl px-3 py-2 flex-row items-center"
+          >
+            <FontAwesome name="graduation-cap" size={12} color="#fff" />
+            <Text className="text-white text-[11px] font-bold ml-1.5">Teach</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -663,15 +795,16 @@ export default function DraftTransactionsScreen() {
         </View>
       ) : filteredDrafts.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
-          <View className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full justify-center items-center mb-4">
-            <FontAwesome name="inbox" size={32} color="#cbd5e1" />
-          </View>
-          <Text className="text-slate-900 dark:text-white font-bold text-lg mb-2">No Transactions</Text>
-          <Text className="text-slate-400 text-sm text-center">
-            {filter === 'unrecorded'
-              ? 'No pending SMS transactions match your filters'
-              : 'No SMS transactions found'}
-          </Text>
+          <ScreenInfoCard
+            icon="inbox"
+            title={filter === 'unrecorded' ? 'You are all caught up' : 'No SMS transactions yet'}
+            description={filter === 'unrecorded' ? 'There are no pending bank messages waiting for your review.' : 'Connect an SMS-enabled account and sync your inbox to bring transactions here.'}
+            suggestions={[
+              'Use Process Messages or pull down to scan for new bank SMS.',
+              'Review and correct a draft before recording it; the parser learns from your choices.',
+              'If a message is missing, open Options and scan older SMS history.',
+            ]}
+          />
         </View>
       ) : (
         <SectionList
@@ -740,6 +873,16 @@ export default function DraftTransactionsScreen() {
                         {isRecorded ? 'Recorded' : 'Unrecorded'}
                       </Text>
                     </View>
+                    {draft.is_transfer && (
+                      <View className="px-2 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
+                        <Text className="text-xs font-bold text-indigo-700 dark:text-indigo-400">Transfer</Text>
+                      </View>
+                    )}
+                    {draft.is_loan_disbursement && (
+                      <View className="px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                        <Text className="text-xs font-bold text-amber-700 dark:text-amber-400">Loan proceeds</Text>
+                      </View>
+                    )}
                   </View>
                   <View className="flex-row items-center gap-3">
                     <TouchableOpacity
@@ -755,13 +898,13 @@ export default function DraftTransactionsScreen() {
                 {/* Transaction Details */}
                 <View className="flex-row items-center mb-3">
                   <View
-                    className={`w-12 h-12 rounded-xl justify-center items-center mr-3 ${isIncome ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
+                    className={`w-12 h-12 rounded-xl justify-center items-center mr-3 ${draft.is_transfer ? 'bg-indigo-100 dark:bg-indigo-900/30' : isIncome ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
                       }`}
                   >
                     <FontAwesome
-                      name={isIncome ? 'arrow-down' : 'arrow-up'}
+                      name={draft.is_transfer ? 'exchange' : isIncome ? 'arrow-down' : 'arrow-up'}
                       size={18}
-                      color={isIncome ? '#10b981' : '#ef4444'}
+                      color={draft.is_transfer ? '#6366f1' : isIncome ? '#10b981' : '#ef4444'}
                     />
                   </View>
                   <View className="flex-1">
@@ -1090,6 +1233,67 @@ export default function DraftTransactionsScreen() {
                   </Text>
                 </View>
               </View>
+
+              {selectedDraft?.is_loan_disbursement && (
+                <View className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 mb-5 flex-row items-start">
+                  <FontAwesome name="exclamation-circle" size={18} color="#d97706" />
+                  <View className="flex-1 ml-3">
+                    <Text className="text-amber-900 dark:text-amber-200 font-bold">Possible borrowed money</Text>
+                    <Text className="text-amber-700 dark:text-amber-300 text-xs mt-1 leading-5">
+                      The account was credited, but the SMS uses loan or credit language. Record the cash movement as income, then make sure the category is Loan/Debt and add the liability in Loans if it is not already tracked.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {!selectedDraft?.is_transfer && (
+                <View className={`rounded-2xl p-4 mb-5 border-2 ${recordAsLoan ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 dark:border-amber-700' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
+                  <TouchableOpacity
+                    onPress={() => setRecordAsLoan(!recordAsLoan)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: recordAsLoan }}
+                    className="flex-row items-center"
+                  >
+                    <View className={`w-7 h-7 rounded-lg justify-center items-center mr-3 ${recordAsLoan ? 'bg-amber-500' : 'bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600'}`}>
+                      {recordAsLoan && <FontAwesome name="check" size={14} color="#fff" />}
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-slate-900 dark:text-white font-bold">This is a loan</Text>
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
+                        {selectedDraft?.type === 'INCOME'
+                          ? 'Credited account → I borrowed this money'
+                          : 'Debited account → I gave this loan'}
+                      </Text>
+                    </View>
+                    <FontAwesome name="handshake-o" size={18} color={recordAsLoan ? '#d97706' : '#94a3b8'} />
+                  </TouchableOpacity>
+
+                  {recordAsLoan && (
+                    <View className="mt-4 pt-4 border-t border-amber-200 dark:border-amber-800">
+                      <Text className="text-slate-600 dark:text-slate-300 text-xs font-bold mb-1.5">
+                        {selectedDraft?.type === 'INCOME' ? 'Lender / provider' : 'Borrower'}
+                      </Text>
+                      <TextInput
+                        value={loanCounterparty}
+                        onChangeText={setLoanCounterparty}
+                        placeholder={selectedDraft?.type === 'INCOME' ? 'Who lent you the money?' : 'Who borrowed the money?'}
+                        placeholderTextColor="#94a3b8"
+                        className="bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white mb-3"
+                      />
+                      <Text className="text-slate-600 dark:text-slate-300 text-xs font-bold mb-1.5">Expected repayment date</Text>
+                      <TextInput
+                        value={loanDueDate}
+                        onChangeText={setLoanDueDate}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor="#94a3b8"
+                        keyboardType="numbers-and-punctuation"
+                        className="bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white"
+                      />
+                      <Text className="text-amber-700 dark:text-amber-400 text-[10px] mt-2">Interest starts at 0%. You can add interest, reminders, and payment details later from Loans.</Text>
+                    </View>
+                  )}
+                </View>
+              )}
 
               {/* Editable Fields */}
               <View className="mb-6">

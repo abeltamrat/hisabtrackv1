@@ -1,11 +1,14 @@
 import { Account, Transaction } from '@/types/database';
 import { EnhancedSMSParser } from '@/utils/enhancedSMSParser';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import { Platform } from 'react-native';
 import { DraftTransaction, DraftTransactionService } from './DraftTransactionService';
 import LocalChangeEmitter from './LocalChangeEmitter';
 import { SMSLearningService } from './SMSLearningService';
 import { StorageService } from '@/utils/storage';
+import { createSerialQueue } from '@/utils/asyncLock';
+import { findSelfTransferPairs } from '@/utils/transferPairing';
+import { SMSAICalibrationService } from './SMSAICalibrationService';
 
 export type { SMSReconciliationResult } from './DraftTransactionService';
 import type { SMSReconciliationResult } from './DraftTransactionService';
@@ -20,6 +23,15 @@ export interface SMSMessage {
 
 export class SMSSyncService {
   private static SYNC_STATUS_LISTENER: ((status: { accountId: string, status: string, progress: number }) => void) | null = null;
+
+  // Serializes account syncs: the foreground timer, AppState resume handler,
+  // background task, and manual pull-to-refresh can all fire concurrently, and
+  // overlapping runs would race on the shared draft store and double-create drafts.
+  private static syncQueue = createSerialQueue();
+  private static suspended = true;
+  static async suspend() { this.suspended = true; await this.syncQueue(async () => undefined); }
+  static resume() { this.suspended = false; }
+  private static backgroundSyncInFlight = new Map<string, Promise<SMSReconciliationResult>>();
 
   static setSyncStatusListener(listener: (status: { accountId: string, status: string, progress: number }) => void) {
     this.SYNC_STATUS_LISTENER = listener;
@@ -76,9 +88,13 @@ export class SMSSyncService {
    */
   static async readSMSFromSender(
     sender: string,
-    sinceTimestamp?: number
+    sinceTimestamp?: number,
+    indexFrom = 0,
+    maxDate = Date.now()
   ): Promise<SMSMessage[]> {
-    if (Platform.OS === 'web') return this.getMockSMS(sender);
+    // Mock messages are a dev-only convenience; production web must not
+    // fabricate drafts.
+    if (Platform.OS === 'web') return __DEV__ ? this.getMockSMS(sender) : [];
     if (Platform.OS !== 'android') return [];
 
     const MAX_RETRIES = 3;
@@ -91,6 +107,9 @@ export class SMSSyncService {
           box: 'inbox',
           address: sender,
           minDate: sinceTimestamp || 0,
+          maxCount: 200,
+          indexFrom,
+          maxDate,
         };
 
         const result = await Promise.race([
@@ -122,12 +141,13 @@ export class SMSSyncService {
           )
         ]);
 
+        if (result.length === 200) return [...result, ...await this.readSMSFromSender(sender, sinceTimestamp, indexFrom + result.length, maxDate)];
         return result;
       } catch (error) {
         console.warn(`[SMS] Read attempt ${attempt} failed:`, error);
         if (attempt === MAX_RETRIES) {
           console.error('[SMS] All attempts failed. Returning empty list.');
-          return [];
+          throw error;
         }
         // Wait briefly before retry
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -137,13 +157,24 @@ export class SMSSyncService {
   }
 
   /**
-   * Sync SMS for a specific account
+   * Sync SMS for a specific account. Runs are serialized through syncQueue so
+   * concurrent triggers can't interleave draft reads/writes.
    */
-  static async syncAccountSMS(
+  static syncAccountSMS(
     account: Account,
     existingTransactions: Transaction[],
-    options: { historicalDays?: number, ignorePrevious?: boolean } = {}
+    options: { historicalDays?: number, ignorePrevious?: boolean, allAccounts?: Account[] } = {}
   ): Promise<SMSReconciliationResult> {
+    if (this.suspended) return Promise.reject(new Error('SMS scanning is unavailable during session changes'));
+    return this.syncQueue(() => { if (this.suspended) throw new Error('SMS scanning paused'); return this.doSyncAccountSMS(account, existingTransactions, options); });
+  }
+
+  private static async doSyncAccountSMS(
+    account: Account,
+    existingTransactions: Transaction[],
+    options: { historicalDays?: number, ignorePrevious?: boolean, allAccounts?: Account[] } = {}
+  ): Promise<SMSReconciliationResult> {
+    const scanStartedAt = Date.now();
     const result: SMSReconciliationResult = {
       totalSMS: 0,
       parsedTransactions: 0,
@@ -175,8 +206,10 @@ export class SMSSyncService {
 
       for (const sender of senders) {
         const messages = await this.readSMSFromSender(sender, sinceTimestamp);
-        // Safety: Limit messages to avoid memory/crash issues if history is huge
-        allMessages.push(...messages.slice(-200));
+        // Safety: Limit messages to avoid memory/crash issues if history is huge.
+        // The SMS provider returns newest-first, so keep the head of the list —
+        // slice(-200) would keep the oldest 200 and drop the recent ones.
+        allMessages.push(...messages);
       }
 
       result.totalSMS = allMessages.length;
@@ -190,6 +223,7 @@ export class SMSSyncService {
 
       // Load app settings to check if Gemini/AI keys are configured
       let appSettings: any = null;
+      const calibrationExamples = await SMSAICalibrationService.getForAccount(account.id);
       try {
         const { loadStoredAppSettings } = require('@/contexts/AppSettingsContext');
         appSettings = await loadStoredAppSettings();
@@ -205,7 +239,7 @@ export class SMSSyncService {
         let parsed = EnhancedSMSParser.parseTransaction(sms.body, sms.address, sms.id, sms.date);
         
         // AI Fallback parsing if regex failed and a Gemini API key (or fallback provider) is configured
-        if (!parsed && appSettings && (appSettings.geminiApiKey || appSettings.groqApiKey || appSettings.openRouterApiKey)) {
+        if (!parsed && appSettings?.aiSharingEnabled && (appSettings.geminiApiKey || appSettings.groqApiKey || appSettings.openRouterApiKey)) {
           const hasFinancialKeywords = /(?:birr|etb|br|usd|amt|amount|debited|credited|spent|paid|received|deposited|transfer|send|sent|transferred|ref)/i.test(sms.body);
           if (hasFinancialKeywords) {
             try {
@@ -214,7 +248,7 @@ export class SMSSyncService {
                 geminiApiKey: appSettings.geminiApiKey,
                 groqApiKey: appSettings.groqApiKey,
                 openRouterApiKey: appSettings.openRouterApiKey
-              });
+              }, calibrationExamples);
               if (aiParsed && aiParsed.amount) {
                 parsed = {
                   amount: aiParsed.amount,
@@ -230,6 +264,8 @@ export class SMSSyncService {
                   smsId: sms.id || '',
                   sender: sms.address,
                   categoryHint: EnhancedSMSParser.suggestCategoryHint(aiParsed.merchant, sms.body, aiParsed.type || 'EXPENSE')
+                  ,isLoanDisbursement: aiParsed.isLoanDisbursement ||
+                    ((aiParsed.type || 'EXPENSE') === 'INCOME' && EnhancedSMSParser.detectLoanDisbursement(sms.body)) || undefined
                 };
               }
             } catch (err) {
@@ -240,17 +276,10 @@ export class SMSSyncService {
 
         if (!parsed) continue;
 
-        const isAlreadyInDrafts = existingDrafts.some(d => {
-          if (sms.id && d.sms_id === sms.id) return true;
-          if (parsed.smsId && d.sms_id === parsed.smsId) return true;
-          if (parsed.referenceNumber && d.reference_number === parsed.referenceNumber) return true;
-
-          const timeWindow = 6 * 60 * 60 * 1000;
-          const amountMatch = Math.abs(d.amount - parsed.amount) < 0.01;
-          const typeMatch = d.type === parsed.type;
-          const dateMatch = Math.abs(d.date - parsed.date) < timeWindow;
-          return amountMatch && typeMatch && dateMatch;
-        });
+        const isAlreadyInDrafts = [...existingDrafts, ...draftsToAdd].some(d =>
+          d.account_id === account.id && ((sms.id && d.sms_id === sms.id) ||
+          (parsed!.referenceNumber && d.reference_number === parsed!.referenceNumber && d.type === parsed!.type))
+        );
 
         if (isAlreadyInDrafts) {
           result.alreadyRecorded++;
@@ -260,36 +289,100 @@ export class SMSSyncService {
         result.parsedTransactions++;
 
         // Account Identification Logic:
-        // Only filter by account number when the SMS exposes ≥ 4 visible digits —
+        // Only reject on account number when the SMS exposes ≥ 4 visible digits —
         // shorter masked tails (e.g. "1*49" → "49") are too ambiguous to route reliably.
         // When the filter applies, the digits must match as a suffix of the stored account number.
-        if (parsed.accountNumber && account.account_number && parsed.accountNumber.length >= 4) {
+        if (parsed.accountNumber && account.account_number) {
           const accNum = account.account_number.replace(/\D/g, '');
           const smsDigits = parsed.accountNumber.replace(/\D/g, '');
-          const minLen = Math.min(accNum.length, smsDigits.length);
-          if (minLen >= 4 && !accNum.endsWith(smsDigits.slice(-minLen)) && !smsDigits.endsWith(accNum.slice(-minLen))) {
-            // SMS clearly belongs to a different account (shared sender, ≥4 digits differ)
-            continue;
+          if (smsDigits.length >= 4) {
+            const minLen = Math.min(accNum.length, smsDigits.length);
+            if (minLen >= 4 && !accNum.endsWith(smsDigits.slice(-minLen)) && !smsDigits.endsWith(accNum.slice(-minLen))) {
+              // SMS clearly belongs to a different account (shared sender, ≥4 digits differ)
+              continue;
+            }
+          } else if (smsDigits.length >= 2 && accNum.length >= smsDigits.length && !accNum.endsWith(smsDigits)) {
+            // Short masked tail that doesn't match this account: if it does match a
+            // sibling SMS-enabled account, let that account's sync claim the draft
+            // instead of first-come-first-served routing to the wrong account.
+            const sibling = (options.allAccounts ?? []).find(a =>
+              a.id !== account.id &&
+              !!a.sms_number &&
+              (a.account_number ?? '').replace(/\D/g, '').endsWith(smsDigits)
+            );
+            if (sibling) continue;
           }
         }
 
         result.matchedAccounts++;
-        const isAlreadyRecorded = this.isTransactionRecorded(parsed, existingTransactions);
+        const isAlreadyRecorded = this.isTransactionRecorded(parsed, existingTransactions.filter(t => t.account_id === account.id || t.to_account_id === account.id));
+
+        // ── Transfer detection ──────────────────────────────────────────────
+        let isTransfer = false;
+        let transferToAccountId: string | undefined;
+        let transferFromAccountId: string | undefined;
+        let transferPeerAccountNumber: string | undefined;
+
+        if (parsed.isTransfer) {
+          isTransfer = true;
+          const allAccts = options.allAccounts ?? [];
+
+          const matchAcctNumber = (storedNumber: string | undefined, smsDigits: string): boolean => {
+            if (!storedNumber) return false;
+            const n = storedNumber.replace(/\D/g, '');
+            const d = smsDigits.replace(/\D/g, '');
+            if (!n || !d || d.length < 2) return false;
+            return n.endsWith(d) || d.endsWith(n.slice(-d.length));
+          };
+
+          if (parsed.type === 'EXPENSE' && parsed.transferToAccountNumber) {
+            transferPeerAccountNumber = parsed.transferToAccountNumber;
+            const toAcct = allAccts.find(a => a.id !== account.id && matchAcctNumber(a.account_number, parsed.transferToAccountNumber!));
+            if (toAcct) transferToAccountId = toAcct.id;
+          } else if (parsed.type === 'INCOME' && parsed.transferFromAccountNumber) {
+            transferPeerAccountNumber = parsed.transferFromAccountNumber;
+            const fromAcct = allAccts.find(a => a.id !== account.id && matchAcctNumber(a.account_number, parsed.transferFromAccountNumber!));
+            if (fromAcct) transferFromAccountId = fromAcct.id;
+          }
+
+          // Dedup: skip INCOME side if the EXPENSE (source) draft was already created
+          if (parsed.type === 'INCOME') {
+            const timeWindow = 6 * 60 * 60 * 1000;
+            const hasExpenseSide =
+              existingDrafts.some(d =>
+                d.is_transfer && d.type === 'EXPENSE' &&
+                Math.abs(d.amount - parsed.amount) < 0.01 &&
+                Math.abs(d.date - parsed.date) < timeWindow
+              ) ||
+              draftsToAdd.some(d =>
+                (d as any).is_transfer && d.type === 'EXPENSE' &&
+                Math.abs(d.amount - parsed.amount) < 0.01 &&
+                Math.abs(d.date - parsed.date) < timeWindow
+              );
+            if (hasExpenseSide) {
+              result.alreadyRecorded++;
+              continue;
+            }
+          }
+        }
+        // ────────────────────────────────────────────────────────────────────
 
         // Learning & Category Suggestion
         const categoryHint = parsed.categoryHint || EnhancedSMSParser.suggestCategoryHint(parsed.merchant, parsed.rawMessage, parsed.type);
-        let category = EnhancedSMSParser.matchCategory(categoryHint, userCategories, parsed.type);
+        let category = isTransfer ? 'Transfer' : EnhancedSMSParser.matchCategory(categoryHint, userCategories, parsed.type);
         let description = parsed.merchant || `${parsed.type === 'INCOME' ? 'Received' : 'Paid'} via ${sms.address}`;
 
-        const rule = await SMSLearningService.getRule({
-          accountId: account.id,
-          sender: sms.address,
-          rawMerchant: parsed.merchant || '',
-          referenceNumber: parsed.referenceNumber,
-        });
-        if (rule) {
-          category = rule.category;
-          description = rule.description;
+        if (!isTransfer) {
+          const rule = await SMSLearningService.getRule({
+            accountId: account.id,
+            sender: sms.address,
+            rawMerchant: parsed.merchant || '',
+            referenceNumber: parsed.referenceNumber,
+          });
+          if (rule) {
+            category = rule.category;
+            description = rule.description;
+          }
         }
 
         const draft: Omit<DraftTransaction, 'id' | 'created_at'> = {
@@ -311,6 +404,11 @@ export class SMSSyncService {
           status: isAlreadyRecorded ? 'RECORDED' : 'PENDING',
           is_recorded: isAlreadyRecorded,
           categoryHint,
+          is_transfer: isTransfer || undefined,
+          transfer_to_account_id: transferToAccountId,
+          transfer_from_account_id: transferFromAccountId,
+          transfer_peer_account_number: transferPeerAccountNumber,
+          is_loan_disbursement: parsed.isLoanDisbursement || undefined,
         };
 
         draftsToAdd.push(draft);
@@ -323,16 +421,82 @@ export class SMSSyncService {
         result.drafts.push(...savedDrafts);
       }
 
+      // Link debit/credit legs of transfers between the user's own accounts
+      // (e.g. CBE → Telebirr): both banks text within minutes, so pair by
+      // amount + time across accounts even when neither SMS says "your account".
+      // Runs even when this sync added nothing so legs created in earlier runs
+      // still get paired once their counterpart shows up.
+      const pairedCount = await this.pairCrossAccountTransfers(options.allAccounts ?? []);
+      if (pairedCount > 0 && result.drafts.length > 0) {
+        // Refresh returned drafts so notifications/callers see paired fields.
+        const fresh = await DraftTransactionService.getAll();
+        result.drafts = result.drafts.map(d => fresh.find(f => f.id === d.id) ?? d);
+      }
+
       this.emitStatus(account.id, 'Sync Complete', 100);
       // Only advance lastSync when SMS were actually found; if 0 were read,
       // keep the old timestamp so the next sync re-scans the same window.
       if (result.totalSMS > 0) {
-        await this.setLastSuccessfulSync(account.id, Date.now());
+        await this.setLastSuccessfulSync(account.id, scanStartedAt - 60000);
       }
       return result;
     } catch (error) {
+      console.error(`[SMS] Sync failed for account ${account.id}:`, error);
       this.emitStatus(account.id, 'Sync Failed', 0);
+      result.failed = true;
       return result;
+    }
+  }
+
+  /**
+   * Pair PENDING expense/income drafts on different accounts that represent
+   * the two legs of one own-account transfer, and rewrite both drafts so
+   * recording either leg produces a single TRANSFER transaction.
+   * Returns the number of pairs linked.
+   */
+  static async pairCrossAccountTransfers(allAccounts: Account[] = []): Promise<number> {
+    try {
+      const drafts = await DraftTransactionService.getAll();
+      const pairs = findSelfTransferPairs(drafts);
+      if (pairs.length === 0) return 0;
+
+      const nameOf = (id: string) => allAccounts.find(a => a.id === id)?.name;
+      const byId = new Map(drafts.map(d => [d.id, d]));
+      const patches: Array<{ id: string; patch: Partial<DraftTransaction> }> = [];
+      for (const pair of pairs) {
+        const toName = nameOf(pair.incomeAccountId);
+        const fromName = nameOf(pair.expenseAccountId);
+        const expenseLeg = byId.get(pair.expenseId);
+        patches.push({
+          id: pair.expenseId,
+          patch: {
+            is_transfer: true,
+            transfer_to_account_id: pair.incomeAccountId,
+            paired_draft_id: pair.incomeId,
+            category: 'Transfer',
+            description: toName ? `Transfer to ${toName}` : 'Transfer to own account',
+          },
+        });
+        patches.push({
+          id: pair.incomeId,
+          patch: {
+            is_transfer: true,
+            transfer_from_account_id: pair.expenseAccountId,
+            paired_draft_id: pair.expenseId,
+            category: 'Transfer',
+            description: fromName ? `Transfer from ${fromName}` : 'Transfer from own account',
+            // Carry the sender-side charges so recording from this leg can
+            // reconstruct the gross source debit (amount + fees + tax).
+            fees: expenseLeg?.fees,
+            tax: expenseLeg?.tax,
+          },
+        });
+      }
+      await DraftTransactionService.updateMany(patches);
+      return pairs.length;
+    } catch (e) {
+      console.warn('[SMS] Transfer pairing failed:', e);
+      return 0;
     }
   }
 
@@ -356,13 +520,7 @@ export class SMSSyncService {
     if (parsed.smsId) {
       if (existingTransactions.some(t => t.sms_id === parsed.smsId)) return true;
     }
-    const timeWindow = 6 * 60 * 60 * 1000; // 6 hours
-    return existingTransactions.some(t => {
-      const amountMatch = Math.abs(t.amount - parsed.amount) < 0.01;
-      const typeMatch = t.type === parsed.type;
-      const dateMatch = Math.abs(t.date - parsed.date) < timeWindow;
-      return amountMatch && typeMatch && dateMatch;
-    });
+    return false; // Ambiguous amount/time matches remain available for human review.
   }
 
   private static getMockSMS(sender: string): SMSMessage[] {
@@ -392,19 +550,39 @@ export class SMSSyncService {
   static async syncAllAccounts(accounts: Account[], transactions: Transaction[]) {
     for (const account of accounts) {
       if (account.sms_number) {
-        await this.syncAccountSMS(account, transactions);
+        await this.syncAccountSMS(account, transactions, { allAccounts: accounts });
       }
     }
   }
 
-  static async syncAllAccountsBackground(options: { historicalDays?: number, ignorePrevious?: boolean } = {}): Promise<SMSReconciliationResult> {
+  /**
+   * Full sync of every SMS-enabled account. Concurrent callers (foreground
+   * timer, resume handler, background task) coalesce onto the in-flight run.
+   */
+  static syncAllAccountsBackground(options: { historicalDays?: number, ignorePrevious?: boolean } = {}): Promise<SMSReconciliationResult> {
+    // Coalesce only equivalent requests. A manual historical resync must not be
+    // swallowed by a smaller foreground sync that happens to already be running.
+    const requestKey = JSON.stringify({
+      historicalDays: options.historicalDays ?? null,
+      ignorePrevious: options.ignorePrevious ?? false,
+    });
+    const inFlight = this.backgroundSyncInFlight.get(requestKey);
+    if (inFlight) return inFlight;
+
+    const run = this.doSyncAllAccountsBackground(options).finally(() => {
+      this.backgroundSyncInFlight.delete(requestKey);
+    });
+    this.backgroundSyncInFlight.set(requestKey, run);
+    return run;
+  }
+
+  private static async doSyncAllAccountsBackground(options: { historicalDays?: number, ignorePrevious?: boolean } = {}): Promise<SMSReconciliationResult> {
     try {
       const { getDatabase } = require('./database');
       const db = await getDatabase();
       const accounts = await db.getAccounts();
       const transactions = await db.getTransactions();
 
-      let totalNew = 0;
       const result: SMSReconciliationResult = {
         totalSMS: 0,
         parsedTransactions: 0,
@@ -416,9 +594,10 @@ export class SMSSyncService {
 
       for (const account of accounts) {
         if (account.sms_number) {
-          const res = await this.syncAccountSMS(account, transactions, options);
+          const res = await this.syncAccountSMS(account, transactions, { ...options, allAccounts: accounts });
           result.newDrafts += res.newDrafts;
           result.drafts.push(...res.drafts);
+          if (res.failed) result.failed = true;
           // Aggregate other stats if needed
         }
       }
@@ -432,6 +611,7 @@ export class SMSSyncService {
         newDrafts: 0,
         alreadyRecorded: 0,
         drafts: [],
+        failed: true,
       };
     }
   }

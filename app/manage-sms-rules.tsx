@@ -8,9 +8,10 @@ import {
   Modal,
   Alert,
   Animated,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome } from '@expo/vector-icons';
@@ -20,6 +21,11 @@ import { SMSLearningService, SMSRule } from '@/services/SMSLearningService';
 import { StorageService } from '@/utils/storage';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useI18n } from '@/contexts/I18nContext';
+import { SMSSyncService, SMSMessage } from '@/services/SMSSyncService';
+import { AIFinancialAssistant } from '@/services/AIFinancialAssistant';
+import { loadStoredAppSettings } from '@/contexts/AppSettingsContext';
+import { SMSAICalibrationService, SMSCalibrationFields } from '@/services/SMSAICalibrationService';
+import ScreenInfoCard from '@/components/ScreenInfoCard';
 
 interface Category {
   id: string;
@@ -43,6 +49,7 @@ interface SMSRuleItem {
 
 export default function ManageSMSRulesScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { actualTheme } = useTheme();
   const { t } = useI18n();
   const accounts = useSelector((state: RootState) => state.accounts.items);
@@ -64,6 +71,18 @@ export default function ManageSMSRulesScreen() {
   const [editCategory, setEditCategory] = useState('');
   const [showCategorySelector, setShowCategorySelector] = useState(false);
 
+  // AI calibration wizard
+  const [showAICalibration, setShowAICalibration] = useState(false);
+  const [calibrationAccountId, setCalibrationAccountId] = useState<string | null>(null);
+  const [smsSamples, setSmsSamples] = useState<SMSMessage[]>([]);
+  const [selectedSample, setSelectedSample] = useState<SMSMessage | null>(null);
+  const [calibrationLoading, setCalibrationLoading] = useState(false);
+  const [aiFields, setAIFields] = useState<Record<string, string>>({});
+  const [aiType, setAIType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+  const [aiCategory, setAICategory] = useState('');
+  const [aiDescription, setAIDescription] = useState('');
+  const [calibrationCounts, setCalibrationCounts] = useState<Record<string, number>>({});
+
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -74,6 +93,12 @@ export default function ManageSMSRulesScreen() {
     }).start();
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (typeof params.accountId === 'string' && accounts.some(account => account.id === params.accountId)) {
+      setSelectedAccountId(params.accountId);
+    }
+  }, [params.accountId, accounts]);
 
   const loadData = async () => {
     setLoading(true);
@@ -99,6 +124,12 @@ export default function ManageSMSRulesScreen() {
       });
 
       setRules(mapped);
+
+      const counts = await Promise.all(accounts.map(async account => [
+        account.id,
+        (await SMSAICalibrationService.getForAccount(account.id)).length,
+      ] as const));
+      setCalibrationCounts(Object.fromEntries(counts));
       
       const loadedCats = await StorageService.loadCategories();
       setCategories(loadedCats);
@@ -215,6 +246,155 @@ export default function ManageSMSRulesScreen() {
         },
       ]
     );
+  };
+
+  const handleReviewAccount = (accountId: string) => {
+    router.push({
+      pathname: '/draft-transactions',
+      params: { accountId, filter: 'unrecorded' },
+    } as any);
+  };
+
+  const handleRecalibrateAccount = (accountId: string) => {
+    const account = accounts.find(item => item.id === accountId);
+    Alert.alert(
+      `Recalibrate ${account?.name ?? 'account'}?`,
+      'This removes only this account\'s learned SMS rules, then scans the last 30 days again. Your recorded transactions will not be deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset & Scan',
+          style: 'destructive',
+          onPress: async () => {
+            await SMSLearningService.clearRulesForAccount(accountId);
+            await SMSAICalibrationService.clearForAccount(accountId);
+            await loadData();
+            router.push({
+              pathname: '/draft-transactions',
+              params: { accountId, filter: 'unrecorded', recalibrate: '1' },
+            } as any);
+          },
+        },
+      ]
+    );
+  };
+
+  const openAICalibration = async (accountId: string) => {
+    const account = accounts.find(item => item.id === accountId);
+    if (!account?.sms_number) return;
+    if (Platform.OS !== 'android') {
+      Alert.alert('Android required', 'Reading real bank SMS samples is available on Android devices.');
+      return;
+    }
+
+    const settings = await loadStoredAppSettings();
+    if (!settings.geminiApiKey && !settings.groqApiKey && !settings.openRouterApiKey) {
+      Alert.alert('Set up AI first', 'Add a Gemini, Groq, or OpenRouter API key in Settings, then return here.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => router.push('/settings' as any) },
+      ]);
+      return;
+    }
+
+    let granted = await SMSSyncService.hasReadSmsPermission();
+    if (!granted) granted = await SMSSyncService.requestPermissions();
+    if (!granted) {
+      Alert.alert('SMS permission needed', 'Allow SMS access so you can choose a real sample from this bank.');
+      return;
+    }
+
+    setCalibrationAccountId(accountId);
+    setShowAICalibration(true);
+    setCalibrationLoading(true);
+    setSelectedSample(null);
+    setAIFields({});
+    try {
+      const messages: SMSMessage[] = [];
+      for (const sender of account.sms_number.split(',').map(value => value.trim()).filter(Boolean)) {
+        messages.push(...await SMSSyncService.readSMSFromSender(sender, Date.now() - 90 * 24 * 60 * 60 * 1000));
+      }
+      messages.sort((a, b) => b.date - a.date);
+      setSmsSamples(messages.slice(0, 12));
+    } finally {
+      setCalibrationLoading(false);
+    }
+  };
+
+  const runAIParse = async (sample: SMSMessage) => {
+    setSelectedSample(sample);
+    setCalibrationLoading(true);
+    try {
+      const settings = await loadStoredAppSettings();
+      const previous = calibrationAccountId
+        ? await SMSAICalibrationService.getForAccount(calibrationAccountId)
+        : [];
+      const parsed = await AIFinancialAssistant.parseSMS(sample.body, {
+        geminiApiKey: settings.geminiApiKey,
+        groqApiKey: settings.groqApiKey,
+        openRouterApiKey: settings.openRouterApiKey,
+      }, previous);
+      if (!parsed) {
+        Alert.alert('Could not parse this SMS', 'Try another sample or check your AI provider key in Settings.');
+        setSelectedSample(null);
+        return;
+      }
+      setAIType(parsed.type ?? 'EXPENSE');
+      setAIDescription(parsed.merchant ?? 'Bank transaction');
+      setAICategory(categories[0]?.name ?? 'Other');
+      setAIFields({
+        amount: parsed.amount?.toString() ?? '',
+        accountNumber: parsed.accountNumber ?? '',
+        merchant: parsed.merchant ?? '',
+        referenceNumber: parsed.referenceNumber ?? '',
+        balance: parsed.balance?.toString() ?? '',
+        fees: parsed.fees?.toString() ?? '',
+        tax: parsed.tax?.toString() ?? '',
+      });
+    } finally {
+      setCalibrationLoading(false);
+    }
+  };
+
+  const saveAICalibration = async () => {
+    if (!calibrationAccountId || !selectedSample || !Number(aiFields.amount)) {
+      Alert.alert('Check the amount', 'Enter the correct transaction amount before confirming.');
+      return;
+    }
+    const numberOrUndefined = (value: string) => value.trim() ? Number(value) : undefined;
+    const fields: SMSCalibrationFields = {
+      amount: numberOrUndefined(aiFields.amount),
+      type: aiType,
+      accountNumber: aiFields.accountNumber?.trim() || undefined,
+      merchant: aiFields.merchant?.trim() || undefined,
+      referenceNumber: aiFields.referenceNumber?.trim() || undefined,
+      balance: numberOrUndefined(aiFields.balance),
+      fees: numberOrUndefined(aiFields.fees),
+      tax: numberOrUndefined(aiFields.tax),
+    };
+    await SMSAICalibrationService.save({
+      accountId: calibrationAccountId,
+      sender: selectedSample.address,
+      rawMessage: selectedSample.body,
+      fields,
+    });
+    if (fields.merchant && aiDescription.trim() && aiCategory) {
+      await SMSLearningService.learn({
+        accountId: calibrationAccountId,
+        sender: selectedSample.address,
+        rawMerchant: fields.merchant,
+        referenceNumber: fields.referenceNumber,
+        correctedDescription: aiDescription.trim(),
+        correctedCategory: aiCategory,
+        isCorrection: true,
+      });
+    }
+    setCalibrationCounts(previous => ({
+      ...previous,
+      [calibrationAccountId]: Math.min((previous[calibrationAccountId] ?? 0) + 1, 8),
+    }));
+    setShowAICalibration(false);
+    await loadData();
+    Alert.alert('AI calibrated', 'This verified example will guide future AI parsing for this bank.');
   };
 
   const getAccountName = (id: string) => {
@@ -388,8 +568,93 @@ export default function ManageSMSRulesScreen() {
         </View>
       </LinearGradient>
 
-      {/* Account Selectors & Search */}
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+
+      {/* Friendly account-by-account teaching flow */}
       <View className="px-6 -mt-4 mb-4">
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-lg border border-slate-100 dark:border-slate-700 mb-4">
+          <View className="flex-row items-center mb-3">
+            <View className="w-11 h-11 rounded-2xl bg-teal-50 dark:bg-teal-900/30 justify-center items-center mr-3">
+              <FontAwesome name="graduation-cap" size={19} color="#0d9488" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-slate-900 dark:text-white font-bold text-base">Teach HisabTrack your bank SMS</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Review a draft, correct it, then save. Future messages improve automatically.</Text>
+            </View>
+          </View>
+          <View className="flex-row items-center justify-between bg-slate-50 dark:bg-slate-900 rounded-2xl px-4 py-3">
+            {[
+              ['1', 'Choose bank'],
+              ['2', 'Correct SMS'],
+              ['3', 'Save & learn'],
+            ].map(([step, label], index) => (
+              <React.Fragment key={step}>
+                <View className="items-center flex-1">
+                  <View className="w-6 h-6 rounded-full bg-teal-600 justify-center items-center mb-1">
+                    <Text className="text-white text-[10px] font-bold">{step}</Text>
+                  </View>
+                  <Text className="text-slate-600 dark:text-slate-300 text-[10px] font-semibold text-center">{label}</Text>
+                </View>
+                {index < 2 && <FontAwesome name="chevron-right" size={10} color="#94a3b8" />}
+              </React.Fragment>
+            ))}
+          </View>
+        </View>
+
+        <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase mb-2 ml-1">Your SMS-enabled accounts</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {accounts.filter(item => !!item.sms_number).map(account => {
+            const accountRuleCount = rules.filter(rule => rule.accountId === account.id).length;
+            return (
+              <View key={account.id} className="w-72 bg-white dark:bg-slate-800 rounded-3xl p-4 mr-3 border border-slate-100 dark:border-slate-700 shadow-md">
+                <View className="flex-row items-center mb-3">
+                  <View className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 justify-center items-center mr-3">
+                    <FontAwesome name={account.type === 'MOBILE_MONEY' ? 'mobile' : 'bank'} size={18} color="#6366f1" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-slate-900 dark:text-white font-bold" numberOfLines={1}>{account.name}</Text>
+                    <Text className="text-slate-400 text-xs mt-0.5">
+                      {accountRuleCount} rules · {calibrationCounts[account.id] ?? 0} AI examples
+                    </Text>
+                  </View>
+                  <View className={`px-2 py-1 rounded-full ${accountRuleCount ? 'bg-green-50 dark:bg-green-900/30' : 'bg-amber-50 dark:bg-amber-900/30'}`}>
+                    <Text className={`text-[10px] font-bold ${accountRuleCount ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                      {accountRuleCount ? 'Learning' : 'New'}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => handleReviewAccount(account.id)} className="bg-teal-600 rounded-2xl py-3 flex-row justify-center items-center mb-2">
+                  <FontAwesome name="check-square-o" size={14} color="#fff" />
+                  <Text className="text-white font-bold text-sm ml-2">Review & Teach</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => void openAICalibration(account.id)} className="bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl py-3 flex-row justify-center items-center mb-1 border border-indigo-100 dark:border-indigo-800">
+                  <FontAwesome name="magic" size={14} color="#6366f1" />
+                  <Text className="text-indigo-700 dark:text-indigo-300 font-bold text-sm ml-2">AI Calibration</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleRecalibrateAccount(account.id)} className="py-2 flex-row justify-center items-center">
+                  <FontAwesome name="refresh" size={12} color="#64748b" />
+                  <Text className="text-slate-500 dark:text-slate-400 font-semibold text-xs ml-2">Recalibrate this bank</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+          {accounts.filter(item => !!item.sms_number).length === 0 && (
+            <TouchableOpacity onPress={() => router.push('/accounts' as any)} className="w-72 bg-white dark:bg-slate-800 rounded-3xl p-5 border border-dashed border-teal-300 dark:border-teal-700 items-center">
+              <FontAwesome name="plus-circle" size={24} color="#14b8a6" />
+              <Text className="text-slate-900 dark:text-white font-bold mt-2">Connect a bank account</Text>
+              <Text className="text-slate-500 text-xs text-center mt-1">Add its SMS sender to start teaching the parser.</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Account Selectors & Search */}
+      <View className="px-6 mb-4">
         {/* Search */}
         <View className="bg-white dark:bg-slate-800 rounded-2xl flex-row items-center px-4 py-3.5 shadow-lg border border-slate-100 dark:border-slate-700 mb-3">
           <FontAwesome name="search" size={16} color="#94a3b8" />
@@ -476,33 +741,141 @@ export default function ManageSMSRulesScreen() {
 
       {/* Main List */}
       {loading ? (
-        <View className="flex-1 justify-center items-center">
+        <View className="py-16 justify-center items-center">
           <ActivityIndicator size="large" color="#14b8a6" />
         </View>
       ) : (
-        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-          <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator={false}>
+        <Animated.View style={{ opacity: fadeAnim }} className="px-6">
             {filteredRules.length === 0 ? (
-              <View className="bg-white dark:bg-slate-800 rounded-3xl p-12 items-center shadow-lg border border-slate-100 dark:border-slate-700 mt-4">
-                <View className="w-20 h-20 bg-teal-50 dark:bg-teal-900/20 rounded-full justify-center items-center mb-5">
-                  <FontAwesome name="magic" size={32} color="#14b8a6" />
-                </View>
-                <Text className="text-slate-900 dark:text-white font-bold text-lg mb-2">
-                  No Learning Rules Found
-                </Text>
-                <Text className="text-slate-500 dark:text-slate-400 text-center text-xs leading-5">
-                  {searchQuery
-                    ? 'Try adjusting your search criteria'
-                    : 'The app learns your mappings when you correct draft category/merchant descriptions on transaction reconciliation.'}
-                </Text>
-              </View>
+              <ScreenInfoCard
+                icon="magic"
+                title={searchQuery ? 'No matching rules' : 'Teach your SMS parser'}
+                description={searchQuery ? 'Try a different search or clear the filter.' : 'HisabTrack gets better when you verify a draft and correct its merchant or category.'}
+                suggestions={searchQuery ? ['Clear the search to see all learned rules.'] : ['Use AI Calibration to verify a real bank SMS.', 'Correct a draft before recording it so the bank pattern is remembered.', 'Teach each bank account separately for more accurate parsing.']}
+              />
             ) : (
               filteredRules.map(renderRuleCard)
             )}
             <View className="h-6" />
-          </ScrollView>
         </Animated.View>
       )}
+      </ScrollView>
+
+      {/* AI calibration wizard */}
+      <Modal
+        visible={showAICalibration}
+        animationType="slide"
+        onRequestClose={() => setShowAICalibration(false)}
+      >
+        <View className="flex-1 bg-slate-50 dark:bg-slate-900">
+          <LinearGradient colors={['#4f46e5', '#7c3aed']} className="px-6 pt-8 pb-6 rounded-b-[28px]">
+            <View className="flex-row items-center">
+              <TouchableOpacity onPress={() => setShowAICalibration(false)} className="w-10 h-10 rounded-xl bg-white/20 justify-center items-center">
+                <FontAwesome name="times" size={18} color="#fff" />
+              </TouchableOpacity>
+              <View className="flex-1 ml-4">
+                <Text className="text-white text-xl font-bold">AI SMS Calibration</Text>
+                <Text className="text-white/75 text-xs mt-1">AI suggests. You verify. HisabTrack remembers.</Text>
+              </View>
+            </View>
+          </LinearGradient>
+
+          {calibrationLoading ? (
+            <View className="flex-1 justify-center items-center px-8">
+              <ActivityIndicator size="large" color="#6366f1" />
+              <Text className="text-slate-700 dark:text-slate-300 font-bold mt-4">
+                {selectedSample ? 'AI is reading the sample…' : 'Loading recent bank messages…'}
+              </Text>
+              <Text className="text-slate-400 text-xs text-center mt-2">The selected SMS is sent to your configured AI provider.</Text>
+            </View>
+          ) : !selectedSample ? (
+            <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingVertical: 20, paddingBottom: 40 }}>
+              <View className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-4 mb-4 border border-indigo-100 dark:border-indigo-800">
+                <Text className="text-indigo-900 dark:text-indigo-200 font-bold">1. Choose a clear sample</Text>
+                <Text className="text-indigo-700 dark:text-indigo-300 text-xs mt-1 leading-5">Pick a normal debit or credit message. You will see and correct the AI result before anything is saved.</Text>
+              </View>
+              {smsSamples.length === 0 ? (
+                <View className="items-center py-16">
+                  <FontAwesome name="comment-o" size={36} color="#94a3b8" />
+                  <Text className="text-slate-900 dark:text-white font-bold mt-4">No recent SMS found</Text>
+                  <Text className="text-slate-500 text-xs text-center mt-2">Check this account's SMS sender in Accounts, then try again.</Text>
+                </View>
+              ) : smsSamples.map(sample => (
+                <TouchableOpacity key={sample.id} onPress={() => void runAIParse(sample)} className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 border border-slate-100 dark:border-slate-700">
+                  <View className="flex-row justify-between mb-2">
+                    <Text className="text-indigo-600 dark:text-indigo-400 text-xs font-bold">{sample.address}</Text>
+                    <Text className="text-slate-400 text-[10px]">{new Date(sample.date).toLocaleDateString()}</Text>
+                  </View>
+                  <Text className="text-slate-700 dark:text-slate-200 text-xs leading-5" numberOfLines={4}>{sample.body}</Text>
+                  <View className="flex-row items-center mt-3">
+                    <FontAwesome name="magic" size={11} color="#6366f1" />
+                    <Text className="text-indigo-600 dark:text-indigo-400 text-xs font-bold ml-2">Parse this sample with AI</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingVertical: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+              <View className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 mb-4 border border-green-100 dark:border-green-800">
+                <Text className="text-green-900 dark:text-green-200 font-bold">2. Verify the AI result</Text>
+                <Text className="text-green-700 dark:text-green-300 text-xs mt-1">Correct anything that is wrong. Your confirmed version becomes a bank-specific example.</Text>
+              </View>
+
+              <Text className="text-slate-500 text-xs font-bold uppercase mb-2">Transaction type</Text>
+              <View className="flex-row mb-4 bg-white dark:bg-slate-800 rounded-2xl p-1 border border-slate-200 dark:border-slate-700">
+                {(['EXPENSE', 'INCOME'] as const).map(type => (
+                  <TouchableOpacity key={type} onPress={() => setAIType(type)} className={`flex-1 py-3 rounded-xl ${aiType === type ? (type === 'INCOME' ? 'bg-green-600' : 'bg-red-500') : ''}`}>
+                    <Text className={`text-center font-bold text-xs ${aiType === type ? 'text-white' : 'text-slate-500'}`}>{type === 'INCOME' ? 'Money in' : 'Money out'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {[
+                ['amount', 'Amount *', 'numeric'],
+                ['merchant', 'Sender / recipient', 'default'],
+                ['accountNumber', 'Account number / tail', 'default'],
+                ['referenceNumber', 'Reference number', 'default'],
+                ['balance', 'Balance after transaction', 'numeric'],
+                ['fees', 'Fee', 'numeric'],
+                ['tax', 'Tax', 'numeric'],
+              ].map(([key, label, keyboard]) => (
+                <View key={key} className="mb-3">
+                  <Text className="text-slate-500 text-xs font-bold mb-1.5">{label}</Text>
+                  <TextInput
+                    value={aiFields[key] ?? ''}
+                    onChangeText={value => setAIFields(previous => ({ ...previous, [key]: value }))}
+                    keyboardType={keyboard === 'numeric' ? 'decimal-pad' : 'default'}
+                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white"
+                    placeholder="Not found"
+                    placeholderTextColor="#94a3b8"
+                  />
+                </View>
+              ))}
+
+              <Text className="text-slate-500 text-xs font-bold mb-1.5">Description shown in transactions</Text>
+              <TextInput value={aiDescription} onChangeText={setAIDescription} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white mb-3" />
+
+              <Text className="text-slate-500 text-xs font-bold mb-2">Category</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
+                {categories.map(category => (
+                  <TouchableOpacity key={category.id} onPress={() => setAICategory(category.name)} className={`px-4 py-2.5 rounded-full mr-2 border ${aiCategory === category.name ? 'bg-indigo-600 border-indigo-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+                    <Text className={`text-xs font-bold ${aiCategory === category.name ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{category.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View className="flex-row gap-3">
+                <TouchableOpacity onPress={() => setSelectedSample(null)} className="flex-1 py-4 rounded-2xl bg-slate-200 dark:bg-slate-700">
+                  <Text className="text-slate-700 dark:text-slate-200 text-center font-bold">Try another</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => void saveAICalibration()} className="flex-1 py-4 rounded-2xl bg-indigo-600">
+                  <Text className="text-white text-center font-bold">Confirm & teach</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
 
       {/* Edit Rule Modal */}
       <Modal

@@ -1,3 +1,4 @@
+import { operatingIncome, operatingExpense, sumMoney } from '@/utils/finance';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
@@ -31,6 +32,8 @@ type SheetRow = Record<string, string | number | boolean | null>;
 
 export class ExportService {
   static async exportReport(options: ExportOptions) {
+    const income = sumMoney(options.data.map(operatingIncome)), expense = sumMoney(options.data.map(operatingExpense));
+    options = { ...options, summary: { income, expense, balance: sumMoney([income, -expense]), savingsRate: income > 0 ? (income - expense) / income * 100 : 0 } };
     const fileName = `HisabTrack_${options.type}_${new Date().toISOString().split('T')[0]}`;
 
     if (options.format === 'pdf') {

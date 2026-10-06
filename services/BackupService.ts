@@ -1,6 +1,8 @@
+import { validateTransaction, money } from '@/utils/finance';
+import { sessionLocalStorage } from '@/services/SessionStorage';
 import { Account, Budget, Loan, Transaction } from '@/types/database';
 import { saveJSON } from '@/utils/fileHelper';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export interface BackupData {
   version: string;
@@ -10,6 +12,7 @@ export interface BackupData {
   budgets: Budget[];
   loans: Loan[];
   categories?: any[];
+  goals?: any[];
   recurringTransactions?: any[];
   settings?: any;
   smsLearningRules?: any;
@@ -40,7 +43,7 @@ export class BackupService {
       loans,
       categories,
       recurringTransactions,
-      settings,
+      settings: this.safeSettings(settings),
       smsLearningRules,
     };
   }
@@ -68,9 +71,9 @@ export class BackupService {
     let recurringTransactions: any[] = [];
     try {
       const { Platform } = await import('react-native');
-      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const AsyncStorage = (await import('@/services/SessionStorage')).default;
       if (Platform.OS === 'web') {
-        const stored = localStorage.getItem('recurring_transactions');
+        const stored = sessionLocalStorage.getItem('recurring_transactions');
         if (stored) recurringTransactions = JSON.parse(stored);
       } else {
         const stored = await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
@@ -108,6 +111,8 @@ export class BackupService {
       settings,
       smsLearningRules
     );
+    const rawGoals = await (await import('./SessionStorage')).default.getItem('financial_goals');
+    backup.goals = rawGoals ? JSON.parse(rawGoals) : [];
     const json = JSON.stringify(backup, null, 2);
     await saveJSON(filename, json);
   }
@@ -115,25 +120,51 @@ export class BackupService {
   /**
    * Validate backup data structure
    */
+  static safeSettings(settings: any) {
+    if (!settings || typeof settings !== 'object') return undefined;
+    const allowed = ['currency', 'language', 'fontSize', 'preferLocalLogos', 'balancesHidden', 'backgroundReminders', 'assistantOverlay'];
+    const preferences = Object.fromEntries(allowed.filter(key => Object.prototype.hasOwnProperty.call(settings, key)).map(key => [key, settings[key]]));
+    return { ...preferences, cloudSyncEnabled: false, aiSharingEnabled: false, puterJsEnabled: false };
+  }
   static validateBackup(data: any): data is BackupData {
-    if (!data || typeof data !== 'object') {
-      return false;
-    }
-
-    // Check required fields
-    if (!data.version || !data.timestamp) {
-      return false;
-    }
-
-    // Check arrays
-    if (!Array.isArray(data.accounts) || 
-        !Array.isArray(data.transactions) || 
-        !Array.isArray(data.budgets) || 
-        !Array.isArray(data.loans)) {
-      return false;
-    }
-
-    return true;
+    try {
+      if (!data || data.version !== '1.0.0' || !Number.isFinite(data.timestamp) || data.timestamp <= 0) return false;
+      for (const key of ['accounts', 'transactions', 'budgets', 'loans']) {
+        if (!Array.isArray(data[key]) || data[key].length > 100000) return false;
+        const ids = new Set<string>();
+        for (const row of data[key]) {
+          if (!row || typeof row.id !== 'string' || !row.id || row.id.includes('/') || ids.has(row.id)) return false;
+          ids.add(row.id);
+        }
+      }
+      for (const a of data.accounts) {
+        if (typeof a.name !== 'string' || !a.name.trim() || !/^[A-Z]{3}$/.test(a.currency) || !['BANK', 'MOBILE_MONEY', 'CASH', 'CARD', 'SAVINGS'].includes(a.type)) return false;
+        money(a.balance); if (money(a.locked_amount || 0) < 0) return false;
+      }
+      if (new Set(data.accounts.map((a: Account) => a.currency)).size > 1) return false;
+      for (const t of data.transactions) { validateTransaction(t, data.accounts); if (typeof t.category !== 'string' || typeof t.description !== 'string') return false; }
+      for (const b of data.budgets) if (!['MONTHLY', 'WEEKLY'].includes(b.period) || typeof b.category !== 'string' || money(b.limit_amount) < 0 || !Number.isFinite(b.start_date) || !Number.isFinite(b.end_date) || b.end_date < b.start_date) return false;
+      for (const l of data.loans) if (!['BORROWED', 'LENT'].includes(l.type) || !['ACTIVE', 'PAID', 'DEFAULTED'].includes(l.status) || money(l.principal_amount) <= 0 || money(l.remaining_balance) < 0 || !Number.isFinite(l.interest_rate) || l.interest_rate < 0 || !Number.isFinite(l.start_date) || !Number.isFinite(l.due_date) || l.due_date < l.start_date) return false;
+      for (const key of ['categories', 'recurringTransactions', 'goals']) {
+        if (data[key] !== undefined && (!Array.isArray(data[key]) || data[key].length > 100000)) return false;
+        const ids = new Set();
+        for (const item of data[key] || []) {
+          if (!item || typeof item.id !== 'string' || !item.id || ids.has(item.id)) return false;
+          ids.add(item.id);
+        }
+      }
+      for (const category of data.categories || []) {
+        if (typeof category.name !== 'string' || !category.name.trim()) return false;
+        const seen = new Set(); let current = category;
+        while (current) {
+          if (seen.has(current.id)) return false;
+          seen.add(current.id); current = data.categories.find((c: any) => c.id === current.parentId);
+        }
+      }
+      for (const goal of data.goals || []) if (typeof goal.title !== 'string' || !goal.title.trim() || money(goal.targetAmount) <= 0 || money(goal.currentAmount) < 0 || !Number.isFinite(Date.parse(goal.deadline))) return false;
+      for (const r of data.recurringTransactions || []) if (!['INCOME', 'EXPENSE', 'TRANSFER'].includes(r.type) || !Number.isFinite(r.startDate) || !Number.isInteger(r.completedRepetitions) || r.completedRepetitions < 0 || (r.endDate !== undefined && (!Number.isFinite(r.endDate) || r.endDate < r.startDate)) || (r.type === 'TRANSFER' && (r.accountId === r.toAccountId || !data.accounts.some((a: Account) => a.id === r.toAccountId))) || !r.id || !['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(r.frequency) || money(r.amount) <= 0 || !Number.isFinite(r.nextDate) || !data.accounts.some((a: Account) => a.id === r.accountId)) return false;
+      return true;
+    } catch { return false; }
   }
 
   /**
@@ -147,6 +178,7 @@ export class BackupService {
         throw new Error('Invalid backup format');
       }
 
+      data.settings = this.safeSettings(data.settings);
       return data;
     } catch (error) {
       console.error('Failed to parse backup:', error);

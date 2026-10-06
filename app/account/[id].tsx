@@ -1,3 +1,4 @@
+import { getDatabase } from '@/services/database';
 import { BUNDLED_LOGOS } from '@/assets/bankLogos/et';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { DraftTransactionService } from '@/services/DraftTransactionService';
@@ -36,8 +37,8 @@ export default function AccountDetail() {
     if (!id) return;
     try {
       if (showLoading) setLoading(true);
-      const res = await dispatch(fetchTransactions({ account_id: id }));
-      const payload = Array.isArray(res?.payload) ? res.payload : [];
+      const db = await getDatabase();
+      const payload = await db.getTransactions({ account_id: id });
       setTransactions(payload as any[]);
     } catch (e) {
       console.error('Failed to fetch transactions', e);

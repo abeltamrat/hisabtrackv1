@@ -1,5 +1,8 @@
-import LocalChangeEmitter from '@/services/LocalChangeEmitter';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
+import type { RootState } from '@/store';
+import { Alert } from 'react-native';
+import { sessionLocalStorage, getSessionScope } from '@/services/SessionStorage';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
 export type AppCurrencyCode = string; // ISO 4217
@@ -25,6 +28,9 @@ export interface BackgroundReminderSettings {
   pendingDraftAlertsEnabled: boolean;
   inactivityAlertsEnabled: boolean;
   reconciliationAlertsEnabled: boolean;
+  habitRemindersEnabled: boolean;
+  dailySummaryAlertsEnabled: boolean;
+  personalizedTipsEnabled: boolean;
 }
 
 export interface AssistantOverlaySettings {
@@ -36,10 +42,13 @@ export interface AssistantOverlaySettings {
 }
 
 export interface AppSettings {
+  cloudSyncEnabled: boolean;
+  aiSharingEnabled: boolean;
   currency: AppCurrencyCode;
   language: AppLanguage;
   fontSize: AppFontSize;
   preferLocalLogos: boolean;
+  balancesHidden: boolean;
   geminiApiKey?: string;
   groqApiKey?: string;
   openRouterApiKey?: string;
@@ -49,10 +58,13 @@ export interface AppSettings {
 }
 
 interface AppSettingsContextType extends AppSettings {
+  setCloudSyncEnabled: (enabled: boolean) => void;
+  setAiSharingEnabled: (enabled: boolean) => void;
   setCurrency: (c: AppCurrencyCode) => void;
   setLanguage: (l: AppLanguage) => void;
   setFontSize: (s: AppFontSize) => void;
   setPreferLocalLogos: (v: boolean) => void;
+  setBalancesHidden: (v: boolean) => void;
   setGeminiApiKey: (k: string) => void;
   setGroqApiKey: (k: string) => void;
   setOpenRouterApiKey: (k: string) => void;
@@ -62,6 +74,9 @@ interface AppSettingsContextType extends AppSettings {
   setPendingDraftAlertsEnabled: (v: boolean) => void;
   setInactivityAlertsEnabled: (v: boolean) => void;
   setReconciliationAlertsEnabled: (v: boolean) => void;
+  setHabitRemindersEnabled: (v: boolean) => void;
+  setDailySummaryAlertsEnabled: (v: boolean) => void;
+  setPersonalizedTipsEnabled: (v: boolean) => void;
   setAssistantEnabled: (v: boolean) => void;
   setAssistantTipsEnabled: (v: boolean) => void;
   setAssistantDashboardEnabled: (v: boolean) => void;
@@ -78,6 +93,9 @@ const DEFAULT_BACKGROUND_REMINDERS: BackgroundReminderSettings = {
   pendingDraftAlertsEnabled: true,
   inactivityAlertsEnabled: true,
   reconciliationAlertsEnabled: true,
+  habitRemindersEnabled: true,
+  dailySummaryAlertsEnabled: true,
+  personalizedTipsEnabled: true,
 };
 
 const DEFAULT_ASSISTANT_OVERLAY: AssistantOverlaySettings = {
@@ -89,14 +107,17 @@ const DEFAULT_ASSISTANT_OVERLAY: AssistantOverlaySettings = {
 };
 
 const DEFAULTS: AppSettings = {
+  cloudSyncEnabled: false,
+  aiSharingEnabled: false,
   currency: 'USD',
   language: 'en',
   fontSize: 'Medium',
   preferLocalLogos: false,
+  balancesHidden: false,
   geminiApiKey: '',
   groqApiKey: '',
   openRouterApiKey: '',
-  puterJsEnabled: true,
+  puterJsEnabled: false,
   backgroundReminders: DEFAULT_BACKGROUND_REMINDERS,
   assistantOverlay: DEFAULT_ASSISTANT_OVERLAY,
 };
@@ -105,7 +126,7 @@ const DEFAULTS: AppSettings = {
 export async function loadStoredAppSettings(): Promise<AppSettings> {
   try {
     if (Platform.OS === 'web') {
-      const raw = localStorage.getItem('app_settings');
+      const raw = sessionLocalStorage.getItem('app_settings');
       const parsed = raw ? JSON.parse(raw) : null;
       const merged = parsed
         ? {
@@ -148,12 +169,14 @@ export async function loadStoredAppSettings(): Promise<AppSettings> {
 }
 
 async function saveSettings(s: AppSettings) {
+  const scope = getSessionScope();
   try {
     if (Platform.OS === 'web') {
-      localStorage.setItem('app_settings', JSON.stringify(s));
+      sessionLocalStorage.setItem('app_settings', JSON.stringify(s));
     } else {
       const { SecureStorageService } = await import('@/services/SecureStorageService');
       const existing = await SecureStorageService.getUserData();
+      if (getSessionScope() !== scope) return;
       const next = { ...(existing || {}), appSettings: s };
       await SecureStorageService.saveUserData(next);
     }
@@ -161,30 +184,50 @@ async function saveSettings(s: AppSettings) {
 }
 
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
+  const ledgerCurrency = useSelector((state: RootState) => state.accounts.items[0]?.currency);
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    loadStoredAppSettings().then(setSettings);
-
-    const unsub = LocalChangeEmitter.subscribe(() => {
-      loadStoredAppSettings().then(setSettings);
-    });
-    return () => {
-      unsub();
-    };
+    loadStoredAppSettings().then(value => { setSettings(value); setSettingsLoaded(true); });
   }, []);
 
   useEffect(() => {
-    (async () => {
-      await saveSettings(settings);
-      try { LocalChangeEmitter.emit(); } catch (e) { /* ignore */ }
-    })();
-  }, [settings]);
+    if (!settingsLoaded) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveSettings(settings);
+    }, 400);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [settings, settingsLoaded]);
 
-  const setCurrency = (currency: AppCurrencyCode) => setSettings(prev => ({ ...prev, currency }));
+  const setCloudSyncEnabled = (enabled: boolean) => {
+    setSettings(prev => ({ ...prev, cloudSyncEnabled: enabled }));
+    void import('@/services/SyncService').then(async ({ default: SyncService }) => {
+      if (!enabled) { SyncService.stopAutoSync(); return; }
+      const { AuthService } = await import('@/services/AuthService');
+      const uid = AuthService.getCurrentUser()?.uid;
+      if (uid) SyncService.startAutoSync(uid);
+    });
+  };
+  const setAiSharingEnabled = (enabled: boolean) => setSettings(prev => ({ ...prev, aiSharingEnabled: enabled }));
+  useEffect(() => {
+    if (ledgerCurrency && settingsLoaded) setSettings(previous => previous.currency === ledgerCurrency ? previous : { ...previous, currency: ledgerCurrency });
+  }, [ledgerCurrency, settingsLoaded]);
+  const setCurrency = (currency: AppCurrencyCode) => {
+    if (ledgerCurrency && currency !== ledgerCurrency) {
+      Alert.alert('Ledger currency', `Existing balances are recorded in ${ledgerCurrency}. Currency conversion is not supported.`);
+      return;
+    }
+    setSettings(prev => ({ ...prev, currency }));
+  };
   const setLanguage = (language: AppLanguage) => setSettings(prev => ({ ...prev, language }));
   const setFontSize = (fontSize: AppFontSize) => setSettings(prev => ({ ...prev, fontSize: normalizeAppFontSize(fontSize) }));
   const setPreferLocalLogos = (preferLocalLogos: boolean) => setSettings(prev => ({ ...prev, preferLocalLogos }));
+  const setBalancesHidden = (balancesHidden: boolean) => setSettings(prev => ({ ...prev, balancesHidden }));
   const setGeminiApiKey = (geminiApiKey: string) => setSettings(prev => ({ ...prev, geminiApiKey }));
   const setGroqApiKey = (groqApiKey: string) => setSettings(prev => ({ ...prev, groqApiKey }));
   const setOpenRouterApiKey = (openRouterApiKey: string) => setSettings(prev => ({ ...prev, openRouterApiKey }));
@@ -223,6 +266,15 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       ...prev.backgroundReminders,
       reconciliationAlertsEnabled,
     },
+  }));
+  const setHabitRemindersEnabled = (habitRemindersEnabled: boolean) => setSettings(prev => ({
+    ...prev, backgroundReminders: { ...prev.backgroundReminders, habitRemindersEnabled },
+  }));
+  const setDailySummaryAlertsEnabled = (dailySummaryAlertsEnabled: boolean) => setSettings(prev => ({
+    ...prev, backgroundReminders: { ...prev.backgroundReminders, dailySummaryAlertsEnabled },
+  }));
+  const setPersonalizedTipsEnabled = (personalizedTipsEnabled: boolean) => setSettings(prev => ({
+    ...prev, backgroundReminders: { ...prev.backgroundReminders, personalizedTipsEnabled },
   }));
   const setAssistantEnabled = (enabled: boolean) => setSettings(prev => ({
     ...prev,
@@ -292,10 +344,13 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
 
   const value = useMemo<AppSettingsContextType>(() => ({
     ...settings,
+    setCloudSyncEnabled,
+    setAiSharingEnabled,
     setCurrency,
     setLanguage,
     setFontSize,
     setPreferLocalLogos,
+    setBalancesHidden,
     setGeminiApiKey,
     setGroqApiKey,
     setOpenRouterApiKey,
@@ -305,6 +360,9 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     setPendingDraftAlertsEnabled,
     setInactivityAlertsEnabled,
     setReconciliationAlertsEnabled,
+    setHabitRemindersEnabled,
+    setDailySummaryAlertsEnabled,
+    setPersonalizedTipsEnabled,
     setAssistantEnabled,
     setAssistantTipsEnabled,
     setAssistantDashboardEnabled,

@@ -1,0 +1,231 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const root = path.resolve(__dirname, '..');
+let serial = 0;
+const memory = new Map();
+const storage = { getItem: async k => memory.get(k) ?? null, setItem: async (k,v) => { memory.set(k,v); }, removeItem: async k => {memory.delete(k);}, getAllKeys: async () => [...memory.keys()], multiRemove: async keys => keys.forEach(k => memory.delete(k)), multiGet: async keys => keys.map(k => [k,memory.get(k)??null]), multiSet: async rows => rows.forEach(([k,v]) => memory.set(k,v)) };
+const mocks = {
+  '@/utils/uuid': { generateUUID: () => `id-${++serial}` },
+  '@/services/LocalChangeEmitter': { default: { emit() {}, subscribe() { return () => {}; } } },
+  '../LocalChangeEmitter': { default: { emit() {}, subscribe() { return () => {}; } } },
+  '@react-native-async-storage/async-storage': { default: storage },
+  '@/utils/fileHelper': { saveJSON: async () => {} },
+  'expo-file-system/legacy': {},
+};
+const cache = new Map();
+function load(name, parent = root) {
+  if (!name.startsWith('.') && !name.startsWith('@/') && !mocks[name]) return require(name);
+  if (mocks[name]) return { __esModule: true, ...mocks[name] };
+  let file = name.startsWith('@/') ? path.join(root,name.slice(2)) : path.resolve(parent,name);
+  if (!path.extname(file)) file += '.ts';
+  if (cache.has(file)) return cache.get(file).exports;
+  const mod = { exports: {} }; cache.set(file,mod);
+  const js = ts.transpileModule(fs.readFileSync(file,'utf8'), { compilerOptions: { module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true } }).outputText;
+  new Function('require','module','exports',js)(n => load(n,path.dirname(file)),mod,mod.exports);
+  return mod.exports;
+}
+const finance = load('./utils/finance.ts');
+const { LedgerDatabase } = load('./services/database/ledger.ts');
+const { ForecastService } = load('./services/ForecastService.ts');
+const { BudgetService } = load('./services/BudgetService.ts');
+const { BackupService } = load('./services/BackupService.ts');
+const { findSelfTransferPairs } = load('./utils/transferPairing.ts');
+class Adapter {
+  rows = { accounts: new Map(), transactions: new Map(), budgets: new Map(), loans: new Map() };
+  meta = {}; fail = false;
+  async init() {}
+  async getAccounts() { return structuredClone([...this.rows.accounts.values()]); }
+  async getTransactions(f) { return structuredClone([...this.rows.transactions.values()].filter(t => !f?.account_id || t.account_id===f.account_id || t.to_account_id===f.account_id)); }
+  async getBudgets() { return structuredClone([...this.rows.budgets.values()]); }
+  async getLoans() { return structuredClone([...this.rows.loans.values()]); }
+  async readMeta(k) { return structuredClone(this.meta[k]); }
+  async commitRows(rows, meta={}) {
+    if(this.fail) throw Error('disk failure');
+    for(const row of rows) { if(row.value === undefined) this.rows[row.table].delete(row.id); else this.rows[row.table].set(row.id,structuredClone(row.value)); }
+    Object.assign(this.meta,structuredClone(meta));
+  }
+}
+const account = (name,balance=0) => ({name,balance,type:'BANK',currency:'ETB',is_locked:false,locked_amount:0});
+const transaction = (id,amount,type='EXPENSE') => ({account_id:id,amount,type,category:'Food',description:'Meal',date:Date.now()});
+const make = () => {const raw=new Adapter();return {raw,db:new LedgerDatabase(raw,'alice')};};
+test('zero-interest and rounded flat schedule conserve principal and row totals',()=>{
+ assert.equal(finance.periodicPayment(1200,0,12,12),100);
+ for(const row of finance.flatLoanSchedule(1200,10,12)) assert.equal(finance.minor(row.payment),finance.minor(row.principal)+finance.minor(row.interest));
+ const rows=finance.flatLoanSchedule(1234.57,7.25,11);
+ assert.equal(finance.sumMoney(rows.map(r=>r.principal)),1234.57);
+ assert.equal(rows.at(-1).balance,0);
+ assert.throws(()=>finance.periodicPayment(Infinity,10,12,12));
+});
+test('recurrence retains Jan 31 anchor through February and March',()=>{
+ const jan=new Date(2026,0,31,9).getTime();
+ const feb=finance.advanceDate('MONTHLY',jan,jan);
+ const mar=finance.advanceDate('MONTHLY',feb,jan);
+ assert.equal(new Date(feb).getMonth(),1); assert.equal(new Date(feb).getDate(),28);
+ assert.equal(new Date(mar).getDate(),31);
+});
+test('opening balances are atomic and excluded from operating income',async()=>{
+ const {raw,db}=make(); const a=await db.createAccount(account('A',100));
+ assert.equal((await db.getTransactions()).length,1);
+ assert.equal(finance.sumMoney((await db.getTransactions()).map(finance.operatingIncome)),0);
+ await db.recalculateAccountBalance(a.id); assert.equal((await db.getAccounts())[0].balance,100);
+ raw.fail=true; await assert.rejects(db.createAccount(account('B',200)));
+ assert.equal((await db.getAccounts()).length,1);
+});
+test('transfer fees reconcile cash and operating expense; retry is idempotent',async()=>{
+ const {db}=make(); const a=await db.createAccount(account('A',2000)),b=await db.createAccount(account('B'));
+ const input={...transaction(a.id,1006,'TRANSFER'),to_account_id:b.id,fees:6,operation_id:'transfer-1'};
+ await db.createTransaction(input);await db.createTransaction(input);
+ const accounts=await db.getAccounts();assert.equal(accounts.find(x=>x.id===a.id).balance,994);assert.equal(accounts.find(x=>x.id===b.id).balance,1000);
+ assert.equal(finance.sumMoney((await db.getTransactions()).map(finance.operatingExpense)),6);
+ await assert.rejects(db.createTransaction({...input,amount:1007}));
+});
+test('payment failure leaves both loan and cash unchanged',async()=>{
+ const {raw,db}=make();const a=await db.createAccount(account('A',500));
+ const loan=await db.createLoan({type:'BORROWED',principal_amount:100,interest_rate:0,start_date:1,due_date:2,lender_borrower_name:'B',status:'ACTIVE',remaining_balance:100});
+ raw.fail=true;await assert.rejects(db.recordLoanPayment(loan.id,a.id,25,'p1'));
+ assert.equal((await db.getLoans())[0].remaining_balance,100);assert.equal((await db.getAccounts())[0].balance,500);
+ raw.fail=false;await db.recordLoanPayment(loan.id,a.id,25,'p1');await db.recordLoanPayment(loan.id,a.id,25,'p1');
+ assert.equal((await db.getLoans())[0].remaining_balance,75);assert.equal((await db.getAccounts())[0].balance,475);
+ await assert.rejects(db.recordLoanPayment(loan.id,a.id,76,'p2'));
+});
+test('final-record deletion remains in durable outbox and stale acknowledgements preserve newer writes',async()=>{
+ const {db}=make(); const a=await db.createAccount(account('A'));const t=await db.createTransaction(transaction(a.id,5));
+ const initial=await db.readMeta('outbox');const old=initial[`transactions/${t.id}`];
+ await db.deleteTransaction(t.id);await db.acknowledge([old],{[`transactions/${t.id}`]:1});
+ const pending=(await db.readMeta('outbox'))[`transactions/${t.id}`];assert.ok(pending);assert.equal(pending.value,undefined);assert.equal(pending.base,1);
+ assert.equal((await db.getAccounts())[0].balance,0);
+});
+test('stale session rejects writes and malformed transactions cannot enter ledger',async()=>{
+ const {db}=make();const a=await db.createAccount(account('A'));
+ await assert.rejects(db.createTransaction(transaction(a.id,NaN)));
+ await assert.rejects(db.createTransaction({...transaction(a.id,1,'TRANSFER'),to_account_id:a.id}));
+ db.deactivate();await assert.rejects(db.createTransaction(transaction(a.id,1)));
+});
+test('unrelated equal-value SMS are not paired',()=>{
+ const drafts=[{id:'e',account_id:'a',type:'EXPENSE',status:'PENDING',amount:500,date:100000},{id:'i',account_id:'b',type:'INCOME',status:'PENDING',amount:500,date:100001}];
+ assert.equal(findSelfTransferPairs(drafts).length,0);
+ drafts[0].transfer_to_account_id='b';assert.equal(findSelfTransferPairs(drafts).length,1);
+});
+test('backups reject invalid records and strip all configured provider keys',()=>{
+ assert.equal(BackupService.validateBackup({version:'garbage',timestamp:1,accounts:[{}],transactions:[{amount:-999}],budgets:[],loans:[]}),false);
+ const backup=BackupService.createBackup([],[],[],[],[],[],{geminiApiKey:'secret',groqApiKey:'secret',openRouterApiKey:'secret',currency:'ETB'});
+ assert.equal(JSON.stringify(backup).includes('secret'),false);assert.equal(backup.settings.aiSharingEnabled,false);
+});
+test('zero-budget spending is displayed as exceeded, and forecast account totals reconcile',()=>{
+ const metrics=BudgetService.calculateBudgetMetrics({id:'b',category:'Food',limit_amount:0,period:'MONTHLY',start_date:0,end_date:100},[],[{...transaction('a',10),id:'t',date:50}]);
+ assert.equal(metrics.progress,100);assert.equal(metrics.remaining,-10);
+ const result=ForecastService.generateForecast({accounts:[{...account('A',100),id:'a',created_at:1,locked_amount:20}],recurring:[],loans:[],days:7});
+ assert.equal(result.startingBalance,80);assert.equal(result.projectedBalance,finance.sumMoney(result.accountProjections.map(a=>a.projectedBalance)));
+});
+test('local settings and SMS data are isolated by user',async()=>{
+ const session=load('./services/SessionStorage.ts');
+ await session.setSessionScope('alice');await session.default.setItem('draft_transactions','private');
+ await session.setSessionScope('bob');assert.equal(await session.default.getItem('draft_transactions'),null);
+ await session.setSessionScope('alice');assert.equal(await session.default.getItem('draft_transactions'),'private');
+});
+
+test('legacy balance migration is durable, idempotent and excluded from earnings', async () => {
+ const {raw,db}=make(); raw.rows.accounts.set('old',{...account('Old',123),id:'old',created_at:1});
+ await db.init();await db.init();
+ assert.equal((await db.getTransactions()).length,1);
+ await db.recalculateAccountBalance('old');assert.equal((await db.getAccounts())[0].balance,123);
+ assert.equal(finance.operatingIncome((await db.getTransactions())[0]),0);
+});
+test('legacy backup preserves its opening balance on repeated restore',async()=>{
+ const {db}=make();await db.init();
+ const data={accounts:[{...account('Old',200),id:'old',created_at:1}],transactions:[],budgets:[],loans:[]};
+ await db.restore(data);await db.restore(data);
+ assert.equal((await db.getAccounts())[0].balance,200);assert.equal((await db.getTransactions()).length,1);
+});
+test('loan interest is validated and split from principal, and payment ids cannot be reused',async()=>{
+ const {db}=make();const a=await db.createAccount(account('A'));
+ const input={type:'BORROWED',principal_amount:1200,interest_rate:10,start_date:new Date(2026,0,1).getTime(),due_date:new Date(2027,0,1).getTime(),lender_borrower_name:'B',status:'ACTIVE',remaining_balance:1270};
+ const loan=await db.createLoanWithCash(input,a.id,50);assert.equal(loan.remaining_interest,70);
+ const payment=await db.recordLoanPayment(loan.id,a.id,100,'loan-pay');assert.equal(finance.operatingExpense(payment),70);
+ await assert.rejects(db.recordLoanPayment(loan.id,a.id,99,'loan-pay'));
+ await assert.rejects(db.createLoanWithCash({...input,remaining_balance:9999},a.id,50));
+});
+test('calendar periods include today and exclude future postings without 30-day approximations',()=>{
+ const now=new Date(2026,1,15,10).getTime();const period=finance.reportPeriod('month',now);
+ assert.equal(period.start,new Date(2026,1,1).getTime());assert.equal(period.days,15);
+ assert.equal(period.previousStart,new Date(2026,0,1).getTime());
+});
+test('IndexedDB commits ledger and metadata atomically and indexes transfer destinations',async()=>{
+ require('fake-indexeddb/auto');
+ const {WebDatabase}=load('./services/database/web.ts');const raw=new WebDatabase('regression-browser');
+ const db=new LedgerDatabase(raw,'alice');await db.init();
+ const a=await db.createAccount(account('A',200)),b=await db.createAccount(account('B'));
+ await db.createTransaction({...transaction(a.id,21,'TRANSFER'),to_account_id:b.id,fees:1});
+ assert.equal((await db.getTransactions({account_id:b.id})).length,1);
+ assert.equal((await db.getAccounts()).find(x=>x.id===b.id).balance,20);
+ await assert.rejects(raw.commitRows([{table:'accounts',id:'bad',value:{id:'bad',name:'would persist'}},{table:'transactions',id:'invalid',value:{amount:1}}],{bad:true}));
+ assert.equal((await db.getAccounts()).some(x=>x.id==='bad'),false);assert.equal(await raw.readMeta('bad'),undefined);
+ await db.writeSyncedMeta('categories',[{id:'food',name:'Food'}]);
+ assert.equal((await db.readMeta('synced_meta')).categories.items[0].name,'Food');
+});
+test('Redux ignores completed writes from a reset session and deduplicates retries',()=>{
+ mocks['@/services/database']={getDatabase:async()=>{throw Error('not called');}};
+ const slice=load('./store/slices/transactionsSlice.ts');const reducer=slice.default;
+ const tx={...transaction('a',10),id:'tx'};
+ let state=reducer(undefined,{type:'init'});
+ state=reducer(state,slice.addTransaction.pending('old',tx));state=reducer(state,slice.resetTransactions());
+ state=reducer(state,slice.addTransaction.fulfilled(tx,'old',tx));assert.equal(state.items.length,0);
+ for(const request of ['one','two']) {state=reducer(state,slice.addTransaction.pending(request,tx));state=reducer(state,slice.addTransaction.fulfilled(tx,request,tx));}
+ assert.equal(state.items.length,1);
+});
+
+test('sync retries a lost acknowledgement and surfaces stale-device edits without overwriting cloud',async()=>{
+ const {db}=make();await db.init();const a=await db.createAccount(account('A',100));
+ let loseReply=true;const remote=new Map();
+ mocks['@/services/database']={getDatabase:async()=>db};
+ mocks['@/store']={store:{dispatch:()=>({unwrap:async()=>undefined})}};
+ for(const [name,action] of [['accounts','fetchAccounts'],['transactions','fetchTransactions'],['budgets','fetchBudgets'],['loans','fetchLoans']])mocks[`@/store/slices/${name}Slice`]={[action]:()=>({})};
+ mocks['@/contexts/AppSettingsContext']={loadStoredAppSettings:async()=>({cloudSyncEnabled:true})};
+ mocks['./NativeErrorReporter']={default:{reset(){}}};
+ mocks['firebase/auth']={getAuth:()=>({currentUser:{uid:'alice'}})};
+ mocks['firebase/firestore']={getFirestore:()=>({}),doc:(_,path)=>({path}),collection:(_,path)=>({path}),serverTimestamp:()=>1,onSnapshot:()=>()=>{},getDocs:async ref=>({docs:[...remote.entries()].filter(([path])=>path.startsWith(ref.path+'/')).map(([path,value])=>({id:path.split('/').at(-1),data:()=>structuredClone(value)}))}),runTransaction:async(_,fn)=>{
+   const writes=[];await fn({get:async ref=>({data:()=>structuredClone(remote.get(ref.path))}),set:(ref,value)=>writes.push([ref.path,value])});
+   writes.forEach(([path,value])=>remote.set(path,structuredClone(value)));
+   if(loseReply){loseReply=false;throw Error('reply lost');}
+ }};
+ const {SyncService}=load('./services/SyncService.ts');
+ await assert.rejects(SyncService.syncNow('alice'),/reply lost/);
+ assert.ok(Object.keys(await db.readMeta('outbox')).length>0);
+ await SyncService.syncNow('alice');assert.equal(Object.keys(await db.readMeta('outbox')).length,0);
+ const path=`users/alice/accounts/${a.id}`, first=remote.get(path);
+ remote.set(path,{...first,name:'Changed on another device',_revision:first._revision+1,_operation:'other-device'});
+ await db.updateAccount({...a,name:'Local edit'});
+ await assert.rejects(SyncService.syncNow('alice'),/conflict/);
+ assert.equal(remote.get(path).name,'Changed on another device');
+ const conflict=(await db.readMeta('sync_conflicts'))[0];await db.resolveConflict(conflict,'local');
+ await SyncService.syncNow('alice');assert.equal(remote.get(path).name,'Local edit');
+ assert.equal((await db.getAccounts())[0].balance,100);
+});
+
+test('legacy loans allocate remaining interest without treating it as principal',async()=>{
+ const {db}=make(),a=await db.createAccount(account('A',1000));
+ const loan=await db.createLoan({type:'BORROWED',principal_amount:100,interest_rate:12,start_date:new Date(2026,0,1).getTime(),due_date:new Date(2027,0,1).getTime(),lender_borrower_name:'Lender',status:'ACTIVE',remaining_balance:107});
+ const tx=await db.recordLoanPayment(loan.id,a.id,20,'legacy-payment');assert.equal(tx.interest_amount,7);
+ assert.equal((await db.getLoans())[0].remaining_interest,0);
+});
+test('confirmed shared interest changes earnings without moving cash again',async()=>{
+ const {db}=make(),a=await db.createAccount(account('A',200));
+ await db.createTransaction({...transaction(a.id,30),purpose:'FINANCING',operation_id:'repayment-record-r1'});
+ await db.allocateLinkedInterest('shared',[{id:'r1',status:'CONFIRMED',interestAmount:7}]);
+ await db.allocateLinkedInterest('shared',[{id:'r1',status:'CONFIRMED',interestAmount:7}]);
+ assert.equal((await db.getAccounts())[0].balance,170);
+ assert.equal(finance.sumMoney((await db.getTransactions()).map(finance.operatingExpense)),7);
+});
+
+test('old cloud accounts retain unposted balances and mixed-currency restore is rejected',async()=>{
+ const {db}=make();await db.init();
+ await db.applyRemote([{table:'accounts',id:'legacy-cloud',value:{...account('Remote',42),id:'legacy-cloud',created_at:1},revision:0}]);
+ assert.equal((await db.getAccounts())[0].balance,42);
+ assert.equal((await db.getTransactions())[0].purpose,'ADJUSTMENT');
+ await db.applyRemote([{table:'accounts',id:'legacy-cloud',value:{...account('Remote',42),id:'legacy-cloud',created_at:1},revision:0}]);
+ assert.equal((await db.getTransactions()).length,1);
+ await assert.rejects(db.restore({accounts:[{...account('Other'),id:'usd',currency:'USD',created_at:1}],transactions:[],loans:[],budgets:[]}),/currency/);
+});

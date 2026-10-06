@@ -18,7 +18,7 @@ export default function CardsScreen() {
   const cards = [
     {
       id: '1',
-      name: 'Premium Visa',
+      name: 'Demo Premium Visa',
       number: '4532 **** **** 1234',
       holder: 'John Doe',
       expiry: '12/25',
@@ -30,7 +30,7 @@ export default function CardsScreen() {
     },
     {
       id: '2',
-      name: 'Gold Mastercard',
+      name: 'Demo Gold Mastercard',
       number: '5412 **** **** 5678',
       holder: 'John Doe',
       expiry: '08/26',
@@ -42,7 +42,7 @@ export default function CardsScreen() {
     },
     {
       id: '3',
-      name: 'Business Card',
+      name: 'Demo Business Card',
       number: '3782 **** **** 9012',
       holder: 'John Doe',
       expiry: '03/27',
@@ -67,7 +67,7 @@ export default function CardsScreen() {
           <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl justify-center items-center shadow-sm">
             <FontAwesome name="arrow-left" size={18} color="#64748b" />
           </TouchableOpacity>
-          <Text className="text-slate-900 dark:text-white text-xl font-bold">My Cards</Text>
+          <Text className="text-slate-900 dark:text-white text-xl font-bold">Demo cards ? sample data</Text>
           <TouchableOpacity className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl justify-center items-center shadow-sm">
             <FontAwesome name="plus" size={18} color="#64748b" />
           </TouchableOpacity>

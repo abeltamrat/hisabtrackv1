@@ -1,3 +1,5 @@
+import { useLedgerClock } from '@/hooks/useLedgerClock';
+import { sumMoney, operatingIncome, operatingExpense, cashDelta } from '@/utils/finance';
 // DrawerMenu moved to AppShell — no local import
 import FinancialPulse from '@/components/dashboard/FinancialPulse';
 import RecentTransactions from '@/components/dashboard/RecentTransactions';
@@ -17,10 +19,12 @@ import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
+
+// Throttle the AI notification check to once every 10 minutes across mounts (e.g. tab switches)
+let lastAICheck = 0;
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -33,18 +37,18 @@ export default function DashboardScreen() {
   const { items: accounts } = useSelector((state: RootState) => state.accounts);
   const { items: budgets } = useSelector((state: RootState) => state.budgets);
   const { items: loans } = useSelector((state: RootState) => state.loans);
+  const dataError = useSelector((s: RootState) => s.accounts.error || s.transactions.error || s.budgets.error || s.loans.error);
   const [refreshing, setRefreshing] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Re-fetch accounts whenever local SQLite data changes (e.g. after adding a transaction,
-  // the balance is recalculated in SQLite but Redux accounts slice is not updated automatically)
+  // Re-fetch when local SQLite data changes. 600 ms debounce avoids back-to-back dispatches.
   useEffect(() => {
     const unsub = LocalChangeEmitter.subscribe(() => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
       refreshTimer.current = setTimeout(() => {
         dispatch(fetchAccounts());
         dispatch(fetchTransactions());
-      }, 300);
+      }, 600);
     });
     return () => {
       unsub();
@@ -58,10 +62,14 @@ export default function DashboardScreen() {
     dispatch(fetchBudgets());
     dispatch(fetchLoans());
 
-    // Run AI Insights Check
-    import('@/services/AppNotificationService').then(({ AppNotificationService }) => {
-      AppNotificationService.checkAll();
-    });
+    // AI Insights check: throttle to once per 10 min so tab switches don't re-run it
+    const now = Date.now();
+    if (now - lastAICheck > 10 * 60 * 1000) {
+      lastAICheck = now;
+      import('@/services/AppNotificationService').then(({ AppNotificationService }) => {
+        AppNotificationService.checkAll();
+      });
+    }
   }, [dispatch]);
 
   const handleRefresh = async () => {
@@ -85,30 +93,30 @@ export default function DashboardScreen() {
   };
 
   // Stable per-mount timestamps (avoids deps changing on every render)
-  const nowTs = useMemo(() => Date.now(), []);
+  const nowTs = useLedgerClock();
   const startOfMonth = useMemo(() => {
-    const n = new Date();
+    const n = new Date(nowTs);
     return new Date(n.getFullYear(), n.getMonth(), 1).getTime();
-  }, []);
+  }, [nowTs]);
 
   const balance = useMemo(
     () => accounts.reduce((sum, account) => sum + account.balance, 0),
     [accounts]
   );
   const thisMonthTransactions = useMemo(
-    () => transactions.filter(t => t.date >= startOfMonth),
-    [transactions, startOfMonth]
+    () => transactions.filter(t => t.date >= startOfMonth && t.date <= nowTs),
+    [transactions, startOfMonth, nowTs]
   );
   const thisMonthIncome = useMemo(
-    () => thisMonthTransactions.filter(t => t.type === 'INCOME').reduce((acc, curr) => acc + curr.amount, 0),
+    () => sumMoney(thisMonthTransactions.map(operatingIncome)),
     [thisMonthTransactions]
   );
   const thisMonthExpense = useMemo(
-    () => thisMonthTransactions.filter(t => t.type === 'EXPENSE').reduce((acc, curr) => acc + curr.amount, 0),
+    () => sumMoney(thisMonthTransactions.map(operatingExpense)),
     [thisMonthTransactions]
   );
   const thisMonthNet = thisMonthIncome - thisMonthExpense;
-  const prevBalance = balance - thisMonthNet;
+  const prevBalance = balance - sumMoney(thisMonthTransactions.map(cashDelta));
   const monthlySavingsRate = thisMonthIncome > 0 ? (thisMonthNet / thisMonthIncome) * 100 : 0;
   const percentageChange = useMemo(() => {
     if (prevBalance === 0) return thisMonthNet > 0 ? 100 : 0;
@@ -116,10 +124,10 @@ export default function DashboardScreen() {
   }, [balance, prevBalance, thisMonthNet]);
   const topExpenseCategoryEntry = useMemo(() => {
     const totals = thisMonthTransactions
-      .filter(t => t.type === 'EXPENSE')
+      .filter(t => operatingExpense(t) > 0)
       .reduce((acc, t) => {
-        const key = t.category || 'Uncategorized';
-        acc[key] = (acc[key] || 0) + t.amount;
+        const key = t.type === 'TRANSFER' ? 'Transfer Fees' : t.category || 'Uncategorized';
+        acc[key] = (acc[key] || 0) + operatingExpense(t);
         return acc;
       }, {} as Record<string, number>);
     return Object.entries(totals).sort((l, r) => r[1] - l[1])[0];
@@ -148,23 +156,24 @@ export default function DashboardScreen() {
     [transactions]
   );
 
-  const getGreeting = () => {
+  const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return t('greetingMorning');
     if (hour < 17) return t('greetingAfternoon');
     return t('greetingEvening');
-  };
+  }, [t]);
 
   const isVerySmall = fontSize === 'V.Small';
-  const headerTitleSize = fontSize === 'V.Small' ? 'text-base' : fontSize === 'Small' ? 'text-lg' : fontSize === 'Large' ? 'text-2xl' : 'text-xl';
-  const sectionTitleSize = fontSize === 'V.Small' ? 'text-sm' : fontSize === 'Small' ? 'text-base' : fontSize === 'Large' ? 'text-xl' : 'text-lg';
-  const quickActionCardClass = `flex-1 items-center bg-white dark:bg-slate-800 ${isVerySmall ? 'p-2.5' : 'p-3'} rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700`;
-  const quickActionIconWrapClass = `${isVerySmall ? 'w-10 h-10 mb-1.5' : 'w-12 h-12 mb-2'} rounded-xl justify-center items-center shadow-lg`;
-  const quickActionLabelClass = `text-slate-900 dark:text-white ${isVerySmall ? 'text-[9px]' : 'text-[10px]'} font-bold`;
+  const { headerTitleSize, sectionTitleSize, quickActionCardClass, quickActionIconWrapClass, quickActionLabelClass } = useMemo(() => ({
+    headerTitleSize: fontSize === 'V.Small' ? 'text-base' : fontSize === 'Small' ? 'text-lg' : fontSize === 'Large' ? 'text-2xl' : 'text-xl',
+    sectionTitleSize: fontSize === 'V.Small' ? 'text-sm' : fontSize === 'Small' ? 'text-base' : fontSize === 'Large' ? 'text-xl' : 'text-lg',
+    quickActionCardClass: `flex-1 items-center bg-white dark:bg-slate-800 ${isVerySmall ? 'p-2.5' : 'p-3'} rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700`,
+    quickActionIconWrapClass: `${isVerySmall ? 'w-10 h-10 mb-1.5' : 'w-12 h-12 mb-2'} rounded-xl justify-center items-center shadow-lg`,
+    quickActionLabelClass: `text-slate-900 dark:text-white ${isVerySmall ? 'text-[9px]' : 'text-[10px]'} font-bold`,
+  }), [fontSize, isVerySmall]);
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
-      <StatusBar style="auto" />
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
@@ -177,6 +186,8 @@ export default function DashboardScreen() {
           />
         }
       >
+        {!!dataError && <Text accessibilityRole="alert" style={{ padding: 12, color: '#b91c1c' }}>Data could not be refreshed: {dataError}. Totals may be stale.</Text>}
+        {!!SyncService.lastError && <Text accessibilityRole="alert" style={{ padding: 12, color: '#b91c1c' }}>{SyncService.lastError}</Text>}
         {/* Header with gradient background */}
         <LinearGradient
           colors={actualTheme === 'dark' ? ['#334155', '#1e293b'] : ['#4f46e5', '#4338ca']}
@@ -186,7 +197,7 @@ export default function DashboardScreen() {
           <View className="flex-row justify-between items-center mb-8">
             <View className="w-12 h-12" />
             <View className="flex-1 items-center">
-              <Text className="text-primary-100 text-sm font-medium">{getGreeting()}</Text>
+              <Text className="text-primary-100 text-sm font-medium">{greeting}</Text>
               <Text className={`text-white ${headerTitleSize} font-bold mt-1`}>{t('welcomeBack')}</Text>
             </View>
             <TouchableOpacity

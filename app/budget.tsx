@@ -1,5 +1,6 @@
 import { useTransactions } from '@/context/TransactionContext';
 import CategoryIcon from '@/components/CategoryIcon';
+import ScreenInfoCard from '@/components/ScreenInfoCard';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import BudgetService from '@/services/BudgetService';
 import { AppDispatch, RootState } from '@/store';
@@ -208,11 +209,16 @@ export default function BudgetScreen() {
             /* GROUP LIST VIEW */
             <>
               {groupNames.length === 0 ? (
-                <View className="bg-white dark:bg-slate-800 rounded-3xl p-8 items-center shadow-lg border border-slate-100 dark:border-slate-700">
-                  <Text className="text-slate-500 dark:text-slate-400 text-center">
-                    No budgets are active for this period yet.
-                  </Text>
-                </View>
+                <ScreenInfoCard
+                  icon="pie-chart"
+                  title="Start with a simple spending plan"
+                  description="Budgets help you decide where your money should go before the month gets busy."
+                  suggestions={[
+                    'Create a budget for essentials such as food, transport, or rent.',
+                    'Use your recent transactions as a realistic starting amount.',
+                    'Check progress during the month and adjust when your plans change.',
+                  ]}
+                />
               ) : (
                 groupNames.map((name) => {
                   const group = groupedBudgets[name];

@@ -4,6 +4,8 @@ export type BudgetPeriod = 'MONTHLY' | 'WEEKLY';
 export type BudgetRolloverMode = 'NONE' | 'CARRY_UNUSED' | 'REDUCE_NEXT';
 export type LoanType = 'BORROWED' | 'LENT';
 export type LoanStatus = 'ACTIVE' | 'PAID' | 'DEFAULTED';
+export type LinkRole = 'BORROWER' | 'LENDER';
+export type LinkStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
 
 export interface Account {
   id: string;
@@ -21,6 +23,10 @@ export interface Account {
 }
 
 interface TransactionBase {
+  interest_amount?: number;
+  purpose?: 'OPERATING' | 'FINANCING' | 'ADJUSTMENT';
+  operation_id?: string;
+  loan_id?: string;
   id: string;
   account_id: string;
   amount: number;
@@ -33,6 +39,7 @@ interface TransactionBase {
   sms_id?: string;
   fees?: number;
   tax?: number;
+  receipt_url?: string;
   updated_at?: number;
 }
 
@@ -61,6 +68,11 @@ export interface Budget {
 }
 
 export interface Loan {
+  total_interest?: number;
+  remaining_interest?: number;
+  interest_method?: 'FLAT_MONTHLY';
+  reminder_at?: number;
+  currency?: string;
   id: string;
   type: LoanType;
   principal_amount: number;
@@ -75,6 +87,68 @@ export interface Loan {
   reminderDaysBefore?: number;
   reminderTime?: number;
   notificationId?: string;
+  // Linked loan fields
+  shared_loan_id?: string;
+  link_role?: LinkRole;
+  link_status?: LinkStatus;
+  linked_uid?: string;
+  linked_name?: string;
+  linked_phone?: string;
+  // True when this user sent the original link request (initiator), false when they accepted
+  is_initiator?: boolean;
+}
+
+export interface SharedLoan {
+  id?: string;
+  borrowerUid: string;
+  borrowerName: string;
+  borrowerPhone: string;
+  lenderUid: string;
+  lenderName: string;
+  lenderPhone: string;
+  amount: number;
+  description: string;
+  dueDate: number;
+  startDate: number;
+  interestRate: number;
+  status: LoanStatus;
+  initiatorUid: string;
+  linkStatus: LinkStatus;
+  createdAt: number;
+  updatedAt: number;
+  borrowerLoanId: string;
+  lenderLoanId: string;
+}
+
+export interface LinkedRepayment {
+  interestAmount?: number;
+  id?: string;
+  amount: number;
+  date: number;
+  recordedByUid: string;
+  recordedBy: LinkRole;
+  status: 'PENDING_CONFIRMATION' | 'CONFIRMED' | 'REJECTED';
+  confirmedAt?: number;
+  rejectedAt?: number;
+}
+
+export interface LinkedChatMessage {
+  id?: string;
+  senderUid: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+  readBy: string[];
+}
+
+export interface LinkedChangelogEntry {
+  id?: string;
+  actorUid: string;
+  actorName: string;
+  timestamp: number;
+  action: string;
+  before?: Record<string, any>;
+  after?: Record<string, any>;
 }
 
 export interface IDatabase {

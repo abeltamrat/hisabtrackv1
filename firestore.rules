@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null && !exists(/databases/$(database)/documents/deletedAccounts/$(request.auth.uid)); }
+    match /users/{userId}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+    match /phoneIndex/{phone} {
+      allow get: if signedIn() && resource.data.uid == request.auth.uid;
+      allow list: if false;
+      allow create: if signedIn() && request.auth.token.phone_number == phone
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'email']);
+      allow update: if signedIn() && resource.data.uid == request.auth.uid
+        && request.auth.token.phone_number == phone
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'email']);
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /sharedLoans/{loanId} {
+      function participant(d) { return signedIn() && request.auth.uid in [d.borrowerUid, d.lenderUid]; }
+      function loan() { return get(/databases/$(database)/documents/sharedLoans/$(loanId)).data; }
+      function accepted() { return participant(loan()) && loan().linkStatus == 'ACCEPTED'; }
+      function valid(d) {
+        return d.amount is number && d.amount > 0 && d.amount < 100000000000
+          && d.interestRate is number && d.interestRate >= 0 && d.interestRate <= 1000
+          && d.startDate is number && d.dueDate is number && d.dueDate >= d.startDate
+          && d.borrowerUid is string && d.lenderUid is string && d.borrowerUid != d.lenderUid
+          && d.status in ['ACTIVE', 'PAID', 'DEFAULTED']
+          && d.linkStatus in ['PENDING', 'ACCEPTED', 'REJECTED'];
+      }
+      allow read: if participant(resource.data);
+      allow create: if participant(request.resource.data) && valid(request.resource.data)
+        && request.resource.data.initiatorUid == request.auth.uid
+        && request.resource.data.linkStatus == 'PENDING' && request.resource.data.status == 'ACTIVE';
+      allow update: if participant(resource.data) && valid(request.resource.data) && (
+        // Pending requests may be revised by the sender; accepted terms require a new request.
+        (resource.data.initiatorUid == request.auth.uid && resource.data.linkStatus == 'PENDING'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['amount', 'interestRate', 'dueDate', 'description', 'updatedAt']))
+        || (resource.data.initiatorUid != request.auth.uid && resource.data.linkStatus == 'PENDING'
+          && request.resource.data.linkStatus in ['ACCEPTED', 'REJECTED']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(request.auth.uid == resource.data.borrowerUid
+            ? ['linkStatus', 'borrowerLoanId', 'updatedAt'] : ['linkStatus', 'lenderLoanId', 'updatedAt']))
+        || (resource.data.linkStatus in ['PENDING', 'ACCEPTED'] && request.resource.data.linkStatus == 'REJECTED'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkStatus', 'updatedAt']))
+      );
+      allow delete: if false;
+      match /repayments/{repaymentId} {
+        allow read: if participant(loan());
+        // A callable transaction enforces the aggregate outstanding balance and audit log.
+        allow create, update: if false;
+        allow delete: if false;
+      }
+      match /chat/{messageId} {
+        allow read: if participant(loan());
+        allow create: if accepted() && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 4000
+          && request.resource.data.readBy == [request.auth.uid]
+          && request.resource.data.keys().hasOnly(['senderUid', 'senderName', 'text', 'timestamp', 'readBy']);
+        allow update: if participant(loan())
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+          && request.resource.data.readBy.toSet() == resource.data.readBy.toSet().union([request.auth.uid].toSet());
+        allow delete: if false;
+      }
+      match /changelog/{entryId} {
+        allow read: if participant(loan());
+        allow create: if participant(loan()) && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.action is string && request.resource.data.action.size() <= 1000;
+        allow update, delete: if false;
+      }
+    }
+    match /pushDevices/{id} { allow read, write: if false; }
+  }
+}

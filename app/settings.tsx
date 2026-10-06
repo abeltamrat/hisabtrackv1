@@ -1,5 +1,8 @@
+import { sessionLocalStorage } from '@/services/SessionStorage';
 import { APP_FONT_SIZE_OPTIONS, type AppFontSize, useAppSettings } from '@/contexts/AppSettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppLock } from '@/contexts/AppLockContext';
+import { AuthService, normalizePhone, validatePhone } from '@/services/AuthService';
 import { useI18n } from '@/contexts/I18nContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { BackupData, BackupService } from '@/services/BackupService';
@@ -29,6 +32,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const privacySettings = useAppSettings();
   const dispatch = useDispatch<AppDispatch>();
   const { theme, setTheme, actualTheme } = useTheme();
   const { t } = useI18n();
@@ -46,7 +50,49 @@ export default function SettingsScreen() {
   const [resetPassword, setResetPassword] = useState('');
   const [isResettingAccount, setIsResettingAccount] = useState(false);
   const [resetAccountError, setResetAccountError] = useState<string | null>(null);
+  const isEmailPasswordUser = AccountResetService.isEmailPasswordUser();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // App lock / security
+  const {
+    appLockEnabled, biometricEnabled, biometricAvailable, hasPin,
+    setAppLockEnabled, setBiometricEnabled, setPin, clearPin, refreshHasPin,
+  } = useAppLock();
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinStep, setPinStep] = useState<'enter' | 'confirm'>('enter');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinError, setPinError] = useState('');
+
+  const handleSetPin = async () => {
+    if (newPin.length !== 4) { setPinError('PIN must be 4 digits'); return; }
+    if (pinStep === 'enter') { setPinStep('confirm'); return; }
+    if (confirmPin !== newPin) { setPinError('PINs do not match'); setConfirmPin(''); return; }
+    await setPin(newPin);
+    await setAppLockEnabled(true);
+    setShowPinModal(false);
+    setNewPin(''); setConfirmPin(''); setPinStep('enter'); setPinError('');
+    Alert.alert('App Lock Enabled', 'Your PIN has been set. The app will lock when you switch away.');
+  };
+
+  const handleClearPin = () => {
+    Alert.alert('Remove PIN', 'This will disable app lock. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        await clearPin();
+        await setAppLockEnabled(false);
+        await setBiometricEnabled(false);
+        await refreshHasPin();
+      }},
+    ]);
+  };
+
+  // Phone profile state
+  const [userPhone, setUserPhone] = useState<string | null>(null);
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   const { items: transactions } = useSelector((state: RootState) => state.transactions);
   const { items: budgets } = useSelector((state: RootState) => state.budgets);
@@ -67,6 +113,38 @@ export default function SettingsScreen() {
     dispatch(fetchAccounts());
   }, [dispatch]);
 
+  useEffect(() => {
+    if (user?.uid) {
+      AuthService.getUserPhone(user.uid).then(p => {
+        setUserPhone(p);
+        setPhoneInput(p ?? '');
+      });
+    }
+  }, [user?.uid]);
+
+  const handleSavePhone = async () => {
+    const trimmed = phoneInput.trim();
+    const err = validatePhone(trimmed);
+    if (err) { setPhoneError(err); return; }
+    if (!user?.uid || !user?.email) return;
+    setSavingPhone(true);
+    setPhoneError(null);
+    try {
+      if (trimmed) {
+        await AuthService.savePhoneIndex(user.uid, user.email, trimmed);
+        setUserPhone(normalizePhone(trimmed));
+      } else {
+        // Clearing the phone — just update local state (no delete API needed for now)
+        setUserPhone(null);
+      }
+      setEditingPhone(false);
+    } catch {
+      setPhoneError('Failed to save. Please try again.');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
   const handleExportTransactions = async (format: 'excel' | 'pdf') => {
     try {
       setExporting(true);
@@ -76,7 +154,7 @@ export default function SettingsScreen() {
         title: 'Transaction History',
         type: 'transactions',
         format,
-        timeRange: 'Monthly',
+        timeRange: 'All Time',
         summary: {
           balance: transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0) -
             transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0)
@@ -125,7 +203,7 @@ export default function SettingsScreen() {
         title: 'Financial Summary Report',
         type: 'summary',
         format: 'pdf',
-        timeRange: 'Monthly',
+        timeRange: 'All Time',
         summary: {
           income,
           expense,
@@ -168,115 +246,11 @@ export default function SettingsScreen() {
           onPress: async () => {
             setExporting(true);
             try {
-              const db = await getDatabase();
-              const affectedAccountIds = new Set<string>();
-
-              // Restore all data
-              for (const account of backup.accounts) {
-                await db.upsertAccount(account);
-              }
-
-              for (const transaction of backup.transactions) {
-                await db.upsertTransaction(transaction);
-                affectedAccountIds.add(transaction.account_id);
-                if (transaction.to_account_id) {
-                  affectedAccountIds.add(transaction.to_account_id);
-                }
-              }
-
-              for (const budget of backup.budgets) {
-                await db.upsertBudget(budget);
-              }
-
-              for (const loan of backup.loans) {
-                await db.upsertLoan(loan);
-              }
-
-              // 1. Restore categories
-              if (backup.categories && Array.isArray(backup.categories)) {
-                try {
-                  const { StorageService } = await import('@/utils/storage');
-                  const existingCats = await StorageService.loadCategories();
-                  const mergedCats = [...existingCats];
-                  for (const cat of backup.categories) {
-                    if (!mergedCats.some(c => c.id === cat.id)) {
-                      mergedCats.push(cat);
-                    }
-                  }
-                  await StorageService.saveCategories(mergedCats);
-                  await refreshCategories();
-                } catch (e) {
-                  console.warn('[settings] Failed to restore categories:', e);
-                }
-              }
-
-              // 2. Restore recurring transactions
-              if (backup.recurringTransactions && Array.isArray(backup.recurringTransactions)) {
-                try {
-                  const { Platform } = await import('react-native');
-                  const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-                  let existingRecurring: any[] = [];
-                  if (Platform.OS === 'web') {
-                    const stored = localStorage.getItem('recurring_transactions');
-                    if (stored) existingRecurring = JSON.parse(stored);
-                  } else {
-                    const stored = await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
-                    if (stored) existingRecurring = JSON.parse(stored);
-                  }
-
-                  const mergedRecurring = [...existingRecurring];
-                  for (const rt of backup.recurringTransactions) {
-                    if (!mergedRecurring.some(r => r.id === rt.id)) {
-                      mergedRecurring.push(rt);
-                    }
-                  }
-
-                  const serialized = JSON.stringify(mergedRecurring);
-                  if (Platform.OS === 'web') {
-                    localStorage.setItem('recurring_transactions', serialized);
-                  } else {
-                    await AsyncStorage.setItem('@hisabtrack_recurring_transactions', serialized);
-                  }
-                } catch (e) {
-                  console.warn('[settings] Failed to restore recurring transactions:', e);
-                }
-              }
-
-              // 3. Restore app settings
-              if (backup.settings) {
-                try {
-                  const { Platform } = await import('react-native');
-                  if (Platform.OS === 'web') {
-                    localStorage.setItem('app_settings', JSON.stringify(backup.settings));
-                  } else {
-                    const { SecureStorageService } = await import('@/services/SecureStorageService');
-                    const existing = await SecureStorageService.getUserData();
-                    const next = { ...(existing || {}), appSettings: backup.settings };
-                    await SecureStorageService.saveUserData(next);
-                  }
-                  // Emit change to reload context
-                  const LocalChangeEmitter = (await import('@/services/LocalChangeEmitter')).default;
-                  LocalChangeEmitter.emit();
-                } catch (e) {
-                  console.warn('[settings] Failed to restore settings:', e);
-                }
-              }
-
-              // 4. Restore SMS learning rules
-              if (backup.smsLearningRules) {
-                try {
-                  const { SMSLearningService } = await import('@/services/SMSLearningService');
-                  const existingRules = await SMSLearningService.getAllRules();
-                  const mergedRules = { ...existingRules, ...backup.smsLearningRules };
-                  await SMSLearningService.saveAllRules(mergedRules);
-                } catch (e) {
-                  console.warn('[settings] Failed to restore SMS learning rules:', e);
-                }
-              }
-
-              await Promise.all(
-                [...affectedAccountIds].map((accountId) => db.recalculateAccountBalance(accountId))
-              );
+              SyncService.stopAutoSync();
+              await SyncService.settle();
+              const { RestoreService } = await import('@/services/RestoreService');
+              await RestoreService.restore(backup);
+              await refreshCategories();
 
               // Refresh all data
               dispatch(fetchAccounts());
@@ -284,9 +258,9 @@ export default function SettingsScreen() {
               dispatch(fetchBudgets());
               dispatch(fetchLoans());
 
-              Alert.alert('Success', 'Backup restored successfully!');
+              Alert.alert('Success', 'Backup restored. Restart the app to load restored preferences. Cloud and AI sharing remain off until you enable them.');
             } catch (error) {
-              Alert.alert('Error', 'Failed to restore backup');
+              Alert.alert('Restore incomplete', 'Some data could not be restored. If the ledger was saved, the remaining restore is kept on this device and will retry when you reopen the app.');
               console.error(error);
             } finally {
               setExporting(false);
@@ -397,7 +371,7 @@ export default function SettingsScreen() {
   };
 
   const handleConfirmResetAccount = async () => {
-    if (!resetPassword.trim()) {
+    if (isEmailPasswordUser && !resetPassword.trim()) {
       setResetAccountError('Password is required.');
       return;
     }
@@ -406,7 +380,7 @@ export default function SettingsScreen() {
     setResetAccountError(null);
 
     try {
-      await AccountResetService.resetWithPassword(resetPassword);
+      await AccountResetService.resetWithPassword(isEmailPasswordUser ? resetPassword : undefined);
       setShowResetModal(false);
       setResetPassword('');
 
@@ -545,6 +519,9 @@ export default function SettingsScreen() {
     setPendingDraftAlertsEnabled,
     setInactivityAlertsEnabled,
     setReconciliationAlertsEnabled,
+    setHabitRemindersEnabled,
+    setDailySummaryAlertsEnabled,
+    setPersonalizedTipsEnabled,
     assistantOverlay,
     setAssistantEnabled,
     setAssistantTipsEnabled,
@@ -553,6 +530,7 @@ export default function SettingsScreen() {
     setAssistantReportsEnabled,
   } = useAppSettings();
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  const [selectedSettingsCategory, setSelectedSettingsCategory] = useState<'personal' | 'ai' | 'notifications' | 'data' | 'account'>('personal');
 
   const handleBackgroundProcessingToggle = async (enabled: boolean) => {
     setBackgroundProcessingEnabled(enabled);
@@ -560,8 +538,10 @@ export default function SettingsScreen() {
 
     if (enabled) {
       await BackgroundService.registerTask(true);
+      void import('@/services/SmartReminderService').then(({ SmartReminderService }) => SmartReminderService.refreshHabitSchedule(backgroundReminders.habitRemindersEnabled));
     } else {
       await BackgroundService.unregisterTask();
+      void import('@/services/SmartReminderService').then(({ SmartReminderService }) => SmartReminderService.refreshHabitSchedule(false));
     }
 
     await refreshBackgroundStatus();
@@ -893,8 +873,241 @@ export default function SettingsScreen() {
       </LinearGradient>
 
       <ScrollView className="flex-1 px-6 -mt-6" showsVerticalScrollIndicator={false}>
+
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-4 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+          <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">Settings categories</Text>
+          <Text className="text-slate-500 dark:text-slate-400 text-xs mb-3">Choose a category to keep this screen focused.</Text>
+          <View className="flex-row flex-wrap">
+            {[
+              { id: 'personal', label: 'Personal', icon: 'user', color: '#6366f1' },
+              { id: 'ai', label: 'AI & SMS', icon: 'magic', color: '#14b8a6' },
+              { id: 'notifications', label: 'Notifications', icon: 'bell', color: '#f59e0b' },
+              { id: 'data', label: 'Data & Access', icon: 'database', color: '#10b981' },
+              { id: 'account', label: 'Account', icon: 'cog', color: '#64748b' },
+            ].map((category) => {
+              const active = selectedSettingsCategory === category.id;
+              return (
+                <TouchableOpacity key={category.id} onPress={() => setSelectedSettingsCategory(category.id as typeof selectedSettingsCategory)} className={`flex-row items-center px-3 py-2.5 rounded-xl mr-2 mb-2 border ${active ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-400' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}>
+                  <FontAwesome name={category.icon as any} size={13} color={active ? category.color : '#94a3b8'} />
+                  <Text className={`text-xs font-bold ml-2 ${active ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>{category.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Profile Card */}
+        <View className={sectionCardClass} style={[{ elevation: 4 }, selectedSettingsCategory !== 'personal' && { display: 'none' }]}>
+          <View className="flex-row items-center mb-4">
+            <View className={`${isVerySmallFont ? 'w-10 h-10 mr-3 rounded-xl' : 'w-12 h-12 mr-4 rounded-2xl'} bg-indigo-100 dark:bg-indigo-900/30 justify-center items-center`}>
+              <FontAwesome name="user-circle" size={isVerySmallFont ? 18 : 22} color="#6366f1" />
+            </View>
+            <View className="flex-1">
+              <Text className={`text-slate-900 dark:text-white font-bold ${sectionTitleClass}`}>My Profile</Text>
+              <Text className="text-slate-500 text-xs">Account information</Text>
+            </View>
+          </View>
+
+          {/* Name */}
+          {user?.displayName && (
+            <View className="flex-row items-center mb-3">
+              <FontAwesome name="user" size={13} color="#94a3b8" style={{ width: 20 }} />
+              <Text className="text-slate-900 dark:text-white font-semibold ml-2">{user.displayName}</Text>
+            </View>
+          )}
+
+          {/* Email */}
+          <View className="flex-row items-center mb-3">
+            <FontAwesome name="envelope" size={13} color="#94a3b8" style={{ width: 20 }} />
+            <Text className="text-slate-600 dark:text-slate-300 ml-2 text-sm">{user?.email}</Text>
+          </View>
+
+          {/* Phone */}
+          <View className="flex-row items-center">
+            <FontAwesome name="phone" size={13} color="#94a3b8" style={{ width: 20 }} />
+            {editingPhone ? (
+              <View className="flex-1 ml-2">
+                <View className="flex-row items-center gap-2">
+                  <TextInput
+                    className="flex-1 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-sm"
+                    placeholder="e.g. 0912345678"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="phone-pad"
+                    value={phoneInput}
+                    onChangeText={t => { setPhoneInput(t); setPhoneError(null); }}
+                    autoFocus
+                  />
+                  <TouchableOpacity
+                    onPress={handleSavePhone}
+                    disabled={savingPhone}
+                    className="bg-indigo-600 px-3 py-2 rounded-xl"
+                  >
+                    {savingPhone
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Text className="text-white font-bold text-xs">Save</Text>
+                    }
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => { setEditingPhone(false); setPhoneInput(userPhone ?? ''); setPhoneError(null); }}
+                    className="bg-slate-100 dark:bg-slate-700 px-3 py-2 rounded-xl"
+                  >
+                    <Text className="text-slate-600 dark:text-slate-300 font-bold text-xs">Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+                {phoneError && (
+                  <Text className="text-red-500 text-xs mt-1 ml-1">{phoneError}</Text>
+                )}
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setEditingPhone(true)}
+                className="flex-1 ml-2 flex-row items-center justify-between"
+              >
+                {userPhone
+                  ? <View className="flex-row items-center gap-2">
+                      <Text className="text-slate-900 dark:text-white text-sm font-semibold">{userPhone}</Text>
+                      <View className="flex-row items-center bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">
+                        <FontAwesome name="link" size={9} color="#16a34a" />
+                        <Text className="text-green-700 dark:text-green-400 text-[10px] font-bold ml-1">Linked</Text>
+                      </View>
+                    </View>
+                  : <Text className="text-slate-400 text-sm">Tap to add phone number</Text>
+                }
+                <FontAwesome name="pencil" size={13} color="#6366f1" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Security Section */}
+        <View className={sectionCardClass} style={[{ elevation: 4 }, selectedSettingsCategory !== 'personal' && { display: 'none' }]}>
+          <View className="flex-row items-center mb-5">
+            <View className={`${isVerySmallFont ? 'w-10 h-10 mr-3 rounded-xl' : 'w-12 h-12 mr-4 rounded-2xl'} bg-emerald-100 dark:bg-emerald-900/30 justify-center items-center`}>
+              <FontAwesome name="shield" size={isVerySmallFont ? 18 : 20} color="#10b981" />
+            </View>
+            <View className="flex-1">
+              <Text className={`text-slate-900 dark:text-white font-bold ${sectionTitleClass}`}>Security</Text>
+              <Text className={`text-slate-500 ${sectionSubtitleClass}`}>App lock & biometric</Text>
+            </View>
+          </View>
+
+          {/* App Lock toggle */}
+          <View className="flex-row items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700">
+            <View className="flex-1 mr-3">
+              <Text className="text-slate-800 dark:text-slate-200 font-semibold text-sm">App Lock</Text>
+              <Text className="text-slate-400 text-xs mt-0.5">
+                {hasPin ? 'Lock app when switching away' : 'Set a PIN first to enable'}
+              </Text>
+            </View>
+            <Switch
+              value={appLockEnabled && hasPin}
+              onValueChange={async (val) => {
+                if (val && !hasPin) {
+                  setShowPinModal(true);
+                } else {
+                  await setAppLockEnabled(val);
+                }
+              }}
+              trackColor={{ false: '#cbd5e1', true: '#10b981' }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          {/* Biometric toggle */}
+          {biometricAvailable && (
+            <View className="flex-row items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700">
+              <View className="flex-1 mr-3">
+                <Text className="text-slate-800 dark:text-slate-200 font-semibold text-sm">Fingerprint / Face ID</Text>
+                <Text className="text-slate-400 text-xs mt-0.5">
+                  {hasPin ? 'Use biometric to unlock' : 'Requires a PIN to be set'}
+                </Text>
+              </View>
+              <Switch
+                value={biometricEnabled && hasPin}
+                onValueChange={async (val) => {
+                  if (val && !hasPin) { setShowPinModal(true); return; }
+                  await setBiometricEnabled(val);
+                }}
+                trackColor={{ false: '#cbd5e1', true: '#10b981' }}
+                thumbColor="#fff"
+                disabled={!hasPin}
+              />
+            </View>
+          )}
+
+          {/* PIN management */}
+          <View className="flex-row gap-3 mt-4">
+            <TouchableOpacity
+              onPress={() => { setNewPin(''); setConfirmPin(''); setPinStep('enter'); setPinError(''); setShowPinModal(true); }}
+              className="flex-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl py-3 items-center"
+            >
+              <FontAwesome name="lock" size={14} color="#10b981" />
+              <Text className="text-emerald-700 dark:text-emerald-400 text-xs font-semibold mt-1">
+                {hasPin ? 'Change PIN' : 'Set PIN'}
+              </Text>
+            </TouchableOpacity>
+            {hasPin && (
+              <TouchableOpacity
+                onPress={handleClearPin}
+                className="flex-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl py-3 items-center"
+              >
+                <FontAwesome name="unlock" size={14} color="#ef4444" />
+                <Text className="text-red-600 dark:text-red-400 text-xs font-semibold mt-1">Remove PIN</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* PIN Setup Modal */}
+        <Modal visible={showPinModal} transparent animationType="fade">
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+            <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm">
+              <Text className="text-slate-900 dark:text-white text-xl font-bold mb-1">
+                {pinStep === 'enter' ? (hasPin ? 'Enter New PIN' : 'Set PIN') : 'Confirm PIN'}
+              </Text>
+              <Text className="text-slate-500 text-sm mb-6">
+                {pinStep === 'enter' ? 'Choose a 4-digit PIN to lock the app' : 'Enter the same PIN again'}
+              </Text>
+
+              <TextInput
+                value={pinStep === 'enter' ? newPin : confirmPin}
+                onChangeText={v => {
+                  const digits = v.replace(/\D/g, '').slice(0, 4);
+                  if (pinStep === 'enter') setNewPin(digits); else setConfirmPin(digits);
+                  setPinError('');
+                }}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={4}
+                placeholder="• • • •"
+                placeholderTextColor="#94a3b8"
+                className="bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white text-center text-3xl tracking-[16px] p-4 rounded-2xl border-2 border-slate-200 dark:border-slate-600 mb-2"
+                autoFocus
+              />
+              {!!pinError && <Text className="text-red-500 text-xs text-center mb-2">{pinError}</Text>}
+
+              <View className="flex-row gap-3 mt-4">
+                <TouchableOpacity
+                  onPress={() => { setShowPinModal(false); setNewPin(''); setConfirmPin(''); setPinStep('enter'); setPinError(''); }}
+                  className="flex-1 border border-slate-200 dark:border-slate-600 rounded-2xl py-3 items-center"
+                >
+                  <Text className="text-slate-600 dark:text-slate-300 font-semibold">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSetPin}
+                  className="flex-1 bg-emerald-600 rounded-2xl py-3 items-center"
+                >
+                  <Text className="text-white font-bold">
+                    {pinStep === 'enter' ? 'Next' : 'Set PIN'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* Theme Section */}
-        <View className={sectionCardClass} style={{ elevation: 4 }}>
+        <View className={sectionCardClass} style={[{ elevation: 4 }, selectedSettingsCategory !== 'personal' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className={`${isVerySmallFont ? 'w-10 h-10 mr-3 rounded-xl' : 'w-12 h-12 mr-4 rounded-2xl'} bg-indigo-100 dark:bg-indigo-900/30 justify-center items-center`}>
               <FontAwesome name="paint-brush" size={isVerySmallFont ? 18 : 20} color="#6366f1" />
@@ -942,7 +1155,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* App Preferences Section */}
-        <View className={sectionCardClass} style={{ elevation: 4 }}>
+        <View className={sectionCardClass} style={[{ elevation: 4 }, selectedSettingsCategory !== 'personal' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className={`${isVerySmallFont ? 'w-10 h-10 mr-3 rounded-xl' : 'w-12 h-12 mr-4 rounded-2xl'} bg-teal-100 dark:bg-teal-900/30 justify-center items-center`}>
               <FontAwesome name="cogs" size={isVerySmallFont ? 18 : 20} color="#14b8a6" />
@@ -1049,7 +1262,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* AI Configuration Section */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={[{ elevation: 4 }, selectedSettingsCategory !== 'ai' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-2xl justify-center items-center mr-4">
               <FontAwesome name="magic" size={20} color="#6366f1" />
@@ -1078,6 +1291,8 @@ export default function SettingsScreen() {
               />
               <Text className="text-slate-400 text-[10px] mt-2 leading-4">
                 Your API key is stored securely on your device. It is used to power the AI Financial Assistant features.
+                Note: when any AI key is set, bank SMS messages that the built-in parser cannot read are sent to that AI
+                provider for parsing. Remove all keys if you don't want SMS content to leave your device.
               </Text>
             </View>
 
@@ -1192,7 +1407,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={[{ elevation: 4 }, selectedSettingsCategory !== 'notifications' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl justify-center items-center mr-4">
               <FontAwesome name="paper-plane" size={20} color="#10b981" />
@@ -1293,7 +1508,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={[{ elevation: 4 }, selectedSettingsCategory !== 'notifications' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className="w-12 h-12 bg-sky-100 dark:bg-sky-900/30 rounded-2xl justify-center items-center mr-4">
               <FontAwesome name="bell" size={20} color="#0ea5e9" />
@@ -1330,6 +1545,43 @@ export default function SettingsScreen() {
                     onValueChange={setBackgroundSmsSyncEnabled}
                     disabled={!backgroundReminders.backgroundProcessingEnabled}
                   />
+                </View>
+              </View>
+
+              <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
+                <View style={{ flex: 1 }}>
+                  <Text className="text-slate-900 dark:text-white font-semibold">Learn my recording time</Text>
+                  <Text className="text-slate-500 text-sm">Learns when you usually add transactions and schedules a daily reminder near that time.</Text>
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Switch
+                    value={backgroundReminders.habitRemindersEnabled}
+                    onValueChange={(value) => {
+                      setHabitRemindersEnabled(value);
+                      void import('@/services/SmartReminderService').then(({ SmartReminderService }) => SmartReminderService.refreshHabitSchedule(value));
+                    }}
+                    disabled={!backgroundReminders.backgroundProcessingEnabled}
+                  />
+                </View>
+              </View>
+
+              <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
+                <View style={{ flex: 1 }}>
+                  <Text className="text-slate-900 dark:text-white font-semibold">Daily financial snapshots</Text>
+                  <Text className="text-slate-500 text-sm">Occasionally shows the day’s recorded income, spending, and transaction count.</Text>
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Switch value={backgroundReminders.dailySummaryAlertsEnabled} onValueChange={setDailySummaryAlertsEnabled} disabled={!backgroundReminders.backgroundProcessingEnabled} />
+                </View>
+              </View>
+
+              <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
+                <View style={{ flex: 1 }}>
+                    <Text className="text-slate-900 dark:text-white font-semibold">Financial wisdom notifications</Text>
+                    <Text className="text-slate-500 text-sm">Turn off personalized money tips based on your recorded spending.</Text>
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Switch value={backgroundReminders.personalizedTipsEnabled} onValueChange={setPersonalizedTipsEnabled} disabled={!backgroundReminders.backgroundProcessingEnabled} />
                 </View>
               </View>
 
@@ -1468,7 +1720,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Permissions Section */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={[{ elevation: 4 }, selectedSettingsCategory !== 'data' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-2xl justify-center items-center mr-4">
               <FontAwesome name="shield" size={20} color="#f97316" />
@@ -1508,7 +1760,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Export Data Section */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={[{ elevation: 4 }, selectedSettingsCategory !== 'data' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-2xl justify-center items-center mr-4">
               <FontAwesome name="download" size={20} color="#10b981" />
@@ -1579,7 +1831,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Backup & Restore Section */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={[{ elevation: 4 }, selectedSettingsCategory !== 'data' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-2xl justify-center items-center mr-4">
               <FontAwesome name="cloud" size={20} color="#3b82f6" />
@@ -1590,6 +1842,36 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          <View className="bg-white dark:bg-slate-800 p-4 rounded-xl mb-4">
+            <Text className="text-slate-900 dark:text-white font-bold">Data sharing</Text>
+            <Text className="text-slate-500">Cloud sync uploads your accounts, transactions, budgets and loans to Firebase. Shared loans and chat use Firebase separately when you use them.</Text>
+            <Switch value={privacySettings.cloudSyncEnabled} onValueChange={privacySettings.setCloudSyncEnabled} />
+            <Text className="text-slate-500">Allow AI providers to process financial context and unparsed bank SMS, including saved examples. Only enable providers you trust. JSON backups are unencrypted and exclude API keys.</Text>
+            <Switch value={privacySettings.aiSharingEnabled} onValueChange={privacySettings.setAiSharingEnabled} />
+          </View>
+          {!!user && <TouchableOpacity className="p-4 mb-4 rounded-xl border border-red-500" onPress={() => {
+            Alert.alert('Delete sign-in account?', 'This deletes your identity and personal cloud data. Shared loan amounts remain for the other participant, with your profile and messages anonymized. Sign in again first if your session is older than five minutes.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete account', style: 'destructive', onPress: async () => {
+                try { await AccountResetService.deleteAccount(); }
+                catch (error) { Alert.alert('Account deletion failed', error instanceof Error ? error.message : 'Please try again'); }
+              } },
+            ]);
+          }}><Text className="text-red-600 font-bold">Delete sign-in account</Text></TouchableOpacity>}
+          <TouchableOpacity className="p-4 mb-4 rounded-xl border border-slate-300" onPress={async () => {
+            const db = await getDatabase();
+            const conflicts = await db.readMeta('sync_conflicts') || [];
+            const conflict = conflicts[0];
+            if (!conflict) { Alert.alert('Sync conflicts', SyncService.lastError || 'No conflicts awaiting review.'); return; }
+            const describe = (value: any) => !value || value._deleted ? 'Deleted' : `${value.description || value.name || value.category || value.lender_borrower_name || value.id}: ${value.amount ?? value.principal_amount ?? value.limit_amount ?? 'updated record'}`;
+            Alert.alert('Resolve conflicting record', `${conflict.key}\nOn this device: ${describe(conflict.change.value)}\nIn cloud: ${describe(conflict.remote)}\nExport a backup before choosing if you need to retain both versions.`, [
+              { text: 'Cancel', style: 'cancel' },
+              ...(['local', 'cloud'] as const).map(choice => ({ text: choice === 'local' ? 'Keep device version' : 'Keep cloud version', onPress: async () => {
+                try { await db.resolveConflict(conflict, choice); await SyncService.syncNow(user?.uid); }
+                catch (error) { Alert.alert('Sync needs attention', error instanceof Error ? error.message : 'Retry sync'); }
+              } })),
+            ]);
+          }}><Text className="text-slate-900 dark:text-white">Review sync conflicts</Text></TouchableOpacity>
           {/* Hidden file input for restore */}
           {Platform.OS === 'web' && (
             <label
@@ -1654,7 +1936,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* App Info */}
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-8 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
+        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-8 shadow-lg border border-slate-100 dark:border-slate-700" style={[{ elevation: 4 }, selectedSettingsCategory !== 'account' && { display: 'none' }]}>
           <View className="flex-row items-center mb-4">
             <View className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-2xl justify-center items-center mr-4">
               <FontAwesome name="info-circle" size={20} color="#3b82f6" />
@@ -1682,7 +1964,7 @@ export default function SettingsScreen() {
 
         {/* Danger Zone */}
         {user ? (
-          <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-red-200 dark:border-red-800" style={{ elevation: 4 }}>
+          <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-red-200 dark:border-red-800" style={[{ elevation: 4 }, selectedSettingsCategory !== 'account' && { display: 'none' }]}>
             <View className="flex-row items-center mb-4">
               <View className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-2xl justify-center items-center mr-4">
                 <FontAwesome name="warning" size={20} color="#ef4444" />
@@ -1695,7 +1977,7 @@ export default function SettingsScreen() {
 
             <View className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 mb-3">
               <Text className="text-red-700 dark:text-red-300 text-sm leading-5">
-                Reset Account permanently deletes all local and cloud financial records for this account.
+                Financial reset clears your personal ledger and local preferences. Your sign-in identity and shared loan/chat history remain. Export a backup first.
               </Text>
             </View>
 
@@ -1720,7 +2002,7 @@ export default function SettingsScreen() {
           user && (
             <TouchableOpacity
               onPress={handleSignOut}
-              className="bg-red-50 dark:bg-red-900/20 rounded-3xl p-6 mb-8 border-2 border-red-500"
+              className={`bg-red-50 dark:bg-red-900/20 rounded-3xl p-6 mb-8 border-2 border-red-500 ${selectedSettingsCategory !== 'account' ? 'hidden' : ''}`}
             >
               <View className="flex-row items-center justify-center">
                 <FontAwesome name="sign-out" size={20} color="#ef4444" />
@@ -1757,23 +2039,32 @@ export default function SettingsScreen() {
               </Text>
             </View>
 
-            <View className="mb-6">
-              <Text className="text-slate-700 dark:text-slate-300 font-bold mb-2">Password</Text>
-              <TextInput
-                className="bg-slate-50 dark:bg-slate-900 px-4 py-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                placeholder="Enter your password"
-                placeholderTextColor="#94a3b8"
-                secureTextEntry
-                value={resetPassword}
-                onChangeText={setResetPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus
-              />
-              {resetAccountError ? (
-                <Text className="text-red-500 text-xs mt-2 font-medium">{resetAccountError}</Text>
-              ) : null}
-            </View>
+            {isEmailPasswordUser ? (
+              <View className="mb-6">
+                <Text className="text-slate-700 dark:text-slate-300 font-bold mb-2">Password</Text>
+                <TextInput
+                  className="bg-slate-50 dark:bg-slate-900 px-4 py-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                  placeholder="Enter your password"
+                  placeholderTextColor="#94a3b8"
+                  secureTextEntry
+                  value={resetPassword}
+                  onChangeText={setResetPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus
+                />
+              </View>
+            ) : (
+              <View className="mb-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4">
+                <Text className="text-amber-700 dark:text-amber-300 text-sm">
+                  You signed in with a phone number. No password is required — tap the button below to permanently delete all data.
+                </Text>
+              </View>
+            )}
+
+            {resetAccountError ? (
+              <Text className="text-red-500 text-xs mb-4 font-medium">{resetAccountError}</Text>
+            ) : null}
 
             <View className="flex-row gap-3">
               <TouchableOpacity
@@ -1785,9 +2076,9 @@ export default function SettingsScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                disabled={isResettingAccount || !resetPassword.trim()}
+                disabled={isResettingAccount || (isEmailPasswordUser && !resetPassword.trim())}
                 onPress={() => { void handleConfirmResetAccount(); }}
-                className={`flex-1 h-14 rounded-xl justify-center items-center ${isResettingAccount || !resetPassword.trim() ? 'bg-red-300 dark:bg-red-900/50' : 'bg-red-500'}`}
+                className={`flex-1 h-14 rounded-xl justify-center items-center ${isResettingAccount || (isEmailPasswordUser && !resetPassword.trim()) ? 'bg-red-300 dark:bg-red-900/50' : 'bg-red-500'}`}
               >
                 {isResettingAccount ? (
                   <ActivityIndicator color="#fff" />

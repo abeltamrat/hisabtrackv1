@@ -44,3 +44,8 @@ yarn-error.*
 apps.txt
 firebase-debug.log
 functions/firebase-debug.log
+
+# Private signing material and downloaded build artifacts
+credentials.json
+*.keystore
+artifacts/

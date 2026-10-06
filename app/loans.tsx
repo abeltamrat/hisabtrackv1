@@ -1,15 +1,24 @@
+import { getDatabase } from '@/services/database';
+import { generateUUID } from '@/utils/uuid';
+import { sessionLocalStorage } from '@/services/SessionStorage';
 
 import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useI18n } from '@/contexts/I18nContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { AuthService, normalizePhone } from '@/services/AuthService';
+import { LinkedLoanService, UserLookupResult } from '@/services/LinkedLoanService';
 import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addLoan, deleteLoan, fetchLoans, updateLoan } from '@/store/slices/loansSlice';
 import { addTransaction } from '@/store/slices/transactionsSlice';
-import { Loan, LoanType } from '@/types/database';
+import { Loan, LoanType, SharedLoan } from '@/types/database';
+import LinkedLoanPendingBanner from '@/components/LinkedLoanPendingBanner';
+import ScreenInfoCard from '@/components/ScreenInfoCard';
+import FloatingCalculator from '@/components/FloatingCalculator';
 import { FontAwesome } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/services/SessionStorage';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -152,6 +161,7 @@ const PlatformTimePicker = React.memo(({ value, onChange }: { value: Date, onCha
 export default function LoansDebtsScreen() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
+  const { user } = useAuth();
   const { items: loans } = useSelector((state: RootState) => state.loans);
   const { items: accounts } = useSelector((state: RootState) => state.accounts);
   const [activeTab, setActiveTab] = useState<LoanType>('LENT');
@@ -160,6 +170,13 @@ export default function LoansDebtsScreen() {
   const { actualTheme } = useTheme();
   const { categories } = useTransactions();
   const headerTitleSize = fontSize === 'V.Small' ? 'text-base' : fontSize === 'Small' ? 'text-lg' : fontSize === 'Large' ? 'text-2xl' : 'text-xl';
+
+  // Linked loan state
+  const [myPhone, setMyPhone] = useState<string>('');
+  const [linkedPhone, setLinkedPhone] = useState('');
+  const [linkLookupResult, setLinkLookupResult] = useState<UserLookupResult | null>(null);
+  const [linkLookupState, setLinkLookupState] = useState<'idle' | 'searching' | 'found' | 'not_found'>('idle');
+  const linkLookupTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getGradientColors = () => {
     if (actualTheme === 'dark') {
@@ -200,6 +217,7 @@ export default function LoansDebtsScreen() {
 
   const [now, setNow] = useState(Date.now());
   const [globalRemindersEnabled, setGlobalRemindersEnabled] = useState(true);
+  const [canEditLinkedTerms, setCanEditLinkedTerms] = useState(true);
 
   useEffect(() => {
     const init = async () => {
@@ -207,9 +225,38 @@ export default function LoansDebtsScreen() {
       dispatch(fetchAccounts());
       await loadGlobalSettings();
       await NotificationService.requestPermissions();
+      // Load current user's phone for link requests
+      if (user?.uid) {
+        AuthService.getUserPhone(user.uid).then(p => { if (p) setMyPhone(p); });
+      }
     };
     void init();
-  }, [dispatch]);
+  }, [dispatch, user?.uid]);
+
+  // Debounced phone lookup when linkedPhone changes
+  useEffect(() => {
+    if (linkLookupTimer.current) clearTimeout(linkLookupTimer.current);
+    const trimmed = linkedPhone.trim();
+    if (!trimmed) { setLinkLookupState('idle'); setLinkLookupResult(null); return; }
+    setLinkLookupState('searching');
+    linkLookupTimer.current = setTimeout(async () => {
+      const result = await LinkedLoanService.lookupUserByPhone(trimmed).catch(() => null);
+      if (result) {
+        // Make sure they're not looking themselves up
+        if (result.uid === user?.uid) {
+          setLinkLookupState('not_found');
+          setLinkLookupResult(null);
+        } else {
+          setLinkLookupResult(result);
+          setLinkLookupState('found');
+        }
+      } else {
+        setLinkLookupResult(null);
+        setLinkLookupState('not_found');
+      }
+    }, 600);
+    return () => { if (linkLookupTimer.current) clearTimeout(linkLookupTimer.current); };
+  }, [linkedPhone, user?.uid]);
 
   useEffect(() => {
     let interval: any;
@@ -226,7 +273,7 @@ export default function LoansDebtsScreen() {
   const loadGlobalSettings = async () => {
     try {
       const stored = Platform.OS === 'web'
-        ? localStorage.getItem('global_loan_reminders_enabled')
+        ? sessionLocalStorage.getItem('global_loan_reminders_enabled')
         : await AsyncStorage.getItem('@hisabtrack_global_loan_reminders_enabled');
       if (stored !== null) {
         setGlobalRemindersEnabled(JSON.parse(stored));
@@ -239,7 +286,7 @@ export default function LoansDebtsScreen() {
   const saveGlobalSettings = async (enabled: boolean) => {
     try {
       if (Platform.OS === 'web') {
-        localStorage.setItem('global_loan_reminders_enabled', JSON.stringify(enabled));
+        sessionLocalStorage.setItem('global_loan_reminders_enabled', JSON.stringify(enabled));
       } else {
         await AsyncStorage.setItem('@hisabtrack_global_loan_reminders_enabled', JSON.stringify(enabled));
       }
@@ -455,6 +502,7 @@ export default function LoansDebtsScreen() {
       const dueDate = new Date(formData.dueDate).getTime() || startDate;
 
       const totalPayable = getLoanTotalPayable(amount, interestRate, startDate, dueDate);
+      if (!Number.isFinite(paid) || paid < 0 || paid > totalPayable || !Number.isFinite(interestRate) || interestRate < 0 || dueDate <= startDate) throw new Error('Invalid loan terms or initial payment');
       const remaining = Math.max(0, totalPayable - paid);
 
       console.log('[Loans] Creating loan:', {
@@ -478,9 +526,7 @@ export default function LoansDebtsScreen() {
       });
       console.log('[Loans] Notification scheduled:', notifId);
 
-      // 2. Add Loan Record and wait for completion
-      console.log('[Loans] Dispatching addLoan...');
-      const loanResult = await dispatch(addLoan({
+      const created = await (await getDatabase()).createLoanWithCash({
         type: activeTab,
         lender_borrower_name: formData.personName.trim(),
         principal_amount: amount,
@@ -493,44 +539,47 @@ export default function LoansDebtsScreen() {
         reminderDaysBefore: parseInt(formData.reminderDaysBefore),
         reminderTime: formData.reminderEnabled ? formData.reminderTime.getTime() : undefined,
         notificationId: notifId || undefined
-      }));
+      }, formData.accountId, paid);
+      const loanResult = { payload: created };
+      await dispatch(fetchLoans()).unwrap();
+      await dispatch(fetchAccounts()).unwrap();
 
-      console.log('[Loans] Loan dispatch result:', loanResult);
-
-      if (addLoan.rejected.match(loanResult)) {
-        Platform.OS === 'web'
-          ? window.alert('Failed to save loan. Please try again.')
-          : Alert.alert('Error', 'Failed to save loan. Please try again.');
-        return;
+      // Create linked loan if phone was entered and lookup succeeded
+      if (linkedPhone.trim() && linkLookupResult && loanResult.payload) {
+        try {
+          const createdLoan = loanResult.payload as Loan;
+          const sharedLoanId = await LinkedLoanService.createLinkRequest({
+            initiatorUid: user!.uid,
+            initiatorName: user!.displayName || user!.email || 'User',
+            initiatorPhone: myPhone,
+            initiatorRole: activeTab === 'BORROWED' ? 'BORROWER' : 'LENDER',
+            otherPartyUid: linkLookupResult.uid,
+            otherPartyPhone: normalizePhone(linkedPhone.trim()),
+            otherPartyName: formData.personName.trim(),
+            localLoanId: createdLoan.id,
+            amount,
+            description: `${activeTab === 'LENT' ? 'Loan to' : 'Loan from'} ${formData.personName.trim()}`,
+            dueDate,
+            startDate,
+            interestRate,
+          });
+          // Tag the local loan with the shared loan reference
+          await dispatch(updateLoan({
+            ...createdLoan,
+            shared_loan_id: sharedLoanId,
+            link_role: activeTab === 'BORROWED' ? 'BORROWER' : 'LENDER',
+            link_status: 'PENDING',
+            linked_uid: linkLookupResult.uid,
+            linked_name: formData.personName.trim(),
+            linked_phone: normalizePhone(linkedPhone.trim()),
+            is_initiator: true,
+          }));
+          console.log('[Loans] Link request created:', sharedLoanId);
+        } catch (linkErr) {
+          console.warn('[Loans] Link creation failed (loan still saved):', linkErr);
+        }
       }
 
-      // 3. Add Transaction
-      console.log('[Loans] Adding transaction...');
-      const isLent = activeTab === 'LENT';
-      const loanCategory = categories.find(cat =>
-        cat.name.toLowerCase().includes('loan') ||
-        cat.name.toLowerCase().includes('lend') ||
-        cat.name === 'Other'
-      ) || categories.find(cat => cat.type === (isLent ? 'expense' : 'income')) || categories[0];
-
-      await dispatch(addTransaction({
-        account_id: formData.accountId,
-        type: isLent ? 'EXPENSE' : 'INCOME',
-        amount: amount,
-        category: loanCategory?.name || 'Loans',
-        description: `${isLent ? 'Loan to' : 'Loan from'} ${formData.personName.trim()}`,
-        date: Date.now(),
-      }));
-      console.log('[Loans] Transaction added');
-
-      // 4. Refresh accounts to show updated balance
-      // Note: We don't need to fetchLoans() here because addLoan.fulfilled already
-      // updates the Redux state. Calling fetchLoans() can cause a race condition
-      // where we fetch old data before the database write completes.
-      console.log('[Loans] Refreshing accounts...');
-      await dispatch(fetchAccounts());
-
-      console.log('[Loans] Loan and transaction saved successfully');
       resetForm();
     } catch (error) {
       console.error('[Loans] Error adding loan:', error);
@@ -542,6 +591,22 @@ export default function LoansDebtsScreen() {
 
   const handleEditItem = async () => {
     if (!editingItem) return;
+
+    // Linked+accepted loans: only the initiator may propose term changes.
+    // is_initiator === false means explicitly a non-initiator (acceptor).
+    // is_initiator === undefined means an older loan without the field — fall through
+    // to the existing canEditLinkedTerms async check below.
+    if (editingItem.shared_loan_id && editingItem.link_status === 'ACCEPTED') {
+      if (editingItem.is_initiator === false) {
+        Alert.alert(
+          'Cannot Edit',
+          'Only the user who created this loan link can propose term changes. Use the chat in Loan Details to discuss changes with the other party.',
+        );
+        resetForm();
+        return;
+      }
+    }
+
     const amount = parseFloat(formData.amount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('Error', 'Please enter a valid amount.');
@@ -551,6 +616,42 @@ export default function LoansDebtsScreen() {
     const interestRate = parseFloat(formData.interestRate || '0');
     const startDate = editingItem.start_date || Date.now();
     const dueDate = new Date(formData.dueDate).getTime() || editingItem.due_date;
+
+    // Enforce initiator authorization for core terms changes of linked loans
+    if (editingItem.shared_loan_id && editingItem.link_status === 'ACCEPTED') {
+      const amountChanged = editingItem.principal_amount !== amount;
+      const interestRateChanged = editingItem.interest_rate !== interestRate;
+      const dueDateChanged = editingItem.due_date !== dueDate;
+
+      if (amountChanged || interestRateChanged || dueDateChanged) {
+        if (!canEditLinkedTerms) {
+          Alert.alert('Error', 'Only the loan initiator can modify shared loan terms.');
+          return;
+        }
+        try {
+          const before: Partial<SharedLoan> = {
+            amount: editingItem.principal_amount,
+            interestRate: editingItem.interest_rate,
+            dueDate: editingItem.due_date,
+          };
+          const updates: Partial<SharedLoan> = {
+            amount,
+            interestRate,
+            dueDate,
+          };
+          await LinkedLoanService.updateSharedLoanTerms(
+            editingItem.shared_loan_id,
+            user!.uid,
+            user!.displayName || user!.email || 'User',
+            before,
+            updates
+          );
+        } catch (err: any) {
+          console.error('[Loans] Failed to update shared loan terms in Firestore:', err);
+          Alert.alert('Sync Warning', 'Failed to update shared terms on the server: ' + (err?.message || ''));
+        }
+      }
+    }
 
     const totalPayable = getLoanTotalPayable(amount, interestRate, startDate, dueDate);
     const remaining = Math.max(0, totalPayable - paid);
@@ -590,18 +691,34 @@ export default function LoansDebtsScreen() {
   };
 
   const handleDeleteItem = (id: string) => {
+    const loan = loans.find(l => l.id === id);
+    const isLinkedAccepted = !!loan?.shared_loan_id && loan?.link_status === 'ACCEPTED';
+
     Alert.alert(
       'Delete Loan',
-      'Are you sure you want to delete this loan?',
+      isLinkedAccepted
+        ? 'This loan is linked with another user. Deleting will disconnect the link for both parties. Are you sure?'
+        : 'Are you sure you want to delete this loan?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            const loan = loans.find(l => l.id === id);
             if (loan?.notificationId) {
               await NotificationService.cancelNotification(loan.notificationId);
+            }
+            // Detach from Firestore before local delete so the other party sees the link is gone
+            if (isLinkedAccepted && loan?.shared_loan_id && user?.uid) {
+              try {
+                await LinkedLoanService.detachLoan(
+                  loan.shared_loan_id,
+                  user.uid,
+                  user.displayName || user.email || 'User',
+                );
+              } catch (e) {
+                console.warn('[Loans] detachLoan failed — deleting locally anyway:', e);
+              }
             }
             const result = await dispatch(deleteLoan(id));
             if (deleteLoan.rejected.match(result)) {
@@ -639,36 +756,15 @@ export default function LoansDebtsScreen() {
       return;
     }
 
-    // 1. Update Loan
-    const newRemaining = Math.max(0, loan.remaining_balance - amount);
-    const updateResult = await dispatch(updateLoan({
-      ...loan,
-      remaining_balance: newRemaining,
-      status: newRemaining <= 0 ? 'PAID' : 'ACTIVE'
-    }));
-    if (updateLoan.rejected.match(updateResult)) {
-      Platform.OS === 'web' ? window.alert('Failed to update loan.') : Alert.alert('Error', 'Failed to update loan.');
+    const isLinked = !!loan.shared_loan_id && loan.link_status === 'ACCEPTED';
+
+    if (isLinked) { router.push(`/loan/${loan.id}` as any); return; }
+    try {
+      await (await getDatabase()).recordLoanPayment(loan.id, paymentAccountId, amount, `payment-${loan.id}-${loan.remaining_balance}-${amount}`);
+      await Promise.all([dispatch(fetchLoans()).unwrap(), dispatch(fetchAccounts()).unwrap()]);
+    } catch (error) {
+      Alert.alert('Payment not recorded', error instanceof Error ? error.message : 'Please try again');
       return;
-    }
-
-    // 2. Add Transaction
-    const isLent = loan.type === 'LENT';
-    const repaymentCategory = categories.find(cat =>
-      cat.name.toLowerCase().includes('loan') && cat.name.toLowerCase().includes('repayment') ||
-      cat.name.toLowerCase().includes('repayment') ||
-      cat.name === 'Other'
-    ) || categories.find(cat => cat.type === (isLent ? 'income' : 'expense')) || categories[0];
-
-    const txResult = await dispatch(addTransaction({
-      account_id: paymentAccountId,
-      type: isLent ? 'INCOME' : 'EXPENSE',
-      amount: amount,
-      category: repaymentCategory?.name || 'Loan Repayment',
-      description: `${isLent ? 'Repayment from' : 'Repayment to'} ${loan.lender_borrower_name}`,
-      date: Date.now()
-    }));
-    if (addTransaction.rejected.match(txResult)) {
-      Platform.OS === 'web' ? window.alert('Payment recorded but failed to create transaction.') : Alert.alert('Warning', 'Payment recorded but failed to create transaction.');
     }
 
     setShowPaymentModal(false);
@@ -691,6 +787,19 @@ export default function LoansDebtsScreen() {
       reminderDaysBefore: (item.reminderDaysBefore ?? 1).toString(),
       reminderTime: item.reminderTime ? new Date(item.reminderTime) : new Date(),
     });
+
+    setCanEditLinkedTerms(true);
+    if (item.shared_loan_id && item.link_status === 'ACCEPTED') {
+      LinkedLoanService.getSharedLoan(item.shared_loan_id)
+        .then(shared => {
+          if (shared && user) {
+            setCanEditLinkedTerms(shared.initiatorUid === user.uid);
+          }
+        })
+        .catch(err => {
+          console.warn('[Loans] Failed to check initiator permission:', err);
+        });
+    }
   };
 
   const openAddModal = () => {
@@ -706,6 +815,7 @@ export default function LoansDebtsScreen() {
       reminderDaysBefore: '1',
       reminderTime: new Date(),
     });
+    setCanEditLinkedTerms(true);
     setShowAddModal(true);
   };
 
@@ -725,6 +835,59 @@ export default function LoansDebtsScreen() {
     });
     setSuggestions([]);
     setShowSuggestions(false);
+    setLinkedPhone('');
+    setLinkLookupResult(null);
+    setLinkLookupState('idle');
+    setCanEditLinkedTerms(true);
+  };
+
+  // Accept a pending link request — creates a mirror loan on acceptor's side
+  const handleAcceptLink = async (
+    sharedLoan: SharedLoan & { id: string },
+    iAmBorrower: boolean,
+  ) => {
+    if (!user) return;
+    const startDate = sharedLoan.startDate || Date.now();
+    const dueDate = sharedLoan.dueDate;
+    const totalPayable = getLoanTotalPayable(sharedLoan.amount, sharedLoan.interestRate, startDate, dueDate);
+
+    const loanResult = await dispatch(addLoan({
+      type: iAmBorrower ? 'BORROWED' : 'LENT',
+      lender_borrower_name: iAmBorrower ? sharedLoan.lenderName : sharedLoan.borrowerName,
+      principal_amount: sharedLoan.amount,
+      interest_rate: sharedLoan.interestRate,
+      start_date: startDate,
+      due_date: dueDate,
+      status: 'ACTIVE',
+      remaining_balance: totalPayable,
+      reminderEnabled: true,
+      reminderDaysBefore: 1,
+    }));
+
+    if (addLoan.rejected.match(loanResult)) {
+      throw new Error('Failed to create local loan');
+    }
+
+    const newLoan = loanResult.payload as Loan;
+
+    await LinkedLoanService.acceptLink(
+      sharedLoan.id,
+      user.uid,
+      user.displayName || user.email || 'User',
+      newLoan.id,
+    );
+
+    // Tag the new local loan
+    await dispatch(updateLoan({
+      ...newLoan,
+      shared_loan_id: sharedLoan.id,
+      link_role: iAmBorrower ? 'BORROWER' : 'LENDER',
+      link_status: 'ACCEPTED',
+      linked_uid: iAmBorrower ? sharedLoan.lenderUid : sharedLoan.borrowerUid,
+      linked_name: iAmBorrower ? sharedLoan.lenderName : sharedLoan.borrowerName,
+      linked_phone: iAmBorrower ? sharedLoan.lenderPhone : sharedLoan.borrowerPhone,
+      is_initiator: false,
+    }));
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
@@ -833,20 +996,25 @@ export default function LoansDebtsScreen() {
         </View>
       )}
 
+      {/* Pending Link Requests */}
+      <LinkedLoanPendingBanner onAccepted={handleAcceptLink} />
+
       {/* Content */}
       <ScrollView className="flex-1 px-6 mt-4" showsVerticalScrollIndicator={false}>
 
         {!selectedGroup ? (
           <>
             {groupNames.length === 0 ? (
-              <View className="items-center justify-center mt-20">
-                <View className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full justify-center items-center mb-4">
-                  <FontAwesome name="users" size={32} color="#cbd5e1" />
-                </View>
-                <Text className="text-slate-900 dark:text-white font-bold text-lg mb-2">
-                  {activeTab === 'LENT' ? t('loans') : t('debtsOwed')} Recorded
-                </Text>
-              </View>
+              <ScreenInfoCard
+                icon="users"
+                title={activeTab === 'LENT' ? 'Track money you lend' : 'Track money you borrow'}
+                description="Keep a clear record of who owes what, payment dates, and remaining balances."
+                suggestions={[
+                  'Add the person, amount, and expected due date when you lend or borrow.',
+                  'Record partial payments so the remaining balance stays accurate.',
+                  'Open a loan to review its payment history and progress.',
+                ]}
+              />
             ) : (
               groupNames.map(name => {
                 const group = groupedItems[name];
@@ -894,6 +1062,7 @@ export default function LoansDebtsScreen() {
               const paidAmount = totalPayable - item.remaining_balance;
               const isPaid = item.status === 'PAID';
               const monthlyPayment = calculateMonthlyPayment(item.principal_amount, item.interest_rate, item.start_date, item.due_date);
+              const isItemLinked = !!item.shared_loan_id && item.link_status === 'ACCEPTED';
 
               return (
                 <TouchableOpacity
@@ -915,9 +1084,23 @@ export default function LoansDebtsScreen() {
                       />
                     </View>
                     <View className="flex-1">
-                      <Text className="text-slate-900 dark:text-white font-bold text-lg mb-1">
-                        {item.lender_borrower_name}
-                      </Text>
+                      <View className="flex-row items-center gap-2 mb-1">
+                        <Text className="text-slate-900 dark:text-white font-bold text-lg">
+                          {item.lender_borrower_name}
+                        </Text>
+                        {item.shared_loan_id && item.link_status === 'ACCEPTED' && (
+                          <View className="flex-row items-center bg-indigo-100 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full">
+                            <FontAwesome name="link" size={9} color="#6366f1" />
+                            <Text className="text-indigo-600 dark:text-indigo-400 text-[10px] font-bold ml-1">Linked</Text>
+                          </View>
+                        )}
+                        {item.shared_loan_id && item.link_status === 'PENDING' && (
+                          <View className="flex-row items-center bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full">
+                            <FontAwesome name="clock-o" size={9} color="#d97706" />
+                            <Text className="text-amber-600 dark:text-amber-400 text-[10px] font-bold ml-1">Pending</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text className="text-slate-500 text-xs">
                         Due: {new Date(item.due_date).toLocaleDateString()}
                       </Text>
@@ -932,11 +1115,19 @@ export default function LoansDebtsScreen() {
                       >
                         <FontAwesome name={item.reminderEnabled ? 'bell' : 'bell-slash'} size={14} color={item.reminderEnabled ? '#3b82f6' : '#94a3b8'} />
                       </TouchableOpacity>
+                      {/* Non-initiators (is_initiator === false) see a lock icon on linked loans */}
                       <TouchableOpacity
-                        onPress={() => openEditModal(item)}
-                        className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-xl justify-center items-center mr-2"
+                        onPress={() => isItemLinked && item.is_initiator === false
+                          ? Alert.alert('Cannot Edit', 'Only the user who created this loan link can propose term changes. Use the chat in Loan Details to discuss.')
+                          : openEditModal(item)
+                        }
+                        className={`w-10 h-10 ${isItemLinked && item.is_initiator === false ? 'bg-slate-100 dark:bg-slate-700' : 'bg-blue-50 dark:bg-blue-900/30'} rounded-xl justify-center items-center mr-2`}
                       >
-                        <FontAwesome name="edit" size={16} color="#3b82f6" />
+                        <FontAwesome
+                          name={isItemLinked && item.is_initiator === false ? 'lock' : 'edit'}
+                          size={16}
+                          color={isItemLinked && item.is_initiator === false ? '#94a3b8' : '#3b82f6'}
+                        />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => handleDeleteItem(item.id)}
@@ -994,7 +1185,7 @@ export default function LoansDebtsScreen() {
                     </View>
                   </View>
 
-                  {!isPaid && (
+                  {!isPaid && !isItemLinked && (
                     <View className="flex-row flex-wrap mt-4 gap-2">
                       <TouchableOpacity
                         onPress={() => initiatePayment(item, 'QUICK')}
@@ -1024,6 +1215,20 @@ export default function LoansDebtsScreen() {
                         <Text className="text-white text-center font-bold text-xs">{t('fullPaid')}</Text>
                       </TouchableOpacity>
                     </View>
+                  )}
+
+                  {/* Linked loans: payments must go through the two-party flow in the detail screen */}
+                  {!isPaid && isItemLinked && (
+                    <TouchableOpacity
+                      onPress={() => router.push(`/loan/${item.id}`)}
+                      className={`mt-4 flex-row items-center justify-center py-3 rounded-xl gap-2 ${activeTab === 'LENT' ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}
+                    >
+                      <FontAwesome name="exchange" size={13} color={activeTab === 'LENT' ? '#16a34a' : '#dc2626'} />
+                      <Text className={`font-bold text-xs ${activeTab === 'LENT' ? 'text-green-600' : 'text-red-600'}`}>
+                        Record Payment in Details
+                      </Text>
+                      <FontAwesome name="chevron-right" size={11} color={activeTab === 'LENT' ? '#16a34a' : '#dc2626'} />
+                    </TouchableOpacity>
                   )}
 
                   {isPaid && (
@@ -1153,6 +1358,7 @@ export default function LoansDebtsScreen() {
                   placeholder="Enter name"
                   placeholderTextColor="#94a3b8"
                   value={formData.personName}
+                  editable={canEditLinkedTerms}
                   onChangeText={(text) => {
                     setFormData({ ...formData, personName: text });
                     if (text.trim().length > 0) {
@@ -1185,6 +1391,46 @@ export default function LoansDebtsScreen() {
                 )}
               </View>
 
+              {/* Link by phone (add only) */}
+              {!editingItem && (
+                <View className="mb-4">
+                  <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">
+                    {activeTab === 'LENT' ? "Borrower's Phone (optional — to link)" : "Lender's Phone (optional — to link)"}
+                  </Text>
+                  <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 flex-row items-center border border-slate-200 dark:border-slate-700">
+                    <FontAwesome name="phone" size={14} color="#94a3b8" style={{ marginRight: 8 }} />
+                    <TextInput
+                      className="flex-1 text-slate-900 dark:text-white text-base h-14"
+                      placeholder="e.g. 0912345678"
+                      placeholderTextColor="#94a3b8"
+                      keyboardType="phone-pad"
+                      value={linkedPhone}
+                      onChangeText={setLinkedPhone}
+                    />
+                    {linkLookupState === 'searching' && (
+                      <Text className="text-slate-400 text-xs">Searching...</Text>
+                    )}
+                    {linkLookupState === 'found' && (
+                      <View className="flex-row items-center">
+                        <FontAwesome name="check-circle" size={14} color="#16a34a" />
+                        <Text className="text-green-600 text-xs font-bold ml-1">{linkLookupResult?.displayName}</Text>
+                      </View>
+                    )}
+                    {linkLookupState === 'not_found' && (
+                      <View className="flex-row items-center">
+                        <FontAwesome name="times-circle" size={14} color="#ef4444" />
+                        <Text className="text-red-500 text-xs ml-1">Not found</Text>
+                      </View>
+                    )}
+                  </View>
+                  {linkLookupState === 'found' && (
+                    <Text className="text-green-600 text-xs mt-1 ml-1">
+                      HisabTrack user found — a link request will be sent on save.
+                    </Text>
+                  )}
+                </View>
+              )}
+
               {/* Total Amount */}
               <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">Total Amount</Text>
               <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 mb-4">
@@ -1194,6 +1440,7 @@ export default function LoansDebtsScreen() {
                   placeholderTextColor="#94a3b8"
                   keyboardType="decimal-pad"
                   value={formData.amount}
+                  editable={canEditLinkedTerms}
                   onChangeText={(text) => setFormData({ ...formData, amount: text })}
                 />
               </View>
@@ -1207,6 +1454,7 @@ export default function LoansDebtsScreen() {
                   placeholderTextColor="#94a3b8"
                   keyboardType="decimal-pad"
                   value={formData.paidAmount}
+                  editable={canEditLinkedTerms}
                   onChangeText={(text) => setFormData({ ...formData, paidAmount: text })}
                 />
               </View>
@@ -1220,6 +1468,7 @@ export default function LoansDebtsScreen() {
                   placeholderTextColor="#94a3b8"
                   keyboardType="decimal-pad"
                   value={formData.interestRate}
+                  editable={canEditLinkedTerms}
                   onChangeText={(text) => setFormData({ ...formData, interestRate: text })}
                 />
               </View>
@@ -1231,6 +1480,7 @@ export default function LoansDebtsScreen() {
                   {createElement('input', {
                     type: 'date',
                     value: formData.dueDate,
+                    disabled: !canEditLinkedTerms,
                     onChange: (e: any) => {
                       if (e.target.value) {
                         setFormData({ ...formData, dueDate: e.target.value });
@@ -1267,6 +1517,7 @@ export default function LoansDebtsScreen() {
                         setShowDatePicker(true);
                       }
                     }}
+                    disabled={!canEditLinkedTerms}
                     className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 justify-center h-14 mb-4"
                   >
                     <Text className={`text-base ${formData.dueDate ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
@@ -1348,6 +1599,7 @@ export default function LoansDebtsScreen() {
                 </Text>
               </TouchableOpacity>
             </ScrollView>
+            <FloatingCalculator onUseAmount={(value) => setFormData({ ...formData, amount: value })} />
           </View>
         </View>
       </Modal>

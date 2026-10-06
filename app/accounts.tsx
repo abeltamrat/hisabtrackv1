@@ -17,13 +17,14 @@ import { useDispatch, useSelector } from 'react-redux';
 import { getDatabase } from '@/services/database';
 import { DraftTransactionService } from '@/services/DraftTransactionService';
 import SMSSyncOnboardingModal from '@/components/SMSSyncOnboardingModal';
+import ScreenInfoCard from '@/components/ScreenInfoCard';
 
 export default function Accounts() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const accounts = useSelector((state: RootState) => state.accounts.items);
   const transactions = useSelector((state: RootState) => state.transactions.items);
-  const { preferLocalLogos, formatCurrency } = useAppSettings();
+  const { currency, preferLocalLogos, formatCurrency, balancesHidden, setBalancesHidden } = useAppSettings();
   const [showAddModal, setShowAddModal] = useState(false);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -598,7 +599,7 @@ export default function Accounts() {
           name: newName,
           type: accountType,
           balance: balance,
-          currency: 'USD',
+          currency: accounts[0]?.currency || currency,
           is_locked: false,
           locked_amount: 0,
           account_number: accountNumber || undefined,
@@ -718,7 +719,8 @@ export default function Accounts() {
     try {
       const result = await SMSSyncService.syncAccountSMS(selectedSyncAccount, transactions, {
         historicalDays: ignore ? undefined : days,
-        ignorePrevious: ignore
+        ignorePrevious: ignore,
+        allAccounts: accounts,
       });
       LocalChangeEmitter.emit();
 
@@ -797,7 +799,8 @@ export default function Accounts() {
       const { SMSSyncService } = await import('@/services/SMSSyncService');
       const result = await SMSSyncService.syncAccountSMS(account, transactions, {
         historicalDays: 30,
-        ignorePrevious: false
+        ignorePrevious: false,
+        allAccounts: accounts,
       });
       LocalChangeEmitter.emit();
       loadDraftCounts();
@@ -852,7 +855,8 @@ export default function Accounts() {
           accountsChecked++;
           const res = await SMSSyncService.syncAccountSMS(account, transactions, {
             historicalDays: 30, // Scan last 30 days
-            ignorePrevious: false
+            ignorePrevious: false,
+            allAccounts: accounts,
           });
           totalNewDrafts += res.newDrafts;
         }
@@ -907,12 +911,20 @@ export default function Accounts() {
 
         {/* Total Balance */}
         <View className="bg-white/10 backdrop-blur-lg rounded-3xl p-6">
-          <View className="flex-row justify-between items-start">
-            <View>
-              <Text className="text-white/80 text-sm mb-2">Total Balance</Text>
-              <Text className="text-white text-4xl font-bold">{formatCurrency(getTotalBalance())}</Text>
-              <Text className="text-white/60 text-xs mt-2">{accounts.length} Accounts</Text>
+          <View className="items-center">
+            <Text className="text-white/80 text-sm mb-2 text-center">Total Balance</Text>
+            <View className="flex-row items-center justify-center">
+              <Text className="text-white text-4xl font-bold text-center">{balancesHidden ? '••••••' : formatCurrency(getTotalBalance())}</Text>
+            <TouchableOpacity
+              onPress={() => setBalancesHidden(!balancesHidden)}
+              accessibilityRole="button"
+              accessibilityLabel={balancesHidden ? 'Show balances' : 'Hide balances'}
+              className="w-10 h-10 bg-white/20 rounded-2xl justify-center items-center ml-3"
+            >
+              <FontAwesome name={balancesHidden ? 'eye-slash' : 'eye'} size={18} color="#fff" />
+            </TouchableOpacity>
             </View>
+            <Text className="text-white/60 text-xs mt-2 text-center">{accounts.length} Accounts</Text>
           </View>
         </View>
       </LinearGradient>
@@ -945,19 +957,16 @@ export default function Accounts() {
 
         {/* Accounts List */}
         {accounts.length === 0 ? (
-          <View className="bg-white dark:bg-slate-800 rounded-3xl p-8 items-center shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-            <FontAwesome name="credit-card" size={48} color="#cbd5e1" />
-            <Text className="text-slate-400 text-center mt-4 mb-2">No accounts yet</Text>
-            <Text className="text-slate-500 text-center text-sm mb-6">
-              Create your first account to start tracking your finances
-            </Text>
-            <TouchableOpacity
-              onPress={() => { resetForm(); setShowAddModal(true); }}
-              className="bg-emerald-500 px-6 py-3 rounded-xl"
-            >
-              <Text className="text-white font-bold">Add Account</Text>
-            </TouchableOpacity>
-          </View>
+          <ScreenInfoCard
+            icon="credit-card"
+            title="Add your first account"
+            description="Accounts keep balances and transactions organized across your banks, cash, cards, and mobile money."
+            suggestions={[
+              'Add each account with its current balance for a useful starting point.',
+              'Enable SMS sync on a bank account to detect transactions automatically.',
+              'Use the eye icon above whenever you want to hide balances in public.',
+            ]}
+          />
         ) : (
           accounts.map((account) => (
             <View
@@ -1013,7 +1022,9 @@ export default function Accounts() {
                         <FontAwesome name="trash" size={12} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
-                    <Text className="text-slate-900 dark:text-white font-bold text-xl">{formatCurrency(account.balance)}</Text>
+                    <Text className="text-slate-900 dark:text-white font-bold text-xl">
+                      {balancesHidden ? '••••••' : formatCurrency(account.balance)}
+                    </Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -1523,6 +1534,7 @@ export default function Accounts() {
       <SMSSyncOnboardingModal
         visible={showSmsOnboarding}
         account={smsOnboardingAccount}
+        allAccounts={accounts}
         onClose={() => {
           setShowSmsOnboarding(false);
           setSmsOnboardingAccount(null);

@@ -28,6 +28,7 @@ import { Category } from '@/context/TransactionContext';
 interface SMSSyncOnboardingModalProps {
   visible: boolean;
   account: Account | null;
+  allAccounts: Account[];
   onClose: () => void;
   onComplete: (savedCount: number) => void;
 }
@@ -441,6 +442,7 @@ function DraftCard({
 export default function SMSSyncOnboardingModal({
   visible,
   account,
+  allAccounts,
   onClose,
   onComplete,
 }: SMSSyncOnboardingModalProps) {
@@ -497,6 +499,7 @@ export default function SMSSyncOnboardingModal({
     try {
       const result = await SMSSyncService.syncAccountSMS(account, [], {
         historicalDays: selectedDays,
+        allAccounts,
       });
       SMSSyncService.clearSyncStatusListener();
 

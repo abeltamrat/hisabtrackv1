@@ -16,6 +16,7 @@ import { addTransaction, updateTransaction, fetchTransactions } from '@/store/sl
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { NotificationService } from '@/services/NotificationService';
 import { formatTagInput, parseTagInput } from '@/utils/tags';
+import FloatingCalculator from '@/components/FloatingCalculator';
 import { useDispatch, useSelector } from 'react-redux';
 
 const SpinnerPickerSheet = ({
@@ -180,6 +181,29 @@ export default function AddTransactionScreen() {
     if (!selectedCategory) {
       Alert.alert('No Category', 'Please select a category.');
       return;
+    }
+
+    // Soft guard: warn when a new expense exceeds the account's available
+    // (unlocked) balance. Never hard-block — records mirror real money moves.
+    if (!isEditing && type === 'EXPENSE') {
+      const sourceAccount = accounts.find((a: any) => a.id === selectedAccountId);
+      if (sourceAccount) {
+        const lockedAmount = sourceAccount.locked_amount ?? 0;
+        const available = (sourceAccount.balance ?? 0) - lockedAmount;
+        if (numericAmount > available) {
+          const proceed = await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              'Insufficient Balance',
+              `${sourceAccount.name} only has ${formatCurrency(Math.max(available, 0))} available${lockedAmount > 0 ? ` (${formatCurrency(lockedAmount)} is locked)` : ''}. Record this expense anyway?`,
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Record Anyway', onPress: () => resolve(true) },
+              ]
+            );
+          });
+          if (!proceed) return;
+        }
+      }
     }
 
     const transactionData = {
@@ -574,6 +598,7 @@ export default function AddTransactionScreen() {
           </View>
         </View>
       </ScrollView>
+      <FloatingCalculator onUseAmount={setAmount} />
     </KeyboardAvoidingView>
   );
 }

@@ -1,18 +1,24 @@
-import { IDatabase } from '@/types/database';
 import { Platform } from 'react-native';
+import { LedgerDatabase } from './ledger';
 import { WebDatabase } from './web';
-
-let database: IDatabase;
-
-if (Platform.OS === 'web') {
-  database = new WebDatabase();
-} else {
-  // Lazy load AndroidDatabase to avoid importing expo-sqlite on web
-  const { AndroidDatabase } = require('./android');
-  database = new AndroidDatabase();
+let database: LedgerDatabase | null = null;
+let currentScope = 'guest';
+function create(scope: string, legacy: boolean) {
+  const suffix = Array.from(scope).map(c => c.charCodeAt(0).toString(16)).join('');
+  const adapter = Platform.OS === 'web'
+    ? new WebDatabase(legacy ? 'finance-db' : `finance-${suffix}`)
+    : new (require('./android').AndroidDatabase)(legacy ? 'hisabtrack.db' : `hisabtrack-${suffix}.db`);
+  return new LedgerDatabase(adapter, scope);
 }
-
-export const getDatabase = async (): Promise<IDatabase> => {
+export async function setDatabaseScope(scope: string, legacy = false) {
+  if (database) { database.deactivate(); await database.drain(); }
+  currentScope = scope;
+  database = create(scope, legacy);
   await database.init();
-  return database;
-};
+}
+export async function getDatabase(): Promise<LedgerDatabase> {
+  if (!database) database = create(currentScope, false);
+  const selected = database;
+  await selected.init();
+  return selected;
+}

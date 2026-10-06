@@ -1,3 +1,4 @@
+import { periodicPayment, money } from '@/utils/finance';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -48,7 +49,7 @@ export default function AmortizationScreen() {
     const rVal = parseFloat(rate);
     const y = parseFloat(years);
 
-    if (isNaN(p) || isNaN(rVal) || isNaN(y) || p <= 0 || rVal < 0 || y <= 0) {
+    if (!Number.isFinite(p) || !Number.isFinite(rVal) || !Number.isFinite(y) || p <= 0 || rVal < 0 || y <= 0) {
       return;
     }
 
@@ -82,20 +83,21 @@ export default function AmortizationScreen() {
     const n = y * frequencyValue;
 
     // A = P * (r * (1+r)^n) / ((1+r)^n - 1)
-    const payment = (p * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    if (!Number.isInteger(n) || n < 1 || n > 12000) return;
+    const payment = periodicPayment(p, rVal, n, frequencyValue);
     const totalPayment = payment * n;
 
     // Generate Schedule
     let balance = p;
     for (let i = 1; i <= n; i++) {
-      const interest = balance * r;
-      const principalPayment = payment - interest;
-      balance -= principalPayment;
+      const interest = money(balance * r);
+      const principalPayment = i === n ? balance : Math.min(balance, money(payment - interest));
+      balance = money(balance - principalPayment);
       if (balance < 0) balance = 0; // Floating point correction
 
       schedule.push({
         period: i,
-        payment: payment,
+        payment: money(principalPayment + interest),
         principal: principalPayment,
         interest: interest,
         balance: balance
@@ -114,8 +116,8 @@ export default function AmortizationScreen() {
 
     setResult({
       paymentAmount: payment,
-      totalPayment,
-      totalInterest: totalPayment - p,
+      totalPayment: money(schedule.reduce((sum, row) => sum + row.payment, 0)),
+      totalInterest: money(schedule.reduce((sum, row) => sum + row.interest, 0)),
       paymentLabel: displayLabel,
       schedule
     });
