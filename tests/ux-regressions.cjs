@@ -344,6 +344,22 @@ test('financial advisor insights use the selected ledger currency', () => {
   cache.clear();
 });
 
+test('financial screens and notifications do not render dollar-only amounts', () => {
+  const files = [
+    'app/goals.tsx',
+    'app/loans.tsx',
+    'services/AppNotificationService.ts',
+    'services/NotificationService.ts',
+    'services/FinancialAdvisorService.ts',
+    'services/AIFinancialAssistant.ts',
+  ];
+  const offenders = files.flatMap(file => {
+    const source = fs.readFileSync(path.join(root, file), 'utf8');
+    return [...source.matchAll(/(?:\$\$\{|\$\s*\d)/g)].map(match => `${file}: ${match[0]}`);
+  });
+  assert.deepEqual(offenders, []);
+});
+
 test('no user-facing string uses "?" where an ellipsis or bullet belongs', () => {
   const offenders = [];
   const walk = dir => {

@@ -1104,7 +1104,7 @@ export default function LoansDebtsScreen() {
                         Due: {new Date(item.due_date).toLocaleDateString()}
                       </Text>
                       <Text className="text-slate-500 text-xs dark:text-slate-400">
-                        Est. Monthly: ${monthlyPayment.toFixed(2)}
+                        Est. Monthly: {formatCurrency(monthlyPayment)}
                       </Text>
                     </View>
                     <View className="flex-row">

@@ -742,7 +742,7 @@ export class AIFinancialAssistant {
             : 'Large expenses: no unusual high-value expenses detected.';
 
         const smallTxLine = snapshot.smallPurchaseCount > 0
-            ? `Small purchases (<= $20): ${snapshot.smallPurchaseCount} totaling ${this.formatMoney(snapshot.smallPurchaseTotal)}.`
+            ? `Small purchases (up to ${this.formatMoney(20)}): ${snapshot.smallPurchaseCount} totaling ${this.formatMoney(snapshot.smallPurchaseTotal)}.`
             : 'Small purchases: no significant micro-spending pattern detected.';
 
         return [

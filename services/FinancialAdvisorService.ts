@@ -570,7 +570,7 @@ export class FinancialAdvisorService {
     const avgDailyTransactions = this.getAvgDailyTransactions(expenses);
 
     if (avgDailyTransactions > 5) {
-      const potentialSavings = expenses.length * 2; // Assume $2 per small transaction
+      const potentialSavings = expenses.length * 2; // Assume two currency units per small transaction
       insights.push({
         id: 'frequent-spending',
         type: 'suggestion',
@@ -744,7 +744,7 @@ export class FinancialAdvisorService {
           id: 'savings-opportunity',
           type: 'suggestion',
           title: '💡 Savings Opportunity',
-          description: `Save an extra ${additionalSavings.toFixed(0)} to reach the recommended 20% savings rate.`,
+          description: `Save an extra ${this.formatMoney(additionalSavings)} to reach the recommended 20% savings rate.`,
           icon: 'lightbulb-o',
           color: '#eab308',
           priority: 65,
@@ -780,7 +780,7 @@ export class FinancialAdvisorService {
 
   private static analyzeSmallFrequentPurchases(transactions: Transaction[]): FinancialInsight[] {
     const insights: FinancialInsight[] = [];
-    const smallPurchases = transactions.filter(t => t.type === 'EXPENSE' && t.amount < 20); // < $20
+    const smallPurchases = transactions.filter(t => t.type === 'EXPENSE' && t.amount < 20);
 
     if (smallPurchases.length > 5) {
       const total = sumMoney(smallPurchases.map(t => t.amount));

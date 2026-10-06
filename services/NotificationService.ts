@@ -251,7 +251,8 @@ export class NotificationService {
     amount: number,
     type: 'INCOME' | 'EXPENSE' | 'TRANSFER',
     triggerDate: Date,
-    frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'
+    frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY',
+    currency = 'ETB'
   ): Promise<string | null> {
     if (Platform.OS === 'web') return null;
 
@@ -274,11 +275,12 @@ export class NotificationService {
         color: '#6366f1',
         channelId: 'reminders',
         frequency,
+        currency,
       });
 
       const content: Notifications.NotificationContentInput = {
         title: `${type === 'INCOME' ? 'Income' : type === 'EXPENSE' ? 'Expense' : 'Transfer'} Reminder`,
-        body: `${title}: ${type === 'INCOME' ? '+' : type === 'EXPENSE' ? '-' : '->'}$${amount.toFixed(2)}`,
+        body: `${title}: ${type === 'INCOME' ? '+' : type === 'EXPENSE' ? '-' : '->'}${currency} ${amount.toFixed(2)}`,
         sound: true,
         categoryIdentifier: 'RECURRING_TRANSACTION',
         data: metadata,
@@ -401,7 +403,8 @@ export class NotificationService {
         Number(data.amount || 0),
         (data.type as 'INCOME' | 'EXPENSE' | 'TRANSFER') || 'EXPENSE',
         snoozeTime,
-        'DAILY'
+        'DAILY',
+        typeof data.currency === 'string' ? data.currency : 'ETB'
       );
     }
 
@@ -477,7 +480,7 @@ export class NotificationService {
     }
   }
 
-  static async showSMSDraftNotification(draft: Pick<DraftTransaction, 'id' | 'type' | 'amount' | 'description' | 'category' | 'is_transfer'>): Promise<void> {
+  static async showSMSDraftNotification(draft: Pick<DraftTransaction, 'id' | 'type' | 'amount' | 'description' | 'category' | 'is_transfer'>, currency = 'ETB'): Promise<void> {
     if (Platform.OS !== 'android') return;
     try {
       const hasPermission = await this.requestPermissions();
@@ -486,7 +489,7 @@ export class NotificationService {
       const isIncome = draft.type === 'INCOME';
       const prefix = draft.is_transfer ? '⇄' : isIncome ? '+' : '-';
       const verb = draft.is_transfer ? 'Transfer' : isIncome ? 'Received' : 'Spent';
-      const title = `${prefix} ETB ${draft.amount.toLocaleString()} ${verb}`;
+      const title = `${prefix} ${currency} ${draft.amount.toLocaleString()} ${verb}`;
       const body = draft.description || draft.category || 'Tap to review';
 
       const content: Notifications.NotificationContentInput = {

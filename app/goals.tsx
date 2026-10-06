@@ -263,13 +263,13 @@ export default function FinancialGoalsScreen() {
                   <View>
                     <Text className="text-slate-500 text-xs mb-1">Saved</Text>
                     <Text className="text-slate-900 dark:text-white font-bold text-lg">
-                      ${goal.currentAmount.toFixed(2)}
+                      {formatCurrency(goal.currentAmount)}
                     </Text>
                   </View>
                   <View className="items-end">
                     <Text className="text-slate-500 text-xs mb-1">Target</Text>
                     <Text className="text-slate-900 dark:text-white font-bold text-lg">
-                      ${goal.targetAmount.toFixed(2)}
+                      {formatCurrency(goal.targetAmount)}
                     </Text>
                   </View>
                 </View>

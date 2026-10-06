@@ -186,6 +186,7 @@ export class AppNotificationService {
       const transactions = await db.getTransactions();
       const loans = await db.getLoans();
       const budgets = await db.getBudgets();
+      const accounts = await db.getAccounts();
 
       // 2. Fetch Recurring (from Storage)
       let recurring: RecurringTransaction[] = [];
@@ -199,7 +200,7 @@ export class AppNotificationService {
       }
       
       // 3. Generate Insights
-      await this.generateSmartNotifications(transactions, loans, recurring, budgets);
+      await this.generateSmartNotifications(transactions, loans, recurring, budgets, accounts[0]?.currency || 'ETB');
       
     } catch (error) {
       console.error('Error in checkAll:', error);
@@ -213,7 +214,8 @@ export class AppNotificationService {
     transactions: Transaction[], 
     loans: Loan[] = [], 
     recurring: RecurringTransaction[] = [],
-    budgets: Budget[] = []
+    budgets: Budget[] = [],
+    currency = 'ETB'
   ): Promise<void> {
     if (transactions.length === 0 && loans.length === 0 && recurring.length === 0) return;
 
@@ -224,6 +226,7 @@ export class AppNotificationService {
     const thisYear = today.getFullYear();
     const daysInMonth = new Date(thisYear, thisMonth + 1, 0).getDate();
     const dayOfMonth = today.getDate();
+    const formatMoney = (amount: number) => `${currency} ${amount.toFixed(2)}`;
 
     // -- Transaction Metrics --
     const thisMonthTransactions = transactions.filter(t => {
@@ -308,7 +311,7 @@ export class AppNotificationService {
        if (daysUntil <= 3) {
           notifications.push({
              title: '📅 Upcoming Bill',
-             message: `${rec.name} ($${rec.amount}) is due in ${daysUntil} days.`,
+             message: `${rec.name} (${formatMoney(rec.amount)}) is due in ${daysUntil} days.`,
              type: 'info',
              icon: 'calendar',
              color: '#8b5cf6',
@@ -331,7 +334,7 @@ export class AppNotificationService {
        if (group.length > 1) {
           notifications.push({
              title: '🔍 Duplicate Subscription?',
-             message: `You have ${group.length} recurring payments for $${group[0].amount} in ${group[0].category}. Check if they are duplicates.`,
+             message: `You have ${group.length} recurring payments for ${formatMoney(group[0].amount)} in ${group[0].category}. Check if they are duplicates.`,
              type: 'warning',
              icon: 'search',
              color: '#f97316',
@@ -346,7 +349,7 @@ export class AppNotificationService {
     const catSpending: Record<string, number> = {};
     thisMonthTransactions.filter(t => t.type === 'EXPENSE').forEach(t => {
        const cat = t.category || 'Uncategorized';
-       catSpending[cat] = (catSpending[cat] || 0) + t.amount;
+       catSpending[cat] = sumMoney([catSpending[cat] || 0, t.amount]);
     });
 
     budgets
@@ -377,7 +380,7 @@ export class AppNotificationService {
        if (dayOfMonth > 10 && projected > limit && percent < 1.0) { // Only forecast after 10 days
           notifications.push({
              title: `📈 Budget Forecast: ${budget.category}`,
-             message: `At this rate, you'll exceed your budget by $${(projected - limit).toFixed(0)}.`,
+             message: `At this rate, you'll exceed your budget by ${formatMoney(projected - limit)}.`,
              type: 'tip',
              icon: 'line-chart',
              color: '#6366f1',

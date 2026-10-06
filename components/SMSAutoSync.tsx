@@ -23,9 +23,12 @@ export const SMSAutoSync: React.FC = () => {
   const hasSmsAccounts = useSelector((state: RootState) =>
     state.accounts.items.some(a => !!a.sms_number)
   );
+  const ledgerCurrency = useSelector((state: RootState) => state.accounts.items[0]?.currency || 'ETB');
 
   const hasSmsRef = useRef(hasSmsAccounts);
+  const currencyRef = useRef(ledgerCurrency);
   useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
+  useEffect(() => { currencyRef.current = ledgerCurrency; }, [ledgerCurrency]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -48,7 +51,7 @@ export const SMSAutoSync: React.FC = () => {
         const result = await SMSSyncService.syncAllAccountsBackground();
         const pending = result.drafts.filter(d => d.status === 'PENDING');
         for (const draft of pending) {
-          await NotificationService.showSMSDraftNotification(draft);
+          await NotificationService.showSMSDraftNotification(draft, currencyRef.current);
         }
       } catch (err) {
         console.error('[SMSAutoSync] Auto-sync failed:', err);
