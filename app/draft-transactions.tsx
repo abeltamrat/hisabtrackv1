@@ -15,7 +15,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 import { parseTagInput } from '@/utils/tags';
 

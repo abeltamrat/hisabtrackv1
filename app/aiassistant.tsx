@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,6 +8,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import AIFinancialAssistant, { AssistantApiKeys, AssistantProvider, ChatMessage, FinancialData } from '@/services/AIFinancialAssistant';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
+import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 
 export default function AIAssistantScreen() {
     const router = useRouter();
@@ -24,24 +26,28 @@ export default function AIAssistantScreen() {
     const loans = useSelector((state: RootState) => state.loans.items);
     const accounts = useSelector((state: RootState) => state.accounts.items);
 
-    // Calculate financial summary
-    const financialData: FinancialData = {
-        totalIncome: transactions.filter(t => t.type === 'INCOME').reduce((sum, t) => sum + t.amount, 0),
-        totalExpense: transactions.filter(t => t.type === 'EXPENSE').reduce((sum, t) => sum + t.amount, 0),
-        balance: transactions.filter(t => t.type === 'INCOME').reduce((sum, t) => sum + t.amount, 0) -
-            transactions.filter(t => t.type === 'EXPENSE').reduce((sum, t) => sum + t.amount, 0),
-        transactions,
-        budgets,
-        loans,
-        accounts,
-        savingsRate: 0,
-        monthlyAverage: 0
-    };
-
-    // Calculate savings rate
-    if (financialData.totalIncome > 0) {
-        financialData.savingsRate = (financialData.balance / financialData.totalIncome) * 100;
-    }
+    // Totals must use the same operating/financing split as the dashboard and
+    // reports: a raw sum over every INCOME row counts borrowed principal as
+    // earnings and lending as spending, which made the assistant contradict
+    // every other screen. Minor-unit sums keep it penny-exact.
+    const financialData: FinancialData = useMemo(() => {
+        const totalIncome = sumMoney(transactions.map(operatingIncome));
+        const totalExpense = sumMoney(transactions.map(operatingExpense));
+        const balance = sumMoney([totalIncome, -totalExpense]);
+        return {
+            totalIncome,
+            totalExpense,
+            balance,
+            transactions,
+            budgets,
+            loans,
+            accounts,
+            // The ledger is single-currency; the assistant must not render "$".
+            currency: accounts[0]?.currency,
+            savingsRate: totalIncome > 0 ? (balance / totalIncome) * 100 : 0,
+            monthlyAverage: 0,
+        };
+    }, [transactions, budgets, loans, accounts]);
 
     const providerKeys: AssistantApiKeys = {
         geminiApiKey: geminiApiKey?.trim(),

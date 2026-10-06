@@ -12,7 +12,8 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, InteractionManager, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, FlatList, Image, InteractionManager, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Alert } from '@/utils/alert';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
 import { useDispatch, useSelector } from 'react-redux';

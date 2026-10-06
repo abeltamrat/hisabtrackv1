@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try { await AuthService.signOut(); } catch (e) { setLoading(false); throw e; }
   };
   return <AuthContext.Provider value={{ user, loading, signOut, isAuthenticated: !!user }}>
-    {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /><Text>Opening your data?</Text></View>
+    {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /><Text>Opening your data…</Text></View>
       : error ? <View style={{ flex: 1, padding: 24 }}><Text>{error}</Text><Text>Close and reopen the app to retry. Your stored data has been preserved.</Text></View>
       : <React.Fragment key={user?.uid || 'guest'}>{children}</React.Fragment>}
   </AuthContext.Provider>;

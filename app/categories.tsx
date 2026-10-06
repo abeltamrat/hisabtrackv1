@@ -5,18 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Animated,
-  Modal,
-  PanResponder,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  useColorScheme,
-} from 'react-native';
+import { Animated, Modal, PanResponder, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useSelector } from 'react-redux';
 import { Category, useTransactions } from '../context/TransactionContext';
 

@@ -8,7 +8,8 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Alert, Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 import { UpdateService, UpdateInfo } from '@/services/UpdateService';
 import { AppDispatch, RootState } from '@/store';
@@ -156,33 +157,18 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const handleLogout = async () => {
     console.log('Logout button clicked');
 
-    // Use window.confirm for web, Alert for native
-    const confirmed = Platform.OS === 'web'
-      ? (window as any).confirm('Are you sure you want to logout?')
-      : await new Promise((resolve) => {
-        Alert.alert(
-          'Logout',
-          'Are you sure you want to logout?',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => {
-                console.log('Logout cancelled');
-                resolve(false);
-              },
-            },
-            {
-              text: 'Logout',
-              style: 'destructive',
-              onPress: () => {
-                console.log('User confirmed logout');
-                resolve(true);
-              },
-            },
-          ]
-        );
-      });
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Logout',
+        'Are you sure you want to logout?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Logout', style: 'destructive', onPress: () => resolve(true) },
+        ],
+        // Dismissing the dialog must settle the promise, or the handler hangs.
+        { onDismiss: () => resolve(false) }
+      );
+    });
 
     if (!confirmed) {
       console.log('Logout cancelled by user');
@@ -297,16 +283,10 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
         setUpdateInfo(info);
         onClose(); // Close drawer to show update modal
       } else {
-        const message = 'You are using the latest version!';
-        Platform.OS === 'web'
-          ? window.alert(message)
-          : Alert.alert('Up to Date', message);
+        Alert.alert('Up to Date', 'You are using the latest version!');
       }
     } catch (error) {
-      const message = 'Failed to check for updates. Please try again later.';
-      Platform.OS === 'web'
-        ? window.alert(message)
-        : Alert.alert('Error', message);
+      Alert.alert('Error', 'Failed to check for updates. Please try again later.');
     } finally {
       setIsCheckingUpdate(false);
     }

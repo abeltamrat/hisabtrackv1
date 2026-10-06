@@ -7,7 +7,8 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Alert } from '@/utils/alert';
 
 import { AppDispatch } from '@/store';
 import BudgetService from '@/services/BudgetService';

@@ -1,4 +1,4 @@
-# HisabTrack remediation ? 6 October 2026
+# HisabTrack remediation — 6 October 2026
 
 The findings in PROJECT_AUDIT_2026-10-05.md describe the pre-fix working tree. This document records implemented changes and remaining release work. Existing unrelated edits were preserved. No Firebase deployment, account deletion, production-data mutation, or release publication was performed.
 

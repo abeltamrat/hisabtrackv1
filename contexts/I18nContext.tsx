@@ -83,6 +83,12 @@ const EN: LanguageDictionary = {
   currency: 'Currency',
   language: 'Language',
   fontSize: 'Font Size',
+  netBalance: 'Net Balance',
+  savingsRateLabel: 'Savings Rate',
+  totalPrincipal: 'Total Principal',
+  totalRemaining: 'Total Remaining',
+  paymentProgress: 'Payment Progress',
+  selectCurrency: 'Select Currency',
 };
 
 const ES: LanguageDictionary = {
@@ -165,6 +171,12 @@ const ES: LanguageDictionary = {
   currency: 'Moneda',
   language: 'Idioma',
   fontSize: 'Tamaño de fuente',
+  netBalance: 'Balance neto',
+  savingsRateLabel: 'Tasa de ahorro',
+  totalPrincipal: 'Capital total',
+  totalRemaining: 'Total restante',
+  paymentProgress: 'Progreso del pago',
+  selectCurrency: 'Seleccionar moneda',
 };
 
 const AM: LanguageDictionary = {
@@ -247,6 +259,12 @@ const AM: LanguageDictionary = {
   currency: 'ገንዘብ አይነት',
   language: 'ቋንቋ',
   fontSize: 'የፊደል መጠን',
+  netBalance: 'የተጣራ ሒሳብ',
+  savingsRateLabel: 'የቁጠባ መጠን',
+  totalPrincipal: 'ጠቅላላ ዋና ገንዘብ',
+  totalRemaining: 'ጠቅላላ ቀሪ',
+  paymentProgress: 'የክፍያ ሂደት',
+  selectCurrency: 'ገንዘብ አይነት ይምረጡ',
 };
 
 const OM: LanguageDictionary = {
@@ -329,6 +347,12 @@ const OM: LanguageDictionary = {
   currency: 'Maallaqa',
   language: 'Afaan',
   fontSize: 'Hammamta qubee',
+  netBalance: 'Herrega qulqulluu',
+  savingsRateLabel: 'Reeshoo qusannaa',
+  totalPrincipal: 'Qarshii bu’uuraa walii',
+  totalRemaining: 'Hafe walii',
+  paymentProgress: 'Deemsa kaffaltii',
+  selectCurrency: 'Maallaqa filadhu',
 };
 
 const TI: LanguageDictionary = {
@@ -411,6 +435,12 @@ const TI: LanguageDictionary = {
   currency: 'ምንዛሬ',
   language: 'ቋንቋ',
   fontSize: 'ዓቐን ፊደል',
+  netBalance: 'ጽሩይ ሚዛን',
+  savingsRateLabel: 'መጠን ቁጠባ',
+  totalPrincipal: 'ጠቕላላ ቀንዲ ገንዘብ',
+  totalRemaining: 'ጠቕላላ ተረፍ',
+  paymentProgress: 'ከይዲ ክፍሊት',
+  selectCurrency: 'ምንዛሬ ምረጽ',
 };
 
 const dictionaries: Record<string, LanguageDictionary> = {
@@ -431,7 +461,15 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const { language } = useAppSettings();
   const dict = dictionaries[language] || dictionaries.en;
 
-  const t = (key: string) => dict[key] ?? dictionaries.en[key] ?? key;
+  // A missing key previously reached the screen as its own identifier (users saw
+  // "totalPrincipal"). Returning the key is still the safest production fallback,
+  // but it must be loud in development so it is caught before release.
+  const t = (key: string) => {
+    const translated = dict[key] ?? dictionaries.en[key];
+    if (translated !== undefined) return translated;
+    if (__DEV__) console.warn(`[i18n] Missing translation key "${key}" — the raw key will be shown.`);
+    return key;
+  };
 
   const value = useMemo(() => ({ t }), [dict]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

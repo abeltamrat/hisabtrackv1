@@ -1,6 +1,7 @@
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
-import { Alert, Linking, Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
+import { Alert } from '@/utils/alert';
 
 const DEFAULT_UPDATE_JSON_URL = 'https://www.hisab.nonstopplc.com/update.json';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
@@ -19,6 +20,17 @@ interface BinaryUpdateManifest {
   iosDownloadUrl?: string;
   forceUpdate?: boolean;
   releaseNotes?: string;
+  /**
+   * Lowercase hex SHA-256 of the Android APK. Required: the app holds
+   * REQUEST_INSTALL_PACKAGES, so an unverified package must never reach the
+   * installer. HTTPS alone does not help against a compromised or misconfigured
+   * download host, or a device trusting a user-installed CA.
+   */
+  androidSha256?: string;
+  sha256?: string;
+  /** Expected APK size in bytes. Checked before hashing to fail fast. */
+  androidSize?: number;
+  size?: number;
 }
 
 type ExpoUpdatesModule = {
@@ -74,6 +86,9 @@ export interface UpdateInfo {
   currentVersion?: string;
   currentBuildNumber?: string;
   channel?: string | null;
+  /** Expected APK digest, verified before the installer is opened. */
+  expectedSha256?: string;
+  expectedSize?: number;
 }
 
 export interface UpdateInstallProgress {
@@ -165,6 +180,65 @@ export const UpdateService = {
     }
 
     return data.downloadUrl;
+  },
+
+  /** Lowercase hex digest the manifest promises for this platform's package. */
+  getExpectedSha256(data: BinaryUpdateManifest): string | undefined {
+    const value = (Platform.OS === 'android' ? data.androidSha256 ?? data.sha256 : data.sha256)?.trim().toLowerCase();
+    return value && /^[0-9a-f]{64}$/.test(value) ? value : undefined;
+  },
+
+  getExpectedSize(data: BinaryUpdateManifest): number | undefined {
+    const value = Platform.OS === 'android' ? data.androidSize ?? data.size : data.size;
+    return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+  },
+
+  toHex(buffer: ArrayBuffer): string {
+    return Array.from(new Uint8Array(buffer)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  },
+
+  /**
+   * Hash the downloaded package and compare it with the manifest.
+   *
+   * Android refuses an update signed by a different key, but that only protects
+   * the upgrade path for this exact package name — a download URL pointing at
+   * some other package would install as a brand new app. Verifying the digest
+   * the publisher committed to closes that, and also catches a truncated or
+   * tampered download before the installer ever sees it.
+   */
+  async verifyDownloadedPackage(fileUri: string, expected: { sha256?: string; size?: number }) {
+    if (!expected.sha256) {
+      throw new Error('This update is missing its SHA-256 checksum, so it cannot be verified. Update was not installed.');
+    }
+
+    const { File } = require('expo-file-system') as {
+      File: new (uri: string) => {
+        exists: boolean;
+        size: number;
+        bytes(): Promise<Uint8Array<ArrayBuffer>>;
+        delete(): void;
+      };
+    };
+    const Crypto = require('expo-crypto') as {
+      digest(algorithm: string, data: BufferSource): Promise<ArrayBuffer>;
+      CryptoDigestAlgorithm: Record<string, string>;
+    };
+
+    const file = new File(fileUri);
+    if (!file.exists) throw new Error('The downloaded update could not be read for verification.');
+
+    // Cheap check first: a size mismatch means there is no point hashing.
+    if (expected.size !== undefined && file.size !== expected.size) {
+      file.delete();
+      throw new Error('The downloaded update is the wrong size and was discarded. Please try again.');
+    }
+
+    const actual = this.toHex(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, await file.bytes()));
+    if (actual !== expected.sha256) {
+      // Never leave an unverified APK on disk where a later run might use it.
+      file.delete();
+      throw new Error('The downloaded update failed its integrity check and was discarded. It was not installed.');
+    }
   },
 
   getBinaryLatestBuild(data: BinaryUpdateManifest): string | number | undefined {
@@ -261,6 +335,8 @@ export const UpdateService = {
         downloadUrl,
         forceUpdate: Boolean(data.forceUpdate || isRequired),
         releaseNotes: data.releaseNotes,
+        expectedSha256: this.getExpectedSha256(data),
+        expectedSize: this.getExpectedSize(data),
         updateType: 'binary',
         currentVersion,
         currentBuildNumber,
@@ -414,6 +490,18 @@ export const UpdateService = {
     if (!result?.uri) {
       throw new Error('The APK download did not finish correctly.');
     }
+
+    onProgress?.({
+      phase: 'installing',
+      message: 'Verifying the update package...',
+      progress: 1,
+    });
+
+    // Fails closed: nothing reaches the installer without a matching digest.
+    await this.verifyDownloadedPackage(result.uri, {
+      sha256: updateInfo.expectedSha256,
+      size: updateInfo.expectedSize,
+    });
 
     onProgress?.({
       phase: 'installing',

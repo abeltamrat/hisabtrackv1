@@ -14,7 +14,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { createElement, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, ScrollView, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, Modal, Platform, ScrollView, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 
 type ExportFormat = 'pdf' | 'excel';

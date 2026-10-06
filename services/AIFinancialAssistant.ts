@@ -12,6 +12,8 @@ export interface FinancialData {
     savingsRate?: number;
     topExpenseCategory?: string;
     monthlyAverage?: number;
+    /** Ledger currency code. Falls back to the first account's currency. */
+    currency?: string;
 }
 
 export interface ChatMessage {
@@ -176,6 +178,7 @@ export class AIFinancialAssistant {
     }
 
     private static getLocalChatFallback(userMessage: string, data: FinancialData): string {
+        this.useCurrency(data);
         const snapshot = this.buildLocalSnapshot(data);
         const intent = this.detectLocalIntent(userMessage);
 
@@ -245,9 +248,21 @@ export class AIFinancialAssistant {
         );
     }
 
+    /**
+     * The ledger enforces a single currency across every account, so there is
+     * exactly one correct code at any time and tracking it here avoids
+     * threading it through every private snapshot helper. Amounts used to be
+     * rendered with a hardcoded "$" while the ledger was in ETB.
+     */
+    private static currencyCode = 'ETB';
+
+    private static useCurrency(data: Pick<FinancialData, 'currency' | 'accounts'>) {
+        this.currencyCode = data.currency || data.accounts?.[0]?.currency || 'ETB';
+    }
+
     private static formatMoney(amount: number): string {
         const sign = amount < 0 ? '-' : '';
-        return `${sign}$${Math.abs(amount).toFixed(2)}`;
+        return `${sign}${this.currencyCode} ${Math.abs(amount).toFixed(2)}`;
     }
 
     private static formatPercent(value: number): string {
@@ -280,6 +295,7 @@ export class AIFinancialAssistant {
     }
 
     private static buildLocalSnapshot(data: FinancialData): LocalFinanceSnapshot {
+        this.useCurrency(data);
         const transactions = operatingTransactions(Array.isArray(data.transactions) ? data.transactions : []);
         const budgets = Array.isArray(data.budgets) ? data.budgets : [];
         const loans = Array.isArray(data.loans) ? data.loans : [];
@@ -1183,6 +1199,7 @@ export class AIFinancialAssistant {
      * Generate financial context for the AI
      */
     private static generateFinancialContext(data: FinancialData): string {
+        this.useCurrency(data);
         const savingsRate = data.savingsRate || 0;
         const monthlyIncome = data.totalIncome;
         const monthlyExpense = data.totalExpense;
@@ -1198,21 +1215,22 @@ export class AIFinancialAssistant {
         const topCategories = Object.entries(categoryBreakdown)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 5)
-            .map(([cat, amount]) => `${cat}: $${amount.toFixed(2)}`)
+            .map(([cat, amount]) => `${cat}: ${this.formatMoney(amount)}`)
             .join(', ');
 
         return `
 Financial Overview:
-- Total Income: $${monthlyIncome.toFixed(2)}
-- Total Expenses: $${monthlyExpense.toFixed(2)}
-- Operating surplus: $${data.balance.toFixed(2)}
+- Reporting currency: ${this.currencyCode} (report every amount in ${this.currencyCode}; never convert or substitute another currency symbol)
+- Total Income: ${this.formatMoney(monthlyIncome)}
+- Total Expenses: ${this.formatMoney(monthlyExpense)}
+- Operating surplus: ${this.formatMoney(data.balance)}
 - Savings Rate: ${savingsRate.toFixed(1)}%
 - Number of Transactions: ${data.transactions.length}
 - Active Budgets: ${data.budgets.length}
 - Active Loans: ${data.loans.length}
 - Bank Accounts: ${data.accounts.length}
 - Top Expense Categories: ${topCategories || 'None'}
-- Monthly Average Expense: $${(data.monthlyAverage || 0).toFixed(2)}
+- Monthly Average Expense: ${this.formatMoney(data.monthlyAverage || 0)}
     `.trim();
     }
 
@@ -1475,6 +1493,7 @@ Keep it practical and under 150 words.`;
      * Fallback analysis when AI is unavailable
      */
     private static getFallbackAnalysis(data: FinancialData): string {
+        this.useCurrency(data);
         return this.buildLocalHealthResponse(this.buildLocalSnapshot(data));
 
         const savingsRate = data.savingsRate || 0;
@@ -1487,7 +1506,7 @@ Keep it practical and under 150 words.`;
 
 Based on your current data:
 - You're ${savingsRate >= 20 ? 'doing great' : 'making progress'} with a ${savingsRate.toFixed(1)}% savings rate
-- Your balance is $${data.balance.toFixed(2)}
+- Your balance is ${this.formatMoney(data.balance)}
 
 **Recommendations:**
 1. ${savingsRate < 20 ? 'Try to increase your savings rate to at least 20%' : 'Maintain your excellent savings habits'}
@@ -1502,6 +1521,7 @@ Keep up the good work! 💪`;
      * Fallback budget advice
      */
     private static getFallbackBudgetAdvice(data: FinancialData): string {
+        this.useCurrency(data);
         const snapshot = this.buildLocalSnapshot(data);
         if (snapshot.noData) {
             return this.buildNoDataResponse();

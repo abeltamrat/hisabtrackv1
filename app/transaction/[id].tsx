@@ -7,7 +7,8 @@ import { FontAwesome } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
-import { Alert, Linking, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 
 export default function TransactionDetail() {

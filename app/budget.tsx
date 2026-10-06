@@ -11,7 +11,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, ScrollView, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { Platform, ScrollView, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 
 import { useDispatch, useSelector } from 'react-redux';
 

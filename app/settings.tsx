@@ -26,7 +26,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -1169,7 +1170,7 @@ export default function SettingsScreen() {
           <View className="space-y-4">
             {/* Currency */}
             <View>
-              <Text className={`text-slate-700 dark:text-slate-300 font-bold mb-2 ${fieldLabelClass}`}>{t('currency') || 'App Currency'}</Text>
+              <Text className={`text-slate-700 dark:text-slate-300 font-bold mb-2 ${fieldLabelClass}`}>{t('currency')}</Text>
               <TouchableOpacity
                 onPress={() => setShowCurrencyModal(true)}
                 className={`bg-slate-50 dark:bg-slate-900 ${isVerySmallFont ? 'p-3' : 'p-4'} rounded-xl border-2 border-slate-200 dark:border-slate-700`}
@@ -1185,7 +1186,7 @@ export default function SettingsScreen() {
 
             {/* Language */}
             <View>
-              <Text className={`text-slate-700 dark:text-slate-300 font-bold mb-2 ${fieldLabelClass}`}>{t('language') || 'Language'}</Text>
+              <Text className={`text-slate-700 dark:text-slate-300 font-bold mb-2 ${fieldLabelClass}`}>{t('language')}</Text>
               <View className="flex-row flex-wrap">
                 {languageOptions.map((opt) => (
                   <TouchableOpacity
@@ -1209,7 +1210,7 @@ export default function SettingsScreen() {
 
             {/* Font Size */}
             <View>
-              <Text className={`text-slate-700 dark:text-slate-300 font-bold mb-2 ${fieldLabelClass}`}>{t('fontSize') || 'Font Size'}</Text>
+              <Text className={`text-slate-700 dark:text-slate-300 font-bold mb-2 ${fieldLabelClass}`}>{t('fontSize')}</Text>
               <View className="flex-row flex-wrap">
                 {fontSizeOptions.map((size) => (
                   <TouchableOpacity
@@ -2102,7 +2103,7 @@ export default function SettingsScreen() {
         <View className="flex-1 bg-black/50 justify-center items-center px-6">
           <View className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-sm max-h-[70%]">
             <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-slate-900 dark:text-white text-xl font-bold">{t('currency') || 'Select Currency'}</Text>
+              <Text className="text-slate-900 dark:text-white text-xl font-bold">{t('selectCurrency')}</Text>
               <TouchableOpacity onPress={() => setShowCurrencyModal(false)}>
                 <FontAwesome name="times" size={24} color="#64748b" />
               </TouchableOpacity>

@@ -1,6 +1,6 @@
 import { useSelector } from 'react-redux';
 import type { RootState } from '@/store';
-import { Alert } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { sessionLocalStorage, getSessionScope } from '@/services/SessionStorage';
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';

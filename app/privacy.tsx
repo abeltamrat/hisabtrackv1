@@ -121,7 +121,7 @@ export default function PrivacyPolicyScreen() {
                             text: "HisabTrack uses the following third-party services:"
                         },
                         {
-                            text: "• Firebase (Google): For authentication and cloud storage\n• Expo: For app updates and push notifications\n? Optional AI providers: Gemini, Groq, OpenRouter and Puter receive the financial context or SMS text required by enabled AI features after you enable AI sharing.\n\nThese services have their own privacy policies, and we encourage you to review them."
+                            text: "• Firebase (Google): For authentication and cloud storage\n• Expo: For app updates and push notifications\n• Optional AI providers: Gemini, Groq, OpenRouter and Puter receive the financial context or SMS text required by enabled AI features after you enable AI sharing.\n\nThese services have their own privacy policies, and we encourage you to review them."
                         }
                     ]}
                 />

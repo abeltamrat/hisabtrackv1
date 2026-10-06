@@ -24,7 +24,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { createElement, useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 import { NotificationService } from '@/services/NotificationService';
 
@@ -478,19 +479,19 @@ export default function LoansDebtsScreen() {
 
     if (!formData.accountId) {
       console.log('[Loans] Validation failed: No account selected');
-      Platform.OS === 'web' ? window.alert('Please select an account') : Alert.alert('Error', 'Please select an account');
+      Alert.alert('Error', 'Please select an account');
       return;
     }
 
     if (!formData.amount || parseFloat(formData.amount) <= 0 || isNaN(parseFloat(formData.amount))) {
       console.log('[Loans] Validation failed: Invalid amount');
-      Platform.OS === 'web' ? window.alert('Please enter a valid amount') : Alert.alert('Error', 'Please enter a valid amount');
+      Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
 
     if (!formData.dueDate) {
       console.log('[Loans] Validation failed: No due date selected');
-      Platform.OS === 'web' ? window.alert('Please select a due date') : Alert.alert('Error', 'Please select a due date');
+      Alert.alert('Error', 'Please select a due date');
       return;
     }
 
@@ -583,9 +584,7 @@ export default function LoansDebtsScreen() {
       resetForm();
     } catch (error) {
       console.error('[Loans] Error adding loan:', error);
-      Platform.OS === 'web'
-        ? window.alert('Failed to add loan: ' + error)
-        : Alert.alert('Error', 'Failed to add loan. Please try again.');
+      Alert.alert('Error', 'Failed to add loan. Please try again.');
     }
   };
 
@@ -752,7 +751,7 @@ export default function LoansDebtsScreen() {
     const { loan } = pendingPayment;
     const amount = parseFloat(paymentAmountStr);
     if (isNaN(amount) || amount <= 0) {
-      Platform.OS === 'web' ? window.alert('Invalid Amount') : Alert.alert('Error', 'Invalid Amount');
+      Alert.alert('Error', 'Invalid Amount');
       return;
     }
 
@@ -1141,7 +1140,7 @@ export default function LoansDebtsScreen() {
                   <View className="mb-4">
                     <View className="flex-row justify-between mb-2">
                       <View className="flex-1">
-                        <Text className="text-slate-500 text-sm">{t('Payment Progress')}</Text>
+                        <Text className="text-slate-500 text-sm">{t('paymentProgress')}</Text>
                       </View>
                       {item.reminderEnabled && item.status === 'ACTIVE' && globalRemindersEnabled && (
                         <View className="bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full mr-2 items-end">

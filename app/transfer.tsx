@@ -9,7 +9,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 
 export default function TransferScreen() {
@@ -45,15 +46,15 @@ export default function TransferScreen() {
   const handleTransfer = async () => {
     const numericAmount = parseFloat(amount);
     if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
-      Platform.OS === 'web' ? window.alert('Please enter a valid amount') : Alert.alert('Error', 'Please enter a valid amount');
+      Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
     if (!fromAccount || !toAccount) {
-      Platform.OS === 'web' ? window.alert('Please select both accounts') : Alert.alert('Error', 'Please select both accounts');
+      Alert.alert('Error', 'Please select both accounts');
       return;
     }
     if (fromAccount === toAccount) {
-      Platform.OS === 'web' ? window.alert('Cannot transfer to the same account') : Alert.alert('Error', 'Cannot transfer to the same account');
+      Alert.alert('Error', 'Cannot transfer to the same account');
       return;
     }
 

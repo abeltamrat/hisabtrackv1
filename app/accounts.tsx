@@ -12,7 +12,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 import { getDatabase } from '@/services/database';
 import { DraftTransactionService } from '@/services/DraftTransactionService';
@@ -510,13 +511,13 @@ export default function Accounts() {
 
   const handleSaveAccount = async () => {
     if (!accountName.trim()) {
-      Platform.OS === 'web' ? window.alert('Please enter account name') : Alert.alert('Error', 'Please enter account name');
+      Alert.alert('Error', 'Please enter account name');
       return;
     }
 
     const balance = initialBalance.trim() === '' ? 0 : parseFloat(initialBalance);
     if (isNaN(balance)) {
-      Platform.OS === 'web' ? window.alert('Please enter a valid balance') : Alert.alert('Error', 'Please enter a valid balance');
+      Alert.alert('Error', 'Please enter a valid balance');
       return;
     }
 
@@ -587,10 +588,10 @@ export default function Accounts() {
           }));
           if (updateAccount.rejected.match(updateResult)) {
             const msg = updateResult.error?.message || 'Failed to update account';
-            Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
+            Alert.alert('Error', msg);
             return;
           }
-          Platform.OS === 'web' ? window.alert('Account updated') : Alert.alert('Success', 'Account updated');
+          Alert.alert('Success', 'Account updated');
         }
       } else {
         // Create
@@ -608,7 +609,7 @@ export default function Accounts() {
         }));
         if (addAccount.rejected.match(addResult)) {
           const msg = addResult.error?.message || 'Failed to save account';
-          Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
+          Alert.alert('Error', msg);
           return;
         }
         // Prompt SMS onboarding if account has an SMS number (Android only)
@@ -616,7 +617,7 @@ export default function Accounts() {
           setSmsOnboardingAccount(addResult.payload as Account);
           setShowSmsOnboarding(true);
         } else {
-          Platform.OS === 'web' ? window.alert('Account created') : Alert.alert('Success', 'Account created');
+          Alert.alert('Success', 'Account created');
         }
       }
 
@@ -624,14 +625,14 @@ export default function Accounts() {
       resetForm();
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to save account';
-      Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Error', msg);
+      Alert.alert('Error', msg);
       console.error(error);
     }
   };
 
   const fetchSmsNumbers = async () => {
     if (Platform.OS !== 'android') {
-      Platform.OS === 'web' ? window.alert('SMS reading is only available on Android builds.') : Alert.alert('Info', 'SMS reading is only available on Android builds.');
+      Alert.alert('Info', 'SMS reading is only available on Android builds.');
       return;
     }
 
@@ -775,9 +776,7 @@ export default function Accounts() {
 
   const handleDirectSync = async (account: Account) => {
     if (Platform.OS !== 'android') {
-      Platform.OS === 'web'
-        ? window.alert('SMS reading is only available on Android builds.')
-        : Alert.alert('Info', 'SMS reading is only available on Android builds.');
+      Alert.alert('Info', 'SMS reading is only available on Android builds.');
       return;
     }
 
@@ -825,9 +824,7 @@ export default function Accounts() {
 
   const handleProcessAllMessages = async () => {
     if (Platform.OS !== 'android') {
-      Platform.OS === 'web'
-        ? window.alert('SMS reading is only available on Android builds.')
-        : Alert.alert('Info', 'SMS reading is only available on Android builds.');
+      Alert.alert('Info', 'SMS reading is only available on Android builds.');
       return;
     }
 

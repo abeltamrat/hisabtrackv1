@@ -16,7 +16,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { createElement, useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Alert } from '@/utils/alert';
 
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -530,11 +531,7 @@ export default function RecurringTransactionsScreen() {
 
     setShowAddModal(false);
     resetForm();
-    if (Platform.OS === 'web') {
-      window.alert(editingId ? 'Recurring transaction updated!' : 'Recurring transaction added!');
-    } else {
-      Alert.alert('Success', editingId ? 'Recurring transaction updated!' : 'Recurring transaction added!');
-    }
+    Alert.alert('Success', editingId ? 'Recurring transaction updated!' : 'Recurring transaction added!');
   };
 
   const handleEdit = (recurring: RecurringTransaction) => {
@@ -621,9 +618,7 @@ export default function RecurringTransactionsScreen() {
         date: Date.now(),
       }));
       if (addTransaction.rejected.match(txResult)) {
-        Platform.OS === 'web'
-          ? window.alert('Error: Failed to create transaction')
-          : Alert.alert('Error', 'Failed to create transaction');
+        Alert.alert('Error', 'Failed to create transaction');
         return;
       }
 
@@ -664,19 +659,11 @@ export default function RecurringTransactionsScreen() {
       }));
       await saveRecurringTransactions(updated);
 
-      if (Platform.OS === 'web') {
-        window.alert('Success: Transaction executed and created!');
-      } else {
-        Alert.alert('Success', 'Transaction created!');
-      }
+      Alert.alert('Success', 'Transaction created!');
 
       dispatch(fetchTransactions());
     } catch (error) {
-      if (Platform.OS === 'web') {
-        window.alert('Error: Failed to create transaction');
-      } else {
-        Alert.alert('Error', 'Failed to create transaction');
-      }
+      Alert.alert('Error', 'Failed to create transaction');
     }
   };
 

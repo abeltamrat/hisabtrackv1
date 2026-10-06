@@ -3,17 +3,8 @@ import { AuthService, validatePhone } from '@/services/AuthService';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@/services/SessionStorage';
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 
 const KEY_LOGIN_COUNT = '@hisabtrack_login_count';
 const KEY_PHONE_PROMPT_LAST = '@hisabtrack_phone_prompt_last';

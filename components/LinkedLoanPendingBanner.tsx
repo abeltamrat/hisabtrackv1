@@ -4,7 +4,8 @@ import { LinkedLoanService } from '@/services/LinkedLoanService';
 import { SharedLoan } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 
 interface PendingRequest {
   sharedLoan: SharedLoan & { id: string };

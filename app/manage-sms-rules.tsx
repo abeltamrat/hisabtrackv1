@@ -1,16 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Modal,
-  Alert,
-  Animated,
-  ActivityIndicator,
-  Platform
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Animated, ActivityIndicator, Platform } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';

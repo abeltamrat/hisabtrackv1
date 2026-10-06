@@ -23,7 +23,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RecurringTransaction } from '@/types/database';
 import AsyncStorage from '@/services/SessionStorage';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Dimensions, InteractionManager, Platform, ScrollView, Text, TouchableOpacity, View, Modal } from 'react-native';
+import { Dimensions, InteractionManager, Platform, ScrollView, Text, TouchableOpacity, View, Modal } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { BarChart, LineChart, PieChart, ProgressChart } from 'react-native-chart-kit';
 
 import { useDispatch, useSelector } from 'react-redux';
@@ -623,14 +624,14 @@ export default function ReportsScreen() {
 
             <View className="flex-row gap-3 mb-6">
               <View className="flex-1 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border-2 border-blue-200 dark:border-blue-800">
-                <Text className="text-blue-600 text-xs font-bold mb-1">{t('netBalance') || 'NET BALANCE'}</Text>
+                <Text className="text-blue-600 text-xs font-bold mb-1">{t('netBalance')}</Text>
                 <Text className={`text-2xl font-bold ${summary.balance >= 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
                   {formatCurrency(Math.abs(summary.balance))}
                 </Text>
               </View>
               <View className="flex-1 bg-purple-50 dark:bg-purple-900/20 p-4 rounded-2xl border-2 border-purple-200 dark:border-purple-800">
-                <Text className="text-purple-600 text-xs font-bold mb-1">{t('savingsRateLabel') || 'SAVINGS RATE'}</Text>
+                <Text className="text-purple-600 text-xs font-bold mb-1">{t('savingsRateLabel')}</Text>
                 <Text className="text-purple-700 dark:text-purple-400 text-2xl font-bold">
                   {summary.savingsRate.toFixed(1)}%
                 </Text>

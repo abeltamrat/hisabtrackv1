@@ -5,7 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Image, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert } from '@/utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type AssetType = 'bundled' | 'user';
@@ -145,41 +146,26 @@ export default function ManageAssets() {
   const handleRemove = async (key: string, type: AssetType) => {
     const message = type === 'user' ? `Remove "${key}" from your assets?` : `Reset "${key}" to original?`;
 
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm(message);
-      if (!confirmed) return;
-      try {
-        if (type === 'user') {
-          await LocalAssetService.removeAsset(key);
-        } else {
-          const editedBundled = { ...bundled };
-          delete editedBundled[key];
-          await AsyncStorage.setItem('editedBundledLogos', JSON.stringify(editedBundled));
-          setBundled(editedBundled);
-        }
-        await load();
-      } catch (e) {
-        console.error(e);
-        Alert.alert('Error', 'Failed to remove asset');
-      }
-      return;
-    }
-
     Alert.alert('Confirm', message, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: type === 'user' ? 'Remove' : 'Reset',
         style: 'destructive',
         onPress: async () => {
-          if (type === 'user') {
-            await LocalAssetService.removeAsset(key);
-          } else {
-            const editedBundled = { ...bundled };
-            delete editedBundled[key];
-            await AsyncStorage.setItem('editedBundledLogos', JSON.stringify(editedBundled));
-            setBundled(editedBundled);
+          try {
+            if (type === 'user') {
+              await LocalAssetService.removeAsset(key);
+            } else {
+              const editedBundled = { ...bundled };
+              delete editedBundled[key];
+              await AsyncStorage.setItem('editedBundledLogos', JSON.stringify(editedBundled));
+              setBundled(editedBundled);
+            }
+            await load();
+          } catch (e) {
+            console.error(e);
+            Alert.alert('Error', 'Failed to remove asset');
           }
-          await load();
         }
       }
     ]);
