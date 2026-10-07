@@ -220,6 +220,9 @@ export interface RecurringTransaction {
   isActive: boolean;
   accountId: string;
   toAccountId?: string; // For transfers
+  /** Estimated transfer costs included in amount and excluded from destination credit. */
+  fees?: number;
+  tax?: number;
   description?: string;
   totalRepetitions?: number;
   completedRepetitions: number;
@@ -227,4 +230,5 @@ export interface RecurringTransaction {
   reminderDaysBefore: number;
   reminderTime?: number;
   notificationId?: string;
+  splits?: TransactionSplit[];
 }

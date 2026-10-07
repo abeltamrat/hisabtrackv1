@@ -8,7 +8,7 @@ import { SMSLearningService } from '@/services/SMSLearningService';
 import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts, updateAccount } from '@/store/slices/accountsSlice';
 import { addTransaction, deleteTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
-import { addLoan } from '@/store/slices/loansSlice';
+import { addLoan, deleteLoan } from '@/store/slices/loansSlice';
 import { FontAwesome } from '@expo/vector-icons';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -87,6 +87,9 @@ export default function DraftTransactionsScreen() {
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDaysBefore, setReminderDaysBefore] = useState('1');
   const [reminderTime, setReminderTime] = useState('09:00');
+  const [recurringNextDate, setRecurringNextDate] = useState('');
+  const [recurringEndDate, setRecurringEndDate] = useState('');
+  const [recurringOccurrences, setRecurringOccurrences] = useState('');
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [dismissedRecurringSuggestion, setDismissedRecurringSuggestion] = useState(false);
@@ -353,6 +356,9 @@ export default function DraftTransactionsScreen() {
     setReminderEnabled(true);
     setReminderDaysBefore('1');
     setReminderTime('09:00');
+    setRecurringNextDate('');
+    setRecurringEndDate('');
+    setRecurringOccurrences('');
     setSplitEnabled(false);
     setSplits([]);
     setDismissedRecurringSuggestion(false);
@@ -475,19 +481,22 @@ export default function DraftTransactionsScreen() {
       }
 
       let recurringError = '';
+      let recurringRuleId: string | undefined;
       if (makeRecurring) {
         try {
           const match = /^(\d{1,2}):(\d{2})$/.exec(reminderTime.trim());
           const hour = match ? Number(match[1]) : -1;
           const minute = match ? Number(match[2]) : -1;
           if (reminderEnabled && (hour < 0 || hour > 23 || minute < 0 || minute > 59)) throw new Error('Reminder time must use HH:MM');
-          await RecurringTransactionService.create({
+          const recurringRule = await RecurringTransactionService.create({
             name: finalDescription || editedRecipient || 'SMS transaction',
-            amount: isTransferDraft ? expenseLeg.amount : selectedDraft.amount,
+            amount: isTransferDraft ? transferAmount : selectedDraft.amount,
             type: isTransferDraft ? 'TRANSFER' : editedType,
             category: isTransferDraft ? 'Transfer' : editedCategory,
             accountId: isTransferDraft ? transferSourceAccountId : selectedDraft.account_id,
             toAccountId: isTransferDraft ? transferDestinationAccountId : undefined,
+            fees: isTransferDraft ? expenseLeg.fees : undefined,
+            tax: isTransferDraft ? expenseLeg.tax : undefined,
             description: finalDescription,
             tags: parsedTags,
             frequency: recurringFrequency,
@@ -496,7 +505,12 @@ export default function DraftTransactionsScreen() {
             reminderDaysBefore: Number(reminderDaysBefore) || 0,
             reminderHour: Math.max(0, hour),
             reminderMinute: Math.max(0, minute),
+            splits: splitEnabled ? splits : undefined,
+            nextDate: recurringNextDate ? new Date(`${recurringNextDate}T12:00:00`).getTime() : undefined,
+            endDate: recurringEndDate ? new Date(`${recurringEndDate}T23:59:59`).getTime() : undefined,
+            totalRepetitions: recurringOccurrences ? Number(recurringOccurrences) : undefined,
           });
+          recurringRuleId = recurringRule.id;
         } catch (error: any) {
           recurringError = error?.message || 'Recurring rule could not be created.';
         }
@@ -505,6 +519,7 @@ export default function DraftTransactionsScreen() {
       // Loan creation tracks the liability/receivable only; it does not mutate
       // the account balance, which was already updated by the cash transaction.
       let loanCreated = false;
+      let loanId: string | undefined;
       if (recordAsLoan && editedType !== 'TRANSFER') {
         const loanPrincipal = selectedDraft.type === 'EXPENSE'
           ? Math.max(0, Math.round((selectedDraft.amount - (selectedDraft.fees ?? 0) - (selectedDraft.tax ?? 0)) * 100) / 100)
@@ -524,6 +539,7 @@ export default function DraftTransactionsScreen() {
           remaining_balance: loanPrincipal,
         }));
         loanCreated = addLoan.fulfilled.match(loanResult);
+        if (loanCreated) loanId = (loanResult.payload as any)?.id;
       }
       await BackgroundService.markReconciliationReview();
       setShowConfirmModal(false);
@@ -535,11 +551,13 @@ export default function DraftTransactionsScreen() {
           : recurringError
             ? `Transaction recorded. Recurring setup needs attention: ${recurringError}`
             : makeRecurring ? 'Transaction and recurring rule recorded!' : 'Transaction recorded!';
-      if (transactionId && !recordAsLoan && !makeRecurring) {
+      if (transactionId) {
         Alert.alert('Transaction recorded', successMessage, [
           { text: 'Keep', style: 'cancel' },
           { text: 'Undo', style: 'destructive', onPress: async () => {
             try {
+              if (recurringRuleId) await RecurringTransactionService.remove(recurringRuleId);
+              if (loanId) await dispatch(deleteLoan(loanId)).unwrap();
               await dispatch(deleteTransaction(transactionId)).unwrap();
               await DraftTransactionService.reopenRecorded([selectedDraft.id, ...(counterpartId ? [counterpartId] : [])], transactionId);
               await dispatch(fetchAccounts());
@@ -1670,6 +1688,8 @@ export default function DraftTransactionsScreen() {
                   <View className="flex-row flex-wrap gap-2 mb-4">
                     {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as RecurringFrequency[]).map(item => <TouchableOpacity key={item} onPress={() => setRecurringFrequency(item)} className={`px-3 py-2 rounded-xl ${recurringFrequency === item ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}><Text className={`text-[10px] font-bold ${recurringFrequency === item ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{item}</Text></TouchableOpacity>)}
                   </View>
+                  <View className="flex-row gap-2 mb-3"><View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Next due (optional)</Text><TextInput value={recurringNextDate} onChangeText={setRecurringNextDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View><View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">End date (optional)</Text><TextInput value={recurringEndDate} onChangeText={setRecurringEndDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View></View>
+                  <View className="mb-3"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Future occurrences (optional)</Text><TextInput value={recurringOccurrences} onChangeText={setRecurringOccurrences} placeholder="No limit" placeholderTextColor="#94a3b8" keyboardType="number-pad" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
                   <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: reminderEnabled }} onPress={() => setReminderEnabled(!reminderEnabled)} className="flex-row items-center mb-3">
                     <FontAwesome name={reminderEnabled ? 'check-square' : 'square-o'} size={18} color={reminderEnabled ? '#6366f1' : '#94a3b8'} />
                     <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold ml-2">Reminder enabled</Text>

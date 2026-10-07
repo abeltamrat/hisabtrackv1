@@ -1,6 +1,6 @@
 import AsyncStorage, { sessionLocalStorage } from '@/services/SessionStorage';
 import { NotificationService } from '@/services/NotificationService';
-import type { RecurringFrequency, RecurringTransaction, TransactionType } from '@/types/database';
+import type { RecurringFrequency, RecurringTransaction, TransactionSplit, TransactionType } from '@/types/database';
 import { advanceDate, money } from '@/utils/finance';
 import { generateUUID } from '@/utils/uuid';
 import { Platform } from 'react-native';
@@ -21,6 +21,8 @@ export interface CreateRecurringInput {
   category: string;
   accountId: string;
   toAccountId?: string;
+  fees?: number;
+  tax?: number;
   description?: string;
   tags?: string[];
   frequency: RecurringFrequency;
@@ -29,6 +31,10 @@ export interface CreateRecurringInput {
   reminderDaysBefore: number;
   reminderHour: number;
   reminderMinute: number;
+  nextDate?: number;
+  endDate?: number;
+  totalRepetitions?: number;
+  splits?: TransactionSplit[];
 }
 
 export class RecurringTransactionService {
@@ -44,7 +50,17 @@ export class RecurringTransactionService {
     if (input.type === 'TRANSFER' && (!input.toAccountId || input.toAccountId === input.accountId)) {
       throw new Error('Choose a different destination account');
     }
-    const nextDate = advanceDate(input.frequency, input.startDate, input.startDate);
+    const fees = money(input.fees ?? 0);
+    const tax = money(input.tax ?? 0);
+    if (fees < 0 || tax < 0 || money(fees + tax) > money(input.amount)) {
+      throw new Error('Transfer fees and tax must be valid and cannot exceed the debit');
+    }
+    if (input.type !== 'TRANSFER' && (fees || tax)) throw new Error('Fees and tax estimates only apply to transfers');
+    const nextDate = input.nextDate ?? advanceDate(input.frequency, input.startDate, input.startDate);
+    if (!Number.isFinite(nextDate) || nextDate <= input.startDate) throw new Error('Next due date must be after the recorded transaction');
+    if (input.endDate !== undefined && (!Number.isFinite(input.endDate) || input.endDate < nextDate)) throw new Error('End date must be on or after the next due date');
+    if (input.totalRepetitions !== undefined && (!Number.isInteger(input.totalRepetitions) || input.totalRepetitions < 1)) throw new Error('Occurrences must be a positive whole number');
+    if (input.splits && (input.type === 'TRANSFER' || input.splits.length < 2 || input.splits.some(split => !split.category.trim() || money(split.amount) <= 0) || money(input.splits.reduce((sum, split) => sum + split.amount, 0)) !== money(input.amount))) throw new Error('Recurring splits must equal the transaction amount');
     const reminderTime = new Date(nextDate);
     reminderTime.setHours(input.reminderHour, input.reminderMinute, 0, 0);
     const item: RecurringTransaction = {
@@ -57,14 +73,19 @@ export class RecurringTransactionService {
       frequency: input.frequency,
       startDate: input.startDate,
       nextDate,
+      endDate: input.endDate,
       isActive: true,
       accountId: input.accountId,
       toAccountId: input.type === 'TRANSFER' ? input.toAccountId : undefined,
+      fees: input.type === 'TRANSFER' && fees ? fees : undefined,
+      tax: input.type === 'TRANSFER' && tax ? tax : undefined,
       description: input.description?.trim() || undefined,
       completedRepetitions: 0,
+      totalRepetitions: input.totalRepetitions,
       reminderEnabled: input.reminderEnabled,
       reminderDaysBefore: Math.max(0, Math.floor(input.reminderDaysBefore)),
       reminderTime: input.reminderEnabled ? reminderTime.getTime() : undefined,
+      splits: input.splits,
     };
     const all = await this.getAll();
     await write(JSON.stringify([...all, item]));
@@ -78,5 +99,12 @@ export class RecurringTransactionService {
       await write(JSON.stringify([...all, item]));
     }
     return item;
+  }
+
+  static async remove(id: string): Promise<void> {
+    const all = await this.getAll();
+    const item = all.find(rule => rule.id === id);
+    if (item?.notificationId) await NotificationService.cancelNotification(item.notificationId);
+    await write(JSON.stringify(all.filter(rule => rule.id !== id)));
   }
 }

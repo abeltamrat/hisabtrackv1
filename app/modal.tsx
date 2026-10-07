@@ -100,6 +100,9 @@ export default function AddTransactionScreen() {
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDaysBefore, setReminderDaysBefore] = useState('1');
   const [reminderTime, setReminderTime] = useState('09:00');
+  const [recurringNextDate, setRecurringNextDate] = useState('');
+  const [recurringEndDate, setRecurringEndDate] = useState('');
+  const [recurringOccurrences, setRecurringOccurrences] = useState('');
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -282,6 +285,7 @@ export default function AddTransactionScreen() {
         return;
       }
     }
+    let createdRecurringId: string | undefined;
     if (!isEditing && makeRecurring) {
       const match = /^(\d{1,2}):(\d{2})$/.exec(reminderTime.trim());
       const hour = match ? Number(match[1]) : -1;
@@ -291,7 +295,7 @@ export default function AddTransactionScreen() {
         return;
       }
       try {
-        await RecurringTransactionService.create({
+        const recurringRule = await RecurringTransactionService.create({
           name: note.trim() || (type === 'TRANSFER' ? 'Bank transfer' : selectedCategory),
           amount: numericAmount,
           type,
@@ -306,18 +310,24 @@ export default function AddTransactionScreen() {
           reminderDaysBefore: Number(reminderDaysBefore) || 0,
           reminderHour: Math.max(0, hour),
           reminderMinute: Math.max(0, minute),
+          splits: splitEnabled ? splits : undefined,
+          nextDate: recurringNextDate ? new Date(`${recurringNextDate}T12:00:00`).getTime() : undefined,
+          endDate: recurringEndDate ? new Date(`${recurringEndDate}T23:59:59`).getTime() : undefined,
+          totalRepetitions: recurringOccurrences ? Number(recurringOccurrences) : undefined,
         });
+        createdRecurringId = recurringRule.id;
       } catch (error: any) {
         Alert.alert('Transaction saved', error?.message || 'The recurring rule could not be created.');
         return;
       }
     }
     const transactionId = (result.payload as any)?.id as string | undefined;
-    if (!isEditing && !makeRecurring && transactionId) {
+    if (!isEditing && transactionId) {
       Alert.alert('Transaction saved', 'The account balance and reports have been updated.', [
         { text: 'Keep', style: 'cancel', onPress: () => router.back() },
         { text: 'Undo', style: 'destructive', onPress: async () => {
           try {
+            if (createdRecurringId) await RecurringTransactionService.remove(createdRecurringId);
             await dispatch(deleteTransaction(transactionId)).unwrap();
             await dispatch(fetchAccounts());
             router.back();
@@ -671,6 +681,11 @@ export default function AddTransactionScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
+                <View className="flex-row mt-3 gap-2">
+                  <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Next due (optional)</Text><TextInput value={recurringNextDate} onChangeText={setRecurringNextDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                  <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">End date (optional)</Text><TextInput value={recurringEndDate} onChangeText={setRecurringEndDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                </View>
+                <View className="mt-3"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Future occurrences (optional)</Text><TextInput value={recurringOccurrences} onChangeText={setRecurringOccurrences} placeholder="No limit" placeholderTextColor="#94a3b8" keyboardType="number-pad" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
                 <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: reminderEnabled }} onPress={() => setReminderEnabled(!reminderEnabled)} className="flex-row items-center mt-4">
                   <FontAwesome name={reminderEnabled ? 'check-square' : 'square-o'} size={18} color={reminderEnabled ? '#6366f1' : '#94a3b8'} />
                   <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold ml-2">Remind me before it is due</Text>

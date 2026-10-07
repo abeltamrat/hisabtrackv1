@@ -16,6 +16,8 @@ export interface ForecastEvent {
   source: 'recurring' | 'loan';
   accountId?: string;
   toAccountId?: string;
+  fees?: number;
+  tax?: number;
   balanceAfter?: number;
 }
 
@@ -113,6 +115,8 @@ export class ForecastService {
             runningBalance -= event.amount;
             break;
           case 'TRANSFER':
+            const transferCosts = money((event.fees ?? 0) + (event.tax ?? 0));
+            const destinationCredit = money(event.amount - transferCosts);
             if (event.accountId) {
               projectedBalances.set(
                 event.accountId,
@@ -126,13 +130,14 @@ export class ForecastService {
             if (event.toAccountId) {
               projectedBalances.set(
                 event.toAccountId,
-                (projectedBalances.get(event.toAccountId) ?? 0) + event.amount
+                (projectedBalances.get(event.toAccountId) ?? 0) + destinationCredit
               );
               if (!accountNames.has(event.toAccountId)) {
                 accountNames.set(event.toAccountId, 'Missing account');
                 currentBalances.set(event.toAccountId, 0);
               }
             }
+            runningBalance = money(runningBalance - transferCosts);
             break;
           case 'LOAN_DUE':
             projectedBalances.set(
@@ -251,6 +256,8 @@ export class ForecastService {
           source: 'recurring',
           accountId: recurring.accountId,
           toAccountId: recurring.toAccountId,
+          fees: recurring.fees,
+          tax: recurring.tax,
         });
 
         currentDate = advanceDate(recurring.frequency, currentDate, recurring.startDate);

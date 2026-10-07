@@ -222,6 +222,17 @@ test('zero-budget spending is displayed as exceeded, and forecast account totals
  const result=ForecastService.generateForecast({accounts:[{...account('A',100),id:'a',created_at:1,locked_amount:20}],recurring:[],loans:[],days:7});
  assert.equal(result.startingBalance,80);assert.equal(result.projectedBalance,finance.sumMoney(result.accountProjections.map(a=>a.projectedBalance)));
 });
+test('recurring transfer forecasts debit fees and tax from net worth',()=>{
+ const start=new Date(2026,9,7).setHours(0,0,0,0);
+ const result=ForecastService.generateForecast({
+  accounts:[{...account('Source',1000),id:'a',created_at:1},{...account('Destination',0),id:'b',created_at:1}],
+  recurring:[{id:'r',name:'Transfer',amount:106,type:'TRANSFER',category:'Transfer',frequency:'MONTHLY',startDate:start-86400000,nextDate:start,isActive:true,accountId:'a',toAccountId:'b',fees:5,tax:1,completedRepetitions:0,totalRepetitions:1,reminderEnabled:false,reminderDaysBefore:0}],
+  loans:[],days:1,startDate:start,
+ });
+ const projections=Object.fromEntries(result.accountProjections.map(row=>[row.accountId,row.projectedBalance]));
+ assert.equal(projections.a,894);assert.equal(projections.b,100);assert.equal(result.projectedBalance,994);
+ assert.equal(result.projectedBalance,finance.sumMoney(result.accountProjections.map(row=>row.projectedBalance)));
+});
 test('local settings and SMS data are isolated by user',async()=>{
  const session=load('./services/SessionStorage.ts');
  await session.setSessionScope('alice');await session.default.setItem('draft_transactions','private');

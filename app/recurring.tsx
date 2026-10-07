@@ -397,9 +397,12 @@ export default function RecurringTransactionsScreen() {
                   to_account_id: current.toAccountId,
                   type: 'TRANSFER',
                   amount: current.amount,
+                  fees: current.fees,
+                  tax: current.tax,
                   category: current.category,
                   tags: current.tags,
                   description: `${current.name} (Recurring - catch-up)`,
+                  splits: current.splits,
                   date: current.nextDate,
                 })).unwrap();
               } else if (current.type !== 'TRANSFER') {
@@ -411,6 +414,7 @@ export default function RecurringTransactionsScreen() {
                   category: current.category,
                   tags: current.tags,
                   description: `${current.name} (Recurring - catch-up)`,
+                  splits: current.splits,
                   date: current.nextDate,
                 })).unwrap();
               }
@@ -613,8 +617,11 @@ export default function RecurringTransactionsScreen() {
         operation_id: `recurring-${recurring.id}-${recurring.nextDate}`,
         type: recurring.type,
         amount: recurring.amount,
+        fees: recurring.fees,
+        tax: recurring.tax,
         category: recurring.category,
         description: `${recurring.name} (Recurring)`,
+        splits: recurring.splits,
         date: Date.now(),
       }));
       if (addTransaction.rejected.match(txResult)) {
