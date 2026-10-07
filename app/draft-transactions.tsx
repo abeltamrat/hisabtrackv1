@@ -26,6 +26,7 @@ import { findTransferCandidates } from '@/utils/transferPairing';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import type { TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
+import { detectRecurringPattern } from '@/utils/recurringDetection';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -88,6 +89,7 @@ export default function DraftTransactionsScreen() {
   const [reminderTime, setReminderTime] = useState('09:00');
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
+  const [dismissedRecurringSuggestion, setDismissedRecurringSuggestion] = useState(false);
   const [note, setNote] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -121,6 +123,14 @@ export default function DraftTransactionsScreen() {
     });
     return Array.from(tagsSet).sort();
   }, [transactions]);
+  const recurringSuggestion = useMemo(() => selectedDraft ? detectRecurringPattern({
+    type: editedType,
+    amount: selectedDraft.amount,
+    category: editedCategory,
+    sender_receiver: editedRecipient,
+    description: editedDescription,
+    date: selectedDraft.date,
+  } as any, transactions) : null, [editedCategory, editedDescription, editedRecipient, editedType, selectedDraft, transactions]);
 
   const filteredDrafts = useMemo(() => {
     return drafts.filter(d => {
@@ -199,6 +209,7 @@ export default function DraftTransactionsScreen() {
       setRememberOwnedRecipient(false);
       setSplitEnabled(false);
       setSplits([]);
+      setDismissedRecurringSuggestion(false);
       setNote('');
       setTagsInput('');
       setShowConfirmModal(true);
@@ -344,6 +355,7 @@ export default function DraftTransactionsScreen() {
     setReminderTime('09:00');
     setSplitEnabled(false);
     setSplits([]);
+    setDismissedRecurringSuggestion(false);
     setNote('');
     setTagsInput('');
     setRecordAsLoan(!!draft.is_loan_disbursement);
@@ -376,6 +388,7 @@ export default function DraftTransactionsScreen() {
           correctedDescription: editedDescription,
           correctedCategory: editedCategory,
           isCorrection: hasCorrections,
+          transactionType: editedType,
         });
       }
 
@@ -642,6 +655,7 @@ export default function DraftTransactionsScreen() {
               correctedDescription: draft.description,
               correctedCategory: draft.category,
               isCorrection: false,
+              transactionType: draft.type,
             });
           }
           successCount++;
@@ -1616,6 +1630,10 @@ export default function DraftTransactionsScreen() {
                   textAlignVertical="top"
                 />
               </View>
+
+              {recurringSuggestion && !dismissedRecurringSuggestion && !makeRecurring && <View className="rounded-2xl p-4 mb-3 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+                <View className="flex-row items-start"><FontAwesome name="magic" size={16} color="#7c3aed" /><View className="flex-1 ml-3"><Text className="text-violet-900 dark:text-violet-200 font-bold">Looks {recurringSuggestion.frequency.toLowerCase()}</Text><Text className="text-violet-700 dark:text-violet-300 text-xs mt-1">{recurringSuggestion.reason} Confidence {recurringSuggestion.confidence}%.</Text><View className="flex-row mt-3 gap-2"><TouchableOpacity onPress={() => { setRecurringFrequency(recurringSuggestion.frequency); setMakeRecurring(true); }} className="bg-violet-600 px-3 py-2 rounded-xl"><Text className="text-white text-xs font-bold">Use suggestion</Text></TouchableOpacity><TouchableOpacity onPress={() => setDismissedRecurringSuggestion(true)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900"><Text className="text-slate-600 dark:text-slate-300 text-xs font-bold">Dismiss</Text></TouchableOpacity></View></View></View>
+              </View>}
 
               <View className="rounded-2xl p-4 mb-6 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
                 <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: makeRecurring }} onPress={() => setMakeRecurring(!makeRecurring)} className="flex-row items-center">

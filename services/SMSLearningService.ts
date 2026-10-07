@@ -9,6 +9,7 @@ export interface SMSRule {
   matchBy: 'merchant' | 'reference' | 'sender';
   hitCount?: number;
   confidence?: number;
+  transactionType?: 'INCOME' | 'EXPENSE';
 }
 
 export class SMSLearningService {
@@ -35,6 +36,7 @@ export class SMSLearningService {
     correctedDescription: string;
     correctedCategory: string;
     isCorrection?: boolean;
+    transactionType?: 'INCOME' | 'EXPENSE';
   }): Promise<void> {
     return this.mutate(() => this.doLearn(input));
   }
@@ -47,6 +49,7 @@ export class SMSLearningService {
     correctedDescription: string;
     correctedCategory: string;
     isCorrection?: boolean;
+    transactionType?: 'INCOME' | 'EXPENSE';
   }): Promise<void> {
     const rules = await this.getAllRules();
     const sender = this.normalizeText(input.sender);
@@ -67,6 +70,7 @@ export class SMSLearningService {
         matchBy: 'merchant',
         hitCount: prevHits + 1,
         confidence: isCorrection ? 1.0 : Math.min(1.0, prevConf + 0.05),
+        transactionType: input.transactionType,
       };
       saved = true;
     }
@@ -84,6 +88,7 @@ export class SMSLearningService {
         matchBy: 'reference',
         hitCount: prevHits + 1,
         confidence: isCorrection ? 1.0 : Math.min(1.0, prevConf + 0.05),
+        transactionType: input.transactionType,
       };
       saved = true;
     }
@@ -102,6 +107,7 @@ export class SMSLearningService {
         matchBy: 'sender',
         hitCount: prevHits + 1,
         confidence: isCorrection ? 1.0 : Math.min(1.0, prevConf + 0.05),
+        transactionType: input.transactionType,
       };
     }
 

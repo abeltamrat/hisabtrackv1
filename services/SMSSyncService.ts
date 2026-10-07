@@ -376,6 +376,7 @@ export class SMSSyncService {
           if (rule) {
             category = rule.category;
             description = rule.description;
+            if (rule.transactionType) parsed.type = rule.transactionType;
           }
         }
 

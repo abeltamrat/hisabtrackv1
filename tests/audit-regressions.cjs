@@ -35,6 +35,7 @@ const { BackupService } = load('./services/BackupService.ts');
 const { findSelfTransferPairs, findTransferCandidates } = load('./utils/transferPairing.ts');
 const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
 const { DraftTransactionService } = load('./services/DraftTransactionService.ts');
+const { detectRecurringPattern } = load('./utils/recurringDetection.ts');
 class Adapter {
   rows = { accounts: new Map(), transactions: new Map(), budgets: new Map(), loans: new Map() };
   meta = {}; fail = false;
@@ -202,6 +203,13 @@ test('undo reopens only SMS drafts linked to the deleted transaction',async()=>{
  await DraftTransactionService.reopenRecorded([draft.id],'tx-undo');
  const reopened=(await DraftTransactionService.getAll())[0];
  assert.equal(reopened.status,'PENDING');assert.equal(reopened.is_recorded,false);assert.equal(reopened.matched_transaction_id,undefined);
+});
+test('recurring suggestions require three consistent similar transactions',()=>{
+ const base={id:'now',account_id:'a',type:'EXPENSE',amount:100,category:'Rent',description:'Rent',sender_receiver:'Landlord',date:new Date(2026,9,1).getTime()};
+ const history=[1,2].map((months,index)=>({...base,id:`old-${index}`,date:new Date(2026,9-months,1).getTime()}));
+ const suggestion=detectRecurringPattern(base,history);
+ assert.equal(suggestion.frequency,'MONTHLY');assert.equal(suggestion.confidence,100);assert.equal(suggestion.occurrences,3);
+ assert.equal(detectRecurringPattern(base,history.slice(0,1)),null);
 });
 test('backups reject invalid records and strip all configured provider keys',()=>{
  assert.equal(BackupService.validateBackup({version:'garbage',timestamp:1,accounts:[{}],transactions:[{amount:-999}],budgets:[],loans:[]}),false);

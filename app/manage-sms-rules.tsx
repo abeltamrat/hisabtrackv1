@@ -37,6 +37,7 @@ interface SMSRuleItem {
   description: string;
   hitCount?: number;
   confidence?: number;
+  transactionType?: 'INCOME' | 'EXPENSE';
 }
 
 export default function ManageSMSRulesScreen() {
@@ -113,6 +114,7 @@ export default function ManageSMSRulesScreen() {
           description: rule.description,
           hitCount: rule.hitCount,
           confidence: rule.confidence,
+          transactionType: rule.transactionType,
         };
       });
 
@@ -457,6 +459,7 @@ export default function ManageSMSRulesScreen() {
                   {rule.hitCount ?? 0} {(rule.hitCount ?? 0) === 1 ? 'Hit' : 'Hits'}
                 </Text>
               </View>
+              {rule.transactionType && <View className="bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-lg"><Text className="text-slate-700 dark:text-slate-300 text-[10px] font-bold">{rule.transactionType}</Text></View>}
             </View>
 
             {/* Translation Output */}
