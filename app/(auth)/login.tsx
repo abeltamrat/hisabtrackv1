@@ -8,6 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 /** Returns true when the string looks like a phone number (no @ sign). */
@@ -19,6 +20,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [identifier, setIdentifier] = useState(''); // email or phone
+  const { errors, validate, clearError, resetErrors } = useFormErrors<'identifier' | 'email' | 'password'>();
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -66,10 +68,10 @@ export default function LoginScreen() {
   }
 
   const handleSignIn = async () => {
-    if (!identifier.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter your email or phone number and password');
-      return;
-    }
+    if (!validate({
+      identifier: !identifier.trim() && 'Enter your email address or phone number.',
+      password: !password.trim() && 'Enter your password.',
+    })) return;
 
     setLoading(true);
 
@@ -97,15 +99,12 @@ export default function LoginScreen() {
   };
 
   const handleSignUp = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter email and password');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
-      return;
-    }
+    if (!validate({
+      email: !email.trim() && 'Enter an email address.',
+      password: !password.trim()
+        ? 'Choose a password.'
+        : password.length < 6 && 'Use at least 6 characters.',
+    })) return;
 
     if (phone.trim()) {
       const phoneErr = validatePhone(phone.trim());
@@ -144,16 +143,11 @@ export default function LoginScreen() {
   };
 
   const handleResetPassword = async () => {
-    if (!identifier.trim()) {
-      Alert.alert('Error', 'Please enter your email address');
-      return;
-    }
-
-    // Reset by email only — if they entered a phone, ask for email
-    if (isPhoneNumber(identifier.trim())) {
-      Alert.alert('Error', 'Please enter your email address to reset your password');
-      return;
-    }
+    if (!validate({
+      identifier: !identifier.trim()
+        ? 'Enter your email address.'
+        : isPhoneNumber(identifier.trim()) && 'A reset link can only be sent to an email address.',
+    })) return;
 
     setLoading(true);
     const result = await AuthService.resetPassword(identifier.trim());
@@ -204,17 +198,22 @@ export default function LoginScreen() {
 
                   {/* Email */}
                   <View className="mb-4">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Email Number</Text>
+                    <Text className="text-slate-500 text-sm font-bold mb-2">Email or phone</Text>
                     <TextInput
-                      className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
+                      className={`bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 ${errors.identifier ? 'border-red-500' : 'border-slate-200'}`}
                       placeholder="your@email.com or +251912345678"
                       value={identifier}
-                      onChangeText={setIdentifier}
+                      onChangeText={(value) => { clearError('identifier'); setIdentifier(value); }}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoComplete="email"
+                      accessibilityLabel="Email address or phone number"
+                      aria-invalid={!!errors.identifier}
                       autoFocus
                     />
+                    {errors.identifier ? (
+                      <Text accessibilityRole="alert" className="text-red-600 text-xs mt-1.5 font-semibold">{errors.identifier}</Text>
+                    ) : null}
                   </View>
 
                   {/* Password */}
@@ -222,21 +221,26 @@ export default function LoginScreen() {
                     <Text className="text-slate-500 text-sm font-bold mb-2">Password</Text>
                     <View className="relative">
                       <TextInput
-                        className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200 pr-12"
+                        className={`bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 pr-12 ${errors.password ? 'border-red-500' : 'border-slate-200'}`}
                         placeholder="••••••••"
                         value={password}
-                        onChangeText={setPassword}
+                        onChangeText={(value) => { clearError('password'); setPassword(value); }}
                         secureTextEntry={!showPassword}
                         autoComplete="password"
+                        accessibilityLabel="Password"
+                        aria-invalid={!!errors.password}
                       />
-                      <TouchableOpacity
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                         onPress={() => setShowPassword(!showPassword)}
                         className="absolute right-4 top-4"
                       >
                         <FontAwesome name={showPassword ? 'eye-slash' : 'eye'} size={20} color="#64748b" />
                       </TouchableOpacity>
                     </View>
-                    <TouchableOpacity onPress={() => setMode('reset')} className="mt-2">
+                    {errors.password ? (
+                      <Text accessibilityRole="alert" className="text-red-600 text-xs mt-1.5 font-semibold">{errors.password}</Text>
+                    ) : null}
+                    <TouchableOpacity onPress={() => { resetErrors(); setMode('reset'); }} className="mt-2">
                       <Text className="text-blue-600 text-sm">Forgot password?</Text>
                     </TouchableOpacity>
                   </View>
@@ -281,7 +285,7 @@ export default function LoginScreen() {
 
                   <View className="flex-row justify-center items-center">
                     <Text className="text-slate-500">Don't have an account? </Text>
-                    <TouchableOpacity onPress={() => setMode('signup')}>
+                    <TouchableOpacity onPress={() => { resetErrors(); setMode('signup'); }}>
                       <Text className="text-blue-600 font-semibold">Sign Up</Text>
                     </TouchableOpacity>
                   </View>
@@ -329,14 +333,19 @@ export default function LoginScreen() {
                   <View className="mb-4">
                     <Text className="text-slate-500 text-sm font-bold mb-2">Email</Text>
                     <TextInput
-                      className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
+                      className={`bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 ${errors.email ? 'border-red-500' : 'border-slate-200'}`}
                       placeholder="your@email.com"
                       value={email}
-                      onChangeText={setEmail}
+                      onChangeText={(value) => { clearError('email'); setEmail(value); }}
                       keyboardType="email-address"
+                      accessibilityLabel="Email address"
+                      aria-invalid={!!errors.email}
                       autoCapitalize="none"
                       autoComplete="email"
                     />
+                    {errors.email ? (
+                      <Text accessibilityRole="alert" className="text-red-600 text-xs mt-1.5 font-semibold">{errors.email}</Text>
+                    ) : null}
                   </View>
 
                   {/* Password */}
@@ -347,20 +356,26 @@ export default function LoginScreen() {
                         className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200 pr-12"
                         placeholder="••••••••"
                         value={password}
-                        onChangeText={setPassword}
+                        onChangeText={(value) => { clearError('password'); setPassword(value); }}
                         secureTextEntry={!showPassword}
+                        accessibilityLabel="Choose a password"
+                        aria-invalid={!!errors.password}
                         autoComplete="password-new"
                       />
-                      <TouchableOpacity
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                         onPress={() => setShowPassword(!showPassword)}
                         className="absolute right-4 top-4"
                       >
                         <FontAwesome name={showPassword ? 'eye-slash' : 'eye'} size={20} color="#64748b" />
                       </TouchableOpacity>
                     </View>
-                    <Text className="text-slate-500 text-xs mt-2 dark:text-slate-400">
-                      Must be at least 6 characters
-                    </Text>
+                    {errors.password ? (
+                      <Text accessibilityRole="alert" className="text-red-600 text-xs mt-2 font-semibold">{errors.password}</Text>
+                    ) : (
+                      <Text className="text-slate-500 text-xs mt-2 dark:text-slate-400">
+                        Must be at least 6 characters
+                      </Text>
+                    )}
                   </View>
 
                   <TouchableOpacity
@@ -375,7 +390,7 @@ export default function LoginScreen() {
 
                   <View className="flex-row justify-center items-center">
                     <Text className="text-slate-500">Already have an account? </Text>
-                    <TouchableOpacity onPress={() => setMode('signin')}>
+                    <TouchableOpacity onPress={() => { resetErrors(); setMode('signin'); }}>
                       <Text className="text-blue-600 font-semibold">Sign In</Text>
                     </TouchableOpacity>
                   </View>
@@ -385,7 +400,7 @@ export default function LoginScreen() {
               {mode === 'reset' && (
                 <>
                   <TouchableOpacity
-                    onPress={() => setMode('signin')}
+                    onPress={() => { resetErrors(); setMode('signin'); }}
                     className="flex-row items-center mb-6"
                   >
                     <FontAwesome name="arrow-left" size={20} color="#64748b" />
@@ -403,12 +418,17 @@ export default function LoginScreen() {
                       className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
                       placeholder="your@email.com"
                       value={identifier}
-                      onChangeText={setIdentifier}
+                      onChangeText={(value) => { clearError('identifier'); setIdentifier(value); }}
                       keyboardType="email-address"
+                      accessibilityLabel="Email address"
+                      aria-invalid={!!errors.identifier}
                       autoCapitalize="none"
                       autoComplete="email"
                       autoFocus
                     />
+                    {errors.identifier ? (
+                      <Text accessibilityRole="alert" className="text-red-600 text-xs mt-1.5 font-semibold">{errors.identifier}</Text>
+                    ) : null}
                   </View>
 
                   <TouchableOpacity

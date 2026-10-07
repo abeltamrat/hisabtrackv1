@@ -28,6 +28,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Modal, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 
 import { useDispatch, useSelector } from 'react-redux';
@@ -868,7 +869,7 @@ export default function SettingsScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center">
-          <TouchableOpacity onPress={() => router.back()} className={`${isVerySmallFont ? 'w-9 h-9' : 'w-10 h-10'} bg-white/20 rounded-xl justify-center items-center`}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className={`${isVerySmallFont ? 'w-9 h-9' : 'w-10 h-10'} bg-white/20 rounded-xl justify-center items-center`}>
             <FontAwesome name="arrow-left" size={isVerySmallFont ? 16 : 18} color="#fff" />
           </TouchableOpacity>
           <Text className={`text-white ${headerTitleClass} font-bold`}>{t('settings')}</Text>
@@ -1063,9 +1064,13 @@ export default function SettingsScreen() {
         </View>
 
         {/* PIN Setup Modal */}
-        <Modal visible={showPinModal} transparent animationType="fade">
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-            <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm">
+        <FormSheet
+          visible={showPinModal}
+          onClose={() => setShowPinModal(false)}
+          variant="center"
+          cardClassName="max-w-sm"
+          accessibilityLabel={pinStep === 'enter' ? 'Set app lock PIN' : 'Confirm app lock PIN'}
+        >
               <Text className="text-slate-900 dark:text-white text-xl font-bold mb-1">
                 {pinStep === 'enter' ? (hasPin ? 'Enter New PIN' : 'Set PIN') : 'Confirm PIN'}
               </Text>
@@ -1106,9 +1111,7 @@ export default function SettingsScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </View>
-        </Modal>
+        </FormSheet>
 
         {/* Theme Section */}
         <View className={sectionCardClass} style={[{ elevation: 4 }, selectedSettingsCategory !== 'personal' && { display: 'none' }]}>
@@ -2019,18 +2022,15 @@ export default function SettingsScreen() {
         }
       </ScrollView >
 
-      <Modal
+      <FormSheet
         visible={showResetModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!isResettingAccount) {
-            setShowResetModal(false);
-          }
-        }}
+        onClose={() => { if (!isResettingAccount) setShowResetModal(false); }}
+        variant="center"
+        cardClassName="shadow-xl"
+        // A permanent delete needs an explicit choice, not a stray backdrop tap.
+        dismissOnBackdropPress={false}
+        accessibilityLabel="Confirm permanent account reset"
       >
-        <View className="flex-1 bg-black/50 justify-center items-center px-6">
-          <View className="bg-white dark:bg-slate-800 w-full rounded-3xl p-6 shadow-xl">
             <View className="items-center mb-4">
               <View className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full justify-center items-center mb-4">
                 <FontAwesome name="lock" size={30} color="#ef4444" />
@@ -2091,9 +2091,7 @@ export default function SettingsScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
 
       {/* Currency Selection Modal */}
       < Modal
@@ -2107,7 +2105,7 @@ export default function SettingsScreen() {
           <View className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-sm max-h-[70%]">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-slate-900 dark:text-white text-xl font-bold">{t('selectCurrency')}</Text>
-              <TouchableOpacity onPress={() => setShowCurrencyModal(false)}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowCurrencyModal(false)}>
                 <FontAwesome name="times" size={24} color="#64748b" />
               </TouchableOpacity>
             </View>

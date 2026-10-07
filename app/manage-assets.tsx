@@ -8,6 +8,8 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { Animated, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
+import { useFormErrors } from '@/hooks/useFormErrors';
 
 
 type TabType = 'all' | 'custom' | 'bundled';
@@ -23,6 +25,7 @@ export default function BanksScreen() {
 
   // Form states
   const [bankName, setBankName] = useState('');
+  const { errors, validate, clearError, resetErrors } = useFormErrors<'bankName'>();
   const [bankLogo, setBankLogo] = useState('');
   const [bankColor, setBankColor] = useState('#3b82f6');
   const [bankWebsite, setBankWebsite] = useState('');
@@ -84,6 +87,7 @@ export default function BanksScreen() {
   }, [activeTab, searchQuery, banks]);
 
   const resetForm = () => {
+    resetErrors();
     setBankName('');
     setBankLogo('');
     setBankColor('#3b82f6');
@@ -155,10 +159,7 @@ export default function BanksScreen() {
   };
 
   const handleSaveBank = async () => {
-    if (!bankName.trim()) {
-      Alert.alert('Error', 'Please enter bank name');
-      return;
-    }
+    if (!validate({ bankName: !bankName.trim() && 'Enter the bank name.' })) return;
 
     try {
       if (editingBank) {
@@ -297,7 +298,7 @@ export default function BanksScreen() {
 
             {/* Actions */}
             {!bank.isBundled && (
-              <TouchableOpacity
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
                 onPress={() => handleDeleteBank(bank)}
                 className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-xl justify-center items-center ml-2"
               >
@@ -323,7 +324,7 @@ export default function BanksScreen() {
         style={{ elevation: 8 }}
       >
         <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back"
             onPress={() => router.back()}
             className="w-12 h-12 bg-white/20 backdrop-blur-lg rounded-2xl justify-center items-center"
             style={{ elevation: 2 }}
@@ -334,7 +335,7 @@ export default function BanksScreen() {
             <Text className="text-white text-2xl font-bold">Banks</Text>
             <Text className="text-white/90 text-sm mt-1">Manage your banks</Text>
           </View>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
             onPress={handleAddBank}
             className="w-12 h-12 bg-white/20 backdrop-blur-lg rounded-2xl justify-center items-center"
             style={{ elevation: 2 }}
@@ -414,7 +415,7 @@ export default function BanksScreen() {
             className="flex-1 ml-3 text-slate-900 dark:text-white font-medium"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setSearchQuery('')}>
               <FontAwesome name="times-circle" size={18} color="#94a3b8" />
             </TouchableOpacity>
           )}
@@ -458,24 +459,18 @@ export default function BanksScreen() {
       </Animated.View>
 
       {/* Add/Edit Bank Modal */}
-      <Modal
+      <FormSheet
         visible={showAddModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setShowAddModal(false);
-          resetForm();
-        }}
+        onClose={() => { setShowAddModal(false); resetForm(); }}
+        accessibilityLabel={editingBank ? 'Edit bank' : 'Add bank'}
       >
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] max-h-[90%]" style={{ elevation: 8 }}>
-            <ScrollView className="px-6 py-6" showsVerticalScrollIndicator={false}>
+        <View>
               {/* Modal Header */}
               <View className="flex-row items-center justify-between mb-6">
                 <Text className="text-slate-900 dark:text-white font-bold text-2xl">
                   {editingBank ? 'Edit Bank' : 'Add Bank'}
                 </Text>
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                   onPress={() => {
                     setShowAddModal(false);
                     resetForm();
@@ -508,11 +503,16 @@ export default function BanksScreen() {
                 <Text className="text-slate-700 dark:text-slate-300 font-bold mb-2">Bank Name *</Text>
                 <TextInput
                   value={bankName}
-                  onChangeText={setBankName}
+                  onChangeText={(value) => { clearError('bankName'); setBankName(value); }}
+                  accessibilityLabel="Bank name"
+                  aria-invalid={!!errors.bankName}
                   placeholder="e.g., Chase Bank"
                   placeholderTextColor="#94a3b8"
-                  className="bg-slate-50 dark:bg-slate-800 px-4 py-4 rounded-xl text-slate-900 dark:text-white font-semibold border-2 border-slate-200 dark:border-slate-700"
+                  className={`bg-slate-50 dark:bg-slate-800 px-4 py-4 rounded-xl text-slate-900 dark:text-white font-semibold border-2 ${errors.bankName ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'}`}
                 />
+                {errors.bankName ? (
+                  <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.bankName}</Text>
+                ) : null}
               </View>
 
               {/* Logo URL */}
@@ -526,7 +526,7 @@ export default function BanksScreen() {
                     placeholderTextColor="#94a3b8"
                     className="flex-1 bg-slate-50 dark:bg-slate-800 px-4 py-4 rounded-xl text-slate-900 dark:text-white border-2 border-slate-200 dark:border-slate-700 mr-2"
                   />
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Browse bundled logos"
                     onPress={() => {
                       setShowLogoModal(true);
                       loadLocalLogos();
@@ -543,7 +543,7 @@ export default function BanksScreen() {
                 <Text className="text-slate-700 dark:text-slate-300 font-bold mb-2">Brand Color</Text>
                 <View className="flex-row flex-wrap">
                   {predefinedColors.map((color) => (
-                    <TouchableOpacity
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm"
                       key={color}
                       onPress={() => setBankColor(color)}
                       className="w-12 h-12 rounded-xl mr-2 mb-2 justify-center items-center border-4"
@@ -638,10 +638,8 @@ export default function BanksScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
-          </View>
         </View>
-      </Modal>
+      </FormSheet>
 
       {/* Logo Selection Modal */}
       <Modal
@@ -657,7 +655,7 @@ export default function BanksScreen() {
                 <Text className="text-slate-900 dark:text-white font-bold text-xl">
                   Select Logo
                 </Text>
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                   onPress={() => setShowLogoModal(false)}
                   className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl justify-center items-center"
                 >

@@ -139,7 +139,7 @@ export default function CalculatorScreen() {
 
       {/* 1. Header Area */}
       <View className="px-6 py-4 flex-row justify-between items-center">
-        <TouchableOpacity onPress={() => router.back()} className="p-2 bg-white dark:bg-slate-900 rounded-2xl shadow-sm">
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="p-2 bg-white dark:bg-slate-900 rounded-2xl shadow-sm">
           <FontAwesome name="chevron-left" size={16} color="#64748b" />
         </TouchableOpacity>
         <Text className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-tighter text-xs">Calculator</Text>

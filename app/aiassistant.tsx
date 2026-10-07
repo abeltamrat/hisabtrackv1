@@ -188,7 +188,7 @@ export default function AIAssistantScreen() {
             >
                 <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center flex-1">
-                        <TouchableOpacity onPress={() => router.back()} className="mr-4">
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="mr-4">
                             <FontAwesome name="arrow-left" size={24} color="#fff" />
                         </TouchableOpacity>
                         <View className="flex-1">
@@ -196,7 +196,7 @@ export default function AIAssistantScreen() {
                             <Text className="text-indigo-200 text-sm">Powered by Gemini / Groq / OpenRouter / Puter.js</Text>
                         </View>
                     </View>
-                    <TouchableOpacity onPress={handleClearChat} className="ml-2">
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete" onPress={handleClearChat} className="ml-2">
                         <FontAwesome name="trash" size={20} color="#fff" />
                     </TouchableOpacity>
                 </View>
@@ -283,7 +283,7 @@ export default function AIAssistantScreen() {
                             maxLength={500}
                             onSubmitEditing={handleSend}
                         />
-                        <TouchableOpacity
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Send"
                             onPress={handleSend}
                             disabled={!inputText.trim() || isLoading}
                             className={`w-12 h-12 rounded-full items-center justify-center ${inputText.trim() && !isLoading ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'

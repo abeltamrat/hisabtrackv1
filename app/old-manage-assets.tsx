@@ -7,6 +7,8 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Image, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type AssetType = 'bundled' | 'user';
@@ -20,6 +22,7 @@ export default function ManageAssets() {
   
   // Add new asset states
   const [name, setName] = useState('');
+  const { errors, validate, clearError } = useFormErrors<'name' | 'bundledName' | 'bundledUrl' | 'urlImport' | 'serverUrl'>();
   const [urlImport, setUrlImport] = useState('');
   
   // Edit states
@@ -124,10 +127,7 @@ export default function ManageAssets() {
     const reader = new FileReader();
     reader.onload = async () => {
       const uri = reader.result as string;
-      if (!name.trim()) {
-        Alert.alert('Error', 'Please provide a name for the asset');
-        return;
-      }
+      if (!validate({ name: !name.trim() && 'Enter a name for this logo.' })) return;
       try {
         await LocalAssetService.addAsset(name.trim(), uri);
         setName('');
@@ -175,15 +175,10 @@ export default function ManageAssets() {
     const newName = editingBundledName.trim();
     const newUrl = editingBundledUrl.trim();
     
-    if (!newName) {
-      Alert.alert('Error', 'Name is required');
-      return;
-    }
-
-    if (!newUrl) {
-      Alert.alert('Error', 'URL is required');
-      return;
-    }
+    if (!validate({
+      bundledName: !newName && 'Enter a name.',
+      bundledUrl: !newUrl && 'Enter an image URL.',
+    })) return;
 
     try {
       const editedBundled = { ...bundled };
@@ -208,15 +203,10 @@ export default function ManageAssets() {
     const newName = editingNewName.trim();
     const newUrl = editingNewUrl.trim();
     
-    if (!newName) {
-      Alert.alert('Error', 'Name is required');
-      return;
-    }
-
-    if (!newUrl) {
-      Alert.alert('Error', 'URL is required');
-      return;
-    }
+    if (!validate({
+      bundledName: !newName && 'Enter a name.',
+      bundledUrl: !newUrl && 'Enter an image URL.',
+    })) return;
 
     if (newName !== editingKey && userAssets[newName]) {
       Alert.alert('Overwrite?', `"${newName}" already exists. Overwrite?`, [
@@ -437,7 +427,7 @@ export default function ManageAssets() {
         style={{ elevation: 8 }}
       >
         <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back"
             onPress={() => router.back()}
             className="w-12 h-12 bg-white/20 backdrop-blur-lg rounded-2xl justify-center items-center"
             style={{ elevation: 2 }}
@@ -521,7 +511,7 @@ export default function ManageAssets() {
               className="flex-1 ml-3 text-slate-900 dark:text-white font-medium"
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setSearchQuery('')}>
                 <FontAwesome name="times-circle" size={18} color="#94a3b8" />
               </TouchableOpacity>
             )}
@@ -602,11 +592,16 @@ export default function ManageAssets() {
 
                 <TextInput
                   value={name}
-                  onChangeText={setName}
+                  onChangeText={(value) => { clearError('name'); setName(value); }}
                   placeholder="Asset name (e.g., My Bank)"
                   placeholderTextColor="#94a3b8"
-                  className="bg-slate-50 dark:bg-slate-700 px-4 py-4 rounded-xl mb-4 text-slate-900 dark:text-white font-semibold border-2 border-slate-200 dark:border-slate-600"
+                  accessibilityLabel="Logo name"
+                  aria-invalid={!!errors.name}
+                  className={`bg-slate-50 dark:bg-slate-700 px-4 py-4 rounded-xl text-slate-900 dark:text-white font-semibold border-2 ${errors.name ? 'border-red-500 mb-1.5' : 'border-slate-200 dark:border-slate-600 mb-4'}`}
                 />
+                {errors.name ? (
+                  <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mb-3 font-semibold">{errors.name}</Text>
+                ) : null}
 
                 {Platform.OS === 'web' ? (
                   <>
@@ -643,10 +638,7 @@ export default function ManageAssets() {
                           const uri = asset.base64
                             ? `data:${asset.type || 'image/png'};base64,${asset.base64}`
                             : asset.uri;
-                          if (!name.trim()) {
-                            Alert.alert('Error', 'Please provide a name');
-                            return;
-                          }
+                          if (!validate({ name: !name.trim() && 'Enter a name for this logo.' })) return;
                           await LocalAssetService.addAsset(name.trim(), uri);
                           setName('');
                           await load();
@@ -683,26 +675,36 @@ export default function ManageAssets() {
 
                 <TextInput
                   value={name}
-                  onChangeText={setName}
+                  onChangeText={(value) => { clearError('name'); setName(value); }}
                   placeholder="Asset name (e.g., My Bank)"
                   placeholderTextColor="#94a3b8"
-                  className="bg-slate-50 dark:bg-slate-700 px-4 py-4 rounded-xl mb-4 text-slate-900 dark:text-white font-semibold border-2 border-slate-200 dark:border-slate-600"
+                  accessibilityLabel="Logo name"
+                  aria-invalid={!!errors.name}
+                  className={`bg-slate-50 dark:bg-slate-700 px-4 py-4 rounded-xl text-slate-900 dark:text-white font-semibold border-2 ${errors.name ? 'border-red-500 mb-1.5' : 'border-slate-200 dark:border-slate-600 mb-4'}`}
                 />
+                {errors.name ? (
+                  <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mb-3 font-semibold">{errors.name}</Text>
+                ) : null}
 
                 <TextInput
                   value={urlImport}
-                  onChangeText={setUrlImport}
+                  onChangeText={(value) => { clearError('urlImport'); setUrlImport(value); }}
                   placeholder="https://example.com/logo.png"
                   placeholderTextColor="#94a3b8"
-                  className="bg-slate-50 dark:bg-slate-700 px-4 py-4 rounded-xl mb-4 text-slate-900 dark:text-white border-2 border-slate-200 dark:border-slate-600"
+                  accessibilityLabel="Logo image URL"
+                  aria-invalid={!!errors.urlImport}
+                  className={`bg-slate-50 dark:bg-slate-700 px-4 py-4 rounded-xl text-slate-900 dark:text-white border-2 ${errors.urlImport ? 'border-red-500 mb-1.5' : 'border-slate-200 dark:border-slate-600 mb-4'}`}
                 />
+                {errors.urlImport ? (
+                  <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mb-3 font-semibold">{errors.urlImport}</Text>
+                ) : null}
 
                 <TouchableOpacity
                   onPress={async () => {
-                    if (!name.trim() || !urlImport.trim()) {
-                      Alert.alert('Error', 'Please provide name and URL');
-                      return;
-                    }
+                    if (!validate({
+                      name: !name.trim() && 'Enter a name for this logo.',
+                      urlImport: !urlImport.trim() && 'Enter an image URL.',
+                    })) return;
                     try {
                       await LocalAssetService.addAssetFromUrl(name.trim(), urlImport.trim());
                       setName('');
@@ -754,26 +756,25 @@ export default function ManageAssets() {
       </Animated.View>
 
       {/* Bundled Selection Modal */}
-      <Modal
+      <FormSheet
         visible={showBundledSelection}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
+        onClose={() => {
           setShowBundledSelection(false);
           setIsSelectingForEdit(false);
           setShowServerList(false);
           setServerUrlInput('');
         }}
+        maxHeight="80%"
+        scrollable={false}
+        accessibilityLabel="Choose a bank logo"
       >
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] max-h-[80%]" style={{ elevation: 8 }}>
             {/* Modal Header */}
             <View className="p-6 border-b border-slate-200 dark:border-slate-700">
               <View className="flex-row items-center justify-between mb-4">
                 <Text className="text-slate-900 dark:text-white font-bold text-xl">
                   {isSelectingForEdit ? 'Select Logo to Edit' : 'Select Bundled Logo'}
                 </Text>
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                   onPress={() => {
                     setShowBundledSelection(false);
                     setIsSelectingForEdit(false);
@@ -811,18 +812,20 @@ export default function ManageAssets() {
                 <View className="mb-4">
                   <TextInput
                     value={serverUrlInput}
-                    onChangeText={setServerUrlInput}
+                    onChangeText={(value) => { clearError('serverUrl'); setServerUrlInput(value); }}
                     placeholder="Enter image URL (https://...) or project path (/assets/...)"
                     placeholderTextColor="#94a3b8"
-                    className="bg-slate-50 dark:bg-slate-800 px-4 py-3 rounded-xl mb-2 text-slate-900 dark:text-white border-2 border-slate-200 dark:border-slate-700"
+                    accessibilityLabel="Logo URL or project path"
+                    aria-invalid={!!errors.serverUrl}
+                    className={`bg-slate-50 dark:bg-slate-800 px-4 py-3 rounded-xl mb-2 text-slate-900 dark:text-white border-2 ${errors.serverUrl ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'}`}
                   />
+                  {errors.serverUrl ? (
+                    <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mb-2 font-semibold">{errors.serverUrl}</Text>
+                  ) : null}
                   <View className="flex-row">
                     <TouchableOpacity
                       onPress={async () => {
-                        if (!serverUrlInput.trim()) {
-                          Alert.alert('Error', 'Please enter a URL');
-                          return;
-                        }
+                        if (!validate({ serverUrl: !serverUrlInput.trim() && 'Enter a server URL.' })) return;
                         setEditingBundledUrl(serverUrlInput.trim());
                         setShowBundledSelection(false);
                         setIsSelectingForEdit(false);
@@ -883,9 +886,7 @@ export default function ManageAssets() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
     </SafeAreaView>
   );
 }

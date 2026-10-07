@@ -205,7 +205,11 @@ test('no screen imports Alert from react-native, which is a no-op on web', () =>
       const rel = `${dir}/${entry.name}`;
       if (entry.isDirectory()) { walk(rel); continue; }
       if (!/\.tsx?$/.test(entry.name)) continue;
-      const src = fs.readFileSync(path.join(root, rel), 'utf8');
+      // Comments are stripped: the docs on FormField and useFormErrors name the
+      // Alert.alert pattern they exist to replace.
+      const src = fs.readFileSync(path.join(root, rel), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
       if (!/\bAlert\s*\.\s*alert\s*\(/.test(src)) continue;
       // The import must resolve to utils/alert, which is platform-split.
       const fromRn = /import\s*\{[^}]*\bAlert\b[^}]*\}\s*from\s*'react-native'/s.test(src);
@@ -378,6 +382,14 @@ test('account deletion does not promise an unrecorded balancing expense', () => 
   const source = fs.readFileSync(path.join(root, 'app/accounts.tsx'), 'utf8');
   assert.doesNotMatch(source, /remaining balance.*recorded as an expense/i);
   assert.match(source, /has ledger history/);
+});
+
+test('linked loan deletion validates locally before detaching the other party', () => {
+  const source = fs.readFileSync(path.join(root, 'app/loans.tsx'), 'utf8');
+  const flow = source.slice(source.indexOf('const handleDeleteItem'), source.indexOf('// Payment Handlers'));
+  assert.match(flow, /hasLedgerHistory/);
+  assert.ok(flow.indexOf('dispatch(deleteLoan') < flow.indexOf('LinkedLoanService.detachLoan'));
+  assert.match(flow, /upsertLoan\(loan\)/, 'a failed remote detach restores the local loan');
 });
 
 test('no user-facing string uses "?" where an ellipsis or bullet belongs', () => {
@@ -870,4 +882,414 @@ test('the keyed lookup falls back for adapters that lack it', async () => {
     for (const key of ['@/utils/uuid', '@/services/LocalChangeEmitter', '../LocalChangeEmitter']) delete mocks[key];
     cache.clear();
   }
+});
+
+// ── Reported figures must be real ─────────────────────────────────────────
+test('no screen renders a fabricated metric as user data', () => {
+  const reports = fs.readFileSync(path.join(root, 'app/(tabs)/reports.tsx'), 'utf8');
+  // The Budget ring of the Financial Health chart was a literal 0.75, shown to
+  // every user regardless of their budgets.
+  const progressChart = reports.slice(reports.indexOf('<ProgressChart'));
+  const block = progressChart.slice(0, progressChart.indexOf('/>'));
+  assert.ok(!/0\.75/.test(block), 'the health chart must not contain a hardcoded ratio');
+  assert.match(block, /budgetHealth/, 'it is computed from real budget data');
+  // With no budgets there is nothing to measure, so the ring is omitted
+  // rather than filled with a placeholder.
+  assert.match(reports, /budgetHealth === null \? \['Savings'\]/);
+});
+
+test('the SMS permission screen requests the real permission', () => {
+  const screen = fs.readFileSync(path.join(root, 'app/(auth)/sms-permissions.tsx'), 'utf8');
+  // It used to simulate the request and then claim success.
+  assert.match(screen, /SMSSyncService\.requestPermissions\(\)/);
+  assert.match(screen, /SMSSyncService\.hasReadSmsPermission\(\)/);
+  // The stub granted itself the permission from a button handler.
+  assert.ok(!/onPress: \(\) => \{\s*setHasPermission\(true\)/.test(screen),
+    'permission state must never be set from a dialog button');
+  // Success may only be reported when the OS actually granted it.
+  assert.match(screen, /const granted = await SMSSyncService\.requestPermissions\(\);/);
+  assert.match(screen, /if \(granted\)/);
+  // The old copy promised data never leaves the device, contradicting the
+  // privacy policy's disclosure of the optional AI provider path.
+  assert.ok(!/No data is sent to external servers/.test(screen));
+  assert.match(screen, /sent to the AI provider you choose/);
+});
+
+// ── Keyboard handling inside modals ───────────────────────────────────────
+function modalsWithInputs() {
+  const found = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { walk(rel); continue; }
+      if (!/\.tsx$/.test(entry.name)) continue;
+      const src = fs.readFileSync(path.join(root, rel), 'utf8').replace(/\r\n/g, '\n');
+      if (!src.includes('<TextInput')) continue;
+      const lines = src.split('\n');
+      const opens = lines.map((l, i) => (/<Modal\b/.test(l) ? i : -1)).filter(i => i >= 0);
+      const closes = lines.map((l, i) => (l.includes('</Modal>') ? i : -1)).filter(i => i >= 0);
+      for (const start of opens) {
+        const end = closes.find(c => c > start);
+        if (end === undefined) continue;
+        const body = lines.slice(start, end + 1).join('\n');
+        if (!body.includes('<TextInput')) continue;
+        found.push({ file: rel, line: start + 1, body });
+      }
+    }
+  };
+  ['app', 'components'].forEach(walk);
+  return found;
+}
+
+test('no form field sits in a modal without keyboard handling', () => {
+  // A Modal is its own window on Android, so a KeyboardAvoidingView declared
+  // on the surrounding screen never reaches the fields inside it. Twelve forms
+  // were affected, including creating a loan and recording a payment.
+  const offenders = modalsWithInputs()
+    .filter(m => !m.body.includes('<KeyboardAvoidingView') && !m.body.includes('<FormSheet'))
+    .map(m => `${m.file}:${m.line}`);
+  assert.deepEqual(offenders, [], 'these fields would be covered by the keyboard');
+});
+
+test('FormSheet handles the keyboard inside the modal window', () => {
+  const sheet = fs.readFileSync(path.join(root, 'components/FormSheet.tsx'), 'utf8');
+  // KeyboardAvoidingView does not resize a modal window, so the height is
+  // measured from the keyboard events directly.
+  assert.match(sheet, /Keyboard\.addListener/);
+  assert.match(sheet, /keyboardWillShow|keyboardDidShow/);
+  assert.match(sheet, /keyboardWillHide|keyboardDidHide/);
+  // A tap on a button while the keyboard is open must not be swallowed.
+  assert.match(sheet, /keyboardShouldPersistTaps="handled"/);
+  // The card must clear the Android gesture bar.
+  assert.match(sheet, /useSafeAreaInsets/);
+  assert.match(sheet, /insets\.bottom/);
+  // Screen readers need to be trapped in the dialog.
+  assert.match(sheet, /accessibilityViewIsModal/);
+});
+
+test('forms share one sheet component rather than hand-rolled modals', () => {
+  const adopters = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { walk(rel); continue; }
+      if (!/\.tsx$/.test(entry.name)) continue;
+      if (fs.readFileSync(path.join(root, rel), 'utf8').includes('<FormSheet')) adopters.push(rel);
+    }
+  };
+  walk('app');
+  // Every screen whose form was covered by the keyboard now uses it.
+  for (const screen of ['loans', 'accounts', 'goals', 'settings', 'categories', 'recurring',
+                        'draft-transactions', 'manage-assets', 'manage-sms-rules',
+                        'old-manage-assets', 'loan/[id]']) {
+    assert.ok(adopters.includes(`app/${screen}.tsx`), `app/${screen}.tsx should use FormSheet`);
+  }
+});
+
+test('a destructive confirmation cannot be dismissed by a stray backdrop tap', () => {
+  const settings = fs.readFileSync(path.join(root, 'app/settings.tsx'), 'utf8');
+  const reset = settings.slice(settings.indexOf('Confirm permanent account reset') - 600,
+                               settings.indexOf('Confirm permanent account reset') + 200);
+  assert.match(reset, /dismissOnBackdropPress=\{false\}/);
+});
+
+test('no screen ships invented financial records as the user\'s own', () => {
+  const offenders = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { walk(rel); continue; }
+      if (!/\.tsx?$/.test(entry.name)) continue;
+      const src = fs.readFileSync(path.join(root, rel), 'utf8');
+      // Strip comments so documenting a removed placeholder does not trip this.
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      // Placeholder card holders and card numbers rendered as real data.
+      if (/John Doe|Jane Doe/.test(code)) offenders.push(`${rel}: placeholder card holder`);
+      if (/\d{4} \*{4} \*{4} \d{4}/.test(code)) offenders.push(`${rel}: fabricated card number`);
+      if (/Demo (Premium|Gold|Business)/.test(code)) offenders.push(`${rel}: demo account name`);
+    }
+  };
+  ['app', 'components'].forEach(walk);
+  assert.deepEqual(offenders, []);
+});
+
+test('the cards screen is driven by real ledger accounts', () => {
+  const cards = fs.readFileSync(path.join(root, 'app/cards.tsx'), 'utf8');
+  assert.match(cards, /useSelector/, 'reads accounts from the store');
+  assert.match(cards, /account\.type === 'CARD' \|\| account\.type === 'SAVINGS'/);
+  // Credit limits, expiry dates and networks are not in the data model, so
+  // they must not be displayed at all rather than invented.
+  for (const invented of ['expiry', 'network', 'limit']) {
+    assert.ok(!new RegExp(`${invented}:`).test(cards), `${invented} is not a ledger field`);
+  }
+  assert.match(cards, /ScreenInfoCard/, 'has an empty state');
+});
+
+test('every quick action on the cards screen does something', () => {
+  const cards = fs.readFileSync(path.join(root, 'app/cards.tsx'), 'utf8');
+  // Three actions previously rendered with no onPress at all.
+  const buttons = [...cards.matchAll(/<QuickAction\b[\s\S]*?\/>/g)].map(m => m[0]);
+  assert.ok(buttons.length >= 3, `expected the action row, found ${buttons.length}`);
+  for (const button of buttons) {
+    assert.match(button, /onPress=\{/, 'a quick action with no handler is a dead control');
+    assert.match(button, /accessibilityLabel=/);
+  }
+});
+
+test('Reports shows a first-run state instead of zeroed charts', () => {
+  const reports = fs.readFileSync(path.join(root, 'app/(tabs)/reports.tsx'), 'utf8');
+  assert.match(reports, /hasNoLedgerData/);
+  assert.match(reports, /ScreenInfoCard/);
+  // Every tab must be behind the guard, or a tab switch reveals empty charts.
+  for (const tab of ['overview', 'forecast', 'income', 'expense', 'trends', 'comparison']) {
+    const guarded = new RegExp(`!hasNoLedgerData && activeTab === '${tab}'`);
+    assert.match(reports, guarded, `the ${tab} tab is not guarded`);
+  }
+  // A quiet period is real data and must still render its charts.
+  assert.match(reports, /accounts\.length === 0 && transactions\.length === 0/);
+});
+
+// ── Inline field validation ───────────────────────────────────────────────
+const FIELD_VALIDATION_HINT = new RegExp(
+  'please (enter|select|choose|pick|provide|fill)|is required|cannot be empty'
+  + '|enter a valid|valid amount|valid balance|invalid amount'
+  + '|select an account|select both|enter account|enter your', 'i');
+
+test('form problems are reported on the field, not in a blocking dialog', () => {
+  const offenders = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { walk(rel); continue; }
+      if (!/\.tsx$/.test(entry.name)) continue;
+      // Comments are stripped: FormField's docs quote the dialog it replaces.
+      const src = fs.readFileSync(path.join(root, rel), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+      for (const m of src.matchAll(/Alert\.alert\(\s*'([^']*)'\s*,\s*'([^']*)'/g)) {
+        const [, title, body] = m;
+        // Permission prompts are a system concern, not a field problem.
+        if (/permission/i.test(title + body)) continue;
+        if (FIELD_VALIDATION_HINT.test(`${title} ${body}`)) offenders.push(`${rel}: "${title}: ${body}"`);
+      }
+    }
+  };
+  ['app', 'components'].forEach(walk);
+  assert.deepEqual(offenders, [],
+    'these dialogs name no field, so the user must hunt for the problem');
+});
+
+test('useFormErrors reports every problem at once and treats false as valid', () => {
+  const { useFormErrors } = load('./hooks/useFormErrors.ts');
+  // Exercise the reducer logic directly, without a React renderer.
+  const states = [];
+  let current = {};
+  const React = require('react');
+  // Minimal hook harness: useState/useCallback stand-ins.
+  const originalUseState = React.useState;
+  const originalUseCallback = React.useCallback;
+  React.useState = (initial) => [current, (next) => {
+    current = typeof next === 'function' ? next(current) : next;
+    states.push(current);
+  }];
+  React.useCallback = (fn) => fn;
+  try {
+    const form = useFormErrors();
+    // All failing checks surface together.
+    assert.equal(form.validate({ a: 'A is wrong', b: 'B is wrong' }), false);
+    assert.deepEqual(current, { a: 'A is wrong', b: 'B is wrong' });
+    // `false` means the check passed, so it must not become an error.
+    assert.equal(form.validate({ a: false, b: null, c: undefined }), true);
+    assert.deepEqual(current, {});
+    // Editing one field clears only that field.
+    form.validate({ a: 'A is wrong', b: 'B is wrong' });
+    form.clearError('a');
+    assert.deepEqual(current, { b: 'B is wrong' });
+  } finally {
+    React.useState = originalUseState;
+    React.useCallback = originalUseCallback;
+  }
+});
+
+test('the main forms wire inline errors to their fields', () => {
+  const forms = {
+    'app/accounts.tsx': ['name', 'balance'],
+    'app/transfer.tsx': ['amount', 'from', 'to'],
+    'app/modal.tsx': ['amount', 'account', 'category'],
+    'app/budget-modal.tsx': ['amount', 'category'],
+    'app/loans.tsx': ['personName', 'accountId', 'amount', 'dueDate', 'paymentAmount'],
+    'app/(auth)/login.tsx': ['identifier', 'email', 'password'],
+    'app/categories.tsx': ['name'],
+    'app/loan/[id].tsx': ['recordAmount', 'recordAccount'],
+  };
+  for (const [file, fields] of Object.entries(forms)) {
+    const src = fs.readFileSync(path.join(root, file), 'utf8');
+    assert.match(src, /useFormErrors/, `${file} should use the hook`);
+    for (const field of fields) {
+      assert.ok(src.includes(`errors.${field}`), `${file} never renders errors.${field}`);
+      assert.ok(src.includes(`clearError('${field}')`), `${file} never clears errors.${field} on edit`);
+    }
+    // A message the reader cannot hear is only half a fix.
+    assert.match(src, /accessibilityRole="alert"/, `${file} should announce its errors`);
+  }
+});
+
+// ── Icon-only controls ────────────────────────────────────────────────────
+test('every icon-only control has a screen-reader label', () => {
+  const offenders = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { walk(rel); continue; }
+      if (!/\.tsx$/.test(entry.name)) continue;
+      const src = fs.readFileSync(path.join(root, rel), 'utf8');
+      // A TouchableOpacity whose only child is an icon announces nothing at all.
+      for (const block of src.match(/<TouchableOpacity(?![A-Za-z])[\s\S]{0,900}?<\/TouchableOpacity>/g) ?? []) {
+        if (!block.includes('<FontAwesome')) continue;
+        if (block.includes('<Text')) continue;
+        if (block.includes('accessibilityLabel')) continue;
+        const icon = block.match(/<FontAwesome\s+name=([^\s]+)/);
+        offenders.push(`${rel}: ${icon ? icon[1] : 'unknown icon'}`);
+      }
+    }
+  };
+  ['app', 'components'].forEach(walk);
+  assert.deepEqual(offenders, [], 'these buttons are silent to a screen reader');
+});
+
+test('toggles expose their state, not just a label', () => {
+  // A label alone cannot tell a reader whether a switch is on.
+  const checks = [
+    ['app/loans.tsx', /accessibilityState=\{\{ checked: globalRemindersEnabled \}\}/],
+    ['app/loans.tsx', /accessibilityState=\{\{ checked: !!item\.reminderEnabled \}\}/],
+    ['app/(tabs)/transactions.tsx', /accessibilityState=\{\{ selected: viewMode === 'table' \}\}/],
+    ['app/(tabs)/transactions.tsx', /accessibilityState=\{\{ selected: viewMode === 'card' \}\}/],
+    ['app/categories.tsx', /accessibilityState=\{\{ expanded: !isCollapsed \}\}/],
+    ['app/goals.tsx', /accessibilityState=\{\{ selected: formData\.icon === icon \}\}/],
+    ['components/CustomTabBar.tsx', /accessibilityState=\{\{ selected: isActive \}\}/],
+  ];
+  for (const [file, pattern] of checks) {
+    assert.match(fs.readFileSync(path.join(root, file), 'utf8'), pattern, `${file} is missing ${pattern}`);
+  }
+});
+
+test('the app bar controls are labelled and large enough to hit', () => {
+  const shell = fs.readFileSync(path.join(root, 'components/AppShell.tsx'), 'utf8');
+  assert.match(shell, /accessibilityLabel="Open menu"/);
+  assert.match(shell, /accessibilityLabel=\{unreadCount > 0 \? `Notifications, \$\{unreadCount\} unread` : 'Notifications'\}/);
+  // These were 36px icon targets built from padding: 8.
+  assert.match(shell, /width: 44, height: 44/);
+  // The status-bar strip and the sync banner must follow the theme.
+  assert.match(shell, /backgroundColor: actualTheme === 'dark' \? '#0f172a' : '#ffffff'/);
+  assert.ok(!/backgroundColor: '#fee2e2'/.test(shell), 'the sync banner must not be fixed light');
+});
+
+test('the status bar follows the theme instead of being pinned dark', () => {
+  const layout = fs.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8');
+  assert.match(layout, /statusBarStyle: isDark \? 'light' : 'dark'/);
+  assert.ok(!/statusBarStyle: 'dark'/.test(layout), 'a pinned value fights the per-screen StatusBar');
+});
+
+// ── Theme tokens ──────────────────────────────────────────────────────────
+test('theme tokens match the Tailwind palette and meet AA both ways', () => {
+  const { themeTokens } = load('./constants/theme.ts');
+  const light = themeTokens(false);
+  const dark = themeTokens(true);
+
+  // Backgrounds come straight from tailwind.config.js.
+  assert.equal(light.background, '#f8fafc');
+  assert.equal(dark.background, '#0f172a');
+
+  // Secondary text is the pairing the contrast sweep standardised on.
+  assert.ok(contrast(light.textMuted, light.surface) >= 4.5,
+    `light textMuted is ${contrast(light.textMuted, light.surface).toFixed(2)}:1 on surface`);
+  assert.ok(contrast(dark.textMuted, dark.background) >= 4.5,
+    `dark textMuted is ${contrast(dark.textMuted, dark.background).toFixed(2)}:1 on background`);
+  // Body text must clear AA comfortably in both themes.
+  assert.ok(contrast(light.text, light.surface) >= 7);
+  assert.ok(contrast(dark.text, dark.surface) >= 7);
+
+  // Both themes define every token, so a screen cannot read undefined.
+  assert.deepEqual(Object.keys(light).sort(), Object.keys(dark).sort());
+  for (const [key, value] of Object.entries(light)) {
+    assert.match(value, /^#[0-9a-f]{6}$/i, `light.${key} is not a hex colour`);
+    assert.match(dark[key], /^#[0-9a-f]{6}$/i, `dark.${key} is not a hex colour`);
+  }
+});
+
+test('screens using theme tokens declare them in scope', () => {
+  const offenders = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { walk(rel); continue; }
+      if (!/\.tsx$/.test(entry.name)) continue;
+      const src = fs.readFileSync(path.join(root, rel), 'utf8');
+      const usesTokens = /theme\.(background|surface|surfaceMuted|text|textMuted|textSubtle|border|primary|danger|success|warning)\b/.test(src);
+      if (!usesTokens) continue;
+      if (!src.includes('const theme = themeTokens(')) offenders.push(`${rel}: no themeTokens() call`);
+      if (!src.includes("from '@/constants/theme'")) offenders.push(`${rel}: missing import`);
+    }
+  };
+  ['app', 'components'].forEach(walk);
+  assert.deepEqual(offenders, []);
+});
+
+// ── i18n consistency ──────────────────────────────────────────────────────
+/**
+ * Screens that already call `t()` must not also hardcode user-facing text:
+ * a half-translated screen shows an Amharic, Oromo or Tigrinya speaker a
+ * mixture of their language and English, which reads worse than either.
+ *
+ * These counts are a ratchet, not a target. Lower them as strings are
+ * extracted; the test fails if a screen gains new hardcoded text.
+ */
+const HARDCODED_BASELINE = {
+  'app/(tabs)/index.tsx': 0,
+  'app/(tabs)/reports.tsx': 16,
+  'app/(tabs)/transactions.tsx': 6,
+  'app/loans.tsx': 5,
+  'app/settings.tsx': 60,
+};
+
+function hardcodedJsxText(src) {
+  const found = new Set();
+  for (const m of src.matchAll(/>([A-Z][A-Za-z][A-Za-z &',.%-]{6,40})</g)) {
+    const text = m[1].trim();
+    if (text.split(/\s+/).length >= 2) found.add(text);
+  }
+  return found;
+}
+
+test('localised screens do not gain new hardcoded text', () => {
+  const regressions = [];
+  for (const [file, baseline] of Object.entries(HARDCODED_BASELINE)) {
+    const src = fs.readFileSync(path.join(root, file), 'utf8');
+    const count = hardcodedJsxText(src).size;
+    if (count > baseline) {
+      regressions.push(`${file}: ${count} hardcoded strings, baseline ${baseline}`);
+    }
+  }
+  assert.deepEqual(regressions, [],
+    'extract these into the dictionary, or raise the baseline deliberately');
+});
+
+test('a screen that uses t() keeps every locale able to render it', () => {
+  // `t()` falls back EN -> key, so a missing EN entry is the only hard failure;
+  // the per-locale check above guards parity for everything the app ships.
+  const en = readDictionaries().EN;
+  const unresolvable = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { walk(rel); continue; }
+      if (!/\.tsx$/.test(entry.name)) continue;
+      const src = fs.readFileSync(path.join(root, rel), 'utf8');
+      for (const m of src.matchAll(/(?<![A-Za-z0-9_$.])t\('([^']+)'\)/g)) {
+        if (!en.has(m[1])) unresolvable.push(`${rel}: ${m[1]}`);
+      }
+    }
+  };
+  ['app', 'components'].forEach(walk);
+  assert.deepEqual(unresolvable, []);
 });

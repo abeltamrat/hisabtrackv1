@@ -17,6 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
 import { useDispatch, useSelector } from 'react-redux';
 import { parseTagInput } from '@/utils/tags';
 
@@ -623,7 +624,7 @@ export default function DraftTransactionsScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-4">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">SMS Transactions</Text>
@@ -639,16 +640,16 @@ export default function DraftTransactionsScreen() {
               </>
             ) : (
               <>
-                <TouchableOpacity onPress={() => setIsSelectionMode(true)} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Select multiple drafts" onPress={() => setIsSelectionMode(true)} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
                   <FontAwesome name="check-square-o" size={18} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowOptions(!showOptions)} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Draft options" accessibilityState={{ expanded: showOptions }} onPress={() => setShowOptions(!showOptions)} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
                   <FontAwesome name="sliders" size={18} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleClearAll} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete" onPress={handleClearAll} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
                   <FontAwesome name="trash" size={18} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleRefresh} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh" onPress={handleRefresh} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
                   <FontAwesome name="refresh" size={18} color="#fff" />
                 </TouchableOpacity>
               </>
@@ -780,7 +781,7 @@ export default function DraftTransactionsScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity onPress={handleRefresh} disabled={refreshing}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh" onPress={handleRefresh} disabled={refreshing}>
           <FontAwesome
             name="refresh"
             size={16}
@@ -886,7 +887,7 @@ export default function DraftTransactionsScreen() {
                     )}
                   </View>
                   <View className="flex-row items-center gap-3">
-                    <TouchableOpacity
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="View original SMS"
                       onPress={() => { setSelectedDraft(draft); setShowPreviewModal(true); }}
                       className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg"
                     >
@@ -991,7 +992,7 @@ export default function DraftTransactionsScreen() {
                     >
                       <Text className="text-white font-bold">Record Transaction</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ignore"
                       onPress={() => handleReject(draft.id)}
                       className="bg-red-50 dark:bg-red-900/30 px-4 py-3 rounded-xl items-center"
                     >
@@ -1062,7 +1063,7 @@ export default function DraftTransactionsScreen() {
                   {selectedDrafts.length} transaction{selectedDrafts.length !== 1 ? 's' : ''} will be {bulkAction === 'record' ? 'saved to your ledger' : 'moved to rejected'}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setShowBulkReviewModal(false)} className="p-2">
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowBulkReviewModal(false)} className="p-2">
                 <FontAwesome name="times" size={20} color="#94a3b8" />
               </TouchableOpacity>
             </View>
@@ -1100,7 +1101,7 @@ export default function DraftTransactionsScreen() {
                       {new Date(draft.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </Text>
                     {/* Remove from selection */}
-                    <TouchableOpacity
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                       onPress={() => toggleSelection(draft.id)}
                       className="w-6 h-6 ml-1 justify-center items-center"
                     >
@@ -1201,19 +1202,18 @@ export default function DraftTransactionsScreen() {
       </Modal>
 
       {/* Confirmation & Learning Modal */}
-      <Modal
+      <FormSheet
         visible={showConfirmModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowConfirmModal(false)}
+        onClose={() => setShowConfirmModal(false)}
+        cardClassName="shadow-2xl"
+        accessibilityLabel="Confirm transaction"
       >
-        <View className="flex-1 bg-black/60 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-6 shadow-2xl pb-10">
+        <View>
             <View className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full self-center mb-6" />
 
             <View className="flex-row justify-between items-center mb-6">
               <Text className="text-slate-900 dark:text-white text-2xl font-bold">Confirm Transaction</Text>
-              <TouchableOpacity onPress={() => setShowConfirmModal(false)}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowConfirmModal(false)}>
                 <FontAwesome name="times-circle" size={24} color="#94a3b8" />
               </TouchableOpacity>
             </View>
@@ -1520,9 +1520,8 @@ export default function DraftTransactionsScreen() {
                 {isRecording ? 'Recording...' : 'Record Transaction'}
               </Text>
             </TouchableOpacity>
-          </View>
         </View>
-      </Modal>
+      </FormSheet>
     </View>
   );
 }

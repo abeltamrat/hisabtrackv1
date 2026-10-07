@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { themeTokens } from '@/constants/theme';
 
 type TabEntry =
   | { kind: 'screen'; routeName: string; icon: string; label: string; a11yKey: string }
@@ -24,12 +25,13 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const { actualTheme } = useTheme();
   const { t } = useI18n();
   const isDark = actualTheme === 'dark';
+  const theme = themeTokens(isDark);
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const inactive = isDark ? '#475569' : '#94a3b8';
   const active   = '#6366f1';
-  const bg       = isDark ? '#0f172a' : '#ffffff';
+  const bg       = theme.surface;
   const border   = isDark ? '#1e293b' : '#f1f5f9';
 
   return (

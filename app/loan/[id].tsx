@@ -14,9 +14,12 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateLoan } from '@/store/slices/loansSlice';
 import { addTransaction } from '@/store/slices/transactionsSlice';
+import { themeTokens } from '@/constants/theme';
 
 type Tab = 'schedule' | 'chat' | 'log';
 
@@ -36,6 +39,7 @@ export default function LoanDetailsScreen() {
   const { actualTheme } = useTheme();
   const { user } = useAuth();
   const isDark = actualTheme === 'dark';
+  const theme = themeTokens(isDark);
 
   const loan = useSelector((state: RootState) =>
     state.loans.items.find(l => l.id === id),
@@ -63,6 +67,7 @@ export default function LoanDetailsScreen() {
   // Payment recording state
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [recordPaymentAmount, setRecordPaymentAmount] = useState('');
+  const { errors, validate, clearError } = useFormErrors<'recordAmount' | 'recordAccount' | 'confirmAccount'>();
   const [recordingPayment, setRecordingPayment] = useState(false);
   const recordOperation = useRef(generateUUID());
   const [recordAccountId, setRecordAccountId] = useState('');
@@ -220,10 +225,7 @@ export default function LoanDetailsScreen() {
 
   const handleFinalConfirm = async () => {
     if (!confirmModalData || !loan?.shared_loan_id || !user) return;
-    if (!confirmAccountId) {
-      Alert.alert('Error', 'Please select an account.');
-      return;
-    }
+    if (!validate({ confirmAccount: !confirmAccountId && 'Choose the account this settles through.' })) return;
     setConfirmingWithAccount(true);
     try {
       await LinkedPaymentService.save({
@@ -246,14 +248,10 @@ export default function LoanDetailsScreen() {
   const handleRecordRepayment = async () => {
     if (!loan?.shared_loan_id || !user || !loan.link_role) return;
     const amount = parseFloat(recordPaymentAmount);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Error', 'Enter a valid payment amount.');
-      return;
-    }
-    if (!recordAccountId) {
-      Alert.alert('Error', 'Please select an account.');
-      return;
-    }
+    if (!validate({
+      recordAmount: (isNaN(amount) || amount <= 0) && 'Enter a payment greater than zero.',
+      recordAccount: !recordAccountId && 'Choose the account this payment moves through.',
+    })) return;
     setRecordingPayment(true);
     try {
       if (amount > loan.remaining_balance) throw new Error('Payment exceeds remaining balance');
@@ -340,7 +338,7 @@ export default function LoanDetailsScreen() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }}
+      style={{ flex: 1, backgroundColor: theme.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
@@ -349,7 +347,7 @@ export default function LoanDetailsScreen() {
       {/* Header */}
       <LinearGradient colors={gradientColors} style={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, elevation: 4 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <TouchableOpacity onPress={() => router.back()} style={{ width: 40, height: 40, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 40, height: 40, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Loan Details</Text>
@@ -394,13 +392,13 @@ export default function LoanDetailsScreen() {
 
       {/* Stats row */}
       <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>
-        <View style={{ flex: 1, backgroundColor: isDark ? '#1e293b' : '#fff', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
+        <View style={{ flex: 1, backgroundColor: theme.surface, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: theme.surfaceMuted }}>
           <Text style={{ color: '#94a3b8', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Interest</Text>
-          <Text style={{ color: isDark ? '#fff' : '#0f172a', fontSize: 18, fontWeight: '700' }}>{loan.interest_rate}%</Text>
+          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>{loan.interest_rate}%</Text>
         </View>
-        <View style={{ flex: 1, backgroundColor: isDark ? '#1e293b' : '#fff', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
+        <View style={{ flex: 1, backgroundColor: theme.surface, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: theme.surfaceMuted }}>
           <Text style={{ color: '#94a3b8', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Due Date</Text>
-          <Text style={{ color: isDark ? '#fff' : '#0f172a', fontSize: 13, fontWeight: '700' }}>{new Date(loan.due_date).toLocaleDateString()}</Text>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{new Date(loan.due_date).toLocaleDateString()}</Text>
         </View>
       </View>
 
@@ -486,9 +484,9 @@ export default function LoanDetailsScreen() {
 
           {/* Repayment history */}
           {isLinked && repayments.length > 0 && (
-            <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9', marginBottom: 16, overflow: 'hidden' }}>
-              <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#f1f5f9' }}>
-                <Text style={{ color: isDark ? '#fff' : '#0f172a', fontWeight: '700', fontSize: 14 }}>Repayment History</Text>
+            <View style={{ backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.surfaceMuted, marginBottom: 16, overflow: 'hidden' }}>
+              <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: theme.surfaceMuted }}>
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>Repayment History</Text>
               </View>
               {repayments.map(r => {
                 const statusColor = r.status === 'CONFIRMED' ? '#10b981' : r.status === 'REJECTED' ? '#ef4444' : '#f59e0b';
@@ -497,7 +495,7 @@ export default function LoanDetailsScreen() {
                 return (
                   <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}>
                     <View>
-                      <Text style={{ color: isDark ? '#fff' : '#0f172a', fontWeight: '700', fontSize: 14 }}>{formatCurrency(r.amount)}</Text>
+                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>{formatCurrency(r.amount)}</Text>
                       <Text style={{ color: '#94a3b8', fontSize: 11 }}>{new Date(r.date).toLocaleDateString()} · {byMe ? 'You recorded' : 'Other party recorded'}</Text>
                     </View>
                     <View style={{ backgroundColor: statusColor + '22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
@@ -510,13 +508,13 @@ export default function LoanDetailsScreen() {
           )}
 
           {/* Amortization table */}
-          <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9', overflow: 'hidden' }}>
-            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#f1f5f9' }}>
-              <Text style={{ color: isDark ? '#fff' : '#0f172a', fontWeight: '700', fontSize: 15 }}>Amortization Schedule</Text>
+          <View style={{ backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.surfaceMuted, overflow: 'hidden' }}>
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: theme.surfaceMuted }}>
+              <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>Amortization Schedule</Text>
             </View>
             {schedule.length > 0 ? (
               <View>
-                <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#f1f5f9' }}>
+                <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderBottomWidth: 1, borderBottomColor: theme.surfaceMuted }}>
                   {['#', 'Payment', 'Principal', 'Balance', ''].map((h, i) => (
                     <Text key={i} style={{ flex: i === 0 ? 0.7 : i === 4 ? 0.5 : 2, color: '#94a3b8', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', textAlign: i > 0 ? 'right' : 'left' }}>{h}</Text>
                   ))}
@@ -559,7 +557,7 @@ export default function LoanDetailsScreen() {
           >
             {chatMessages.length === 0 && (
               <View style={{ alignItems: 'center', marginTop: 60 }}>
-                <FontAwesome name="comments" size={40} color={isDark ? '#334155' : '#e2e8f0'} />
+                <FontAwesome name="comments" size={40} color={theme.border} />
                 <Text style={{ color: '#94a3b8', marginTop: 12, fontSize: 14 }}>No messages yet. Start the conversation.</Text>
               </View>
             )}
@@ -593,15 +591,15 @@ export default function LoanDetailsScreen() {
           <View style={{
             flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10,
             paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-            backgroundColor: isDark ? '#1e293b' : '#fff',
-            borderTopWidth: 1, borderTopColor: isDark ? '#334155' : '#f1f5f9',
+            backgroundColor: theme.surface,
+            borderTopWidth: 1, borderTopColor: theme.surfaceMuted,
           }}>
             <TextInput
               style={{
-                flex: 1, backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                flex: 1, backgroundColor: theme.background,
                 borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10,
-                color: isDark ? '#fff' : '#0f172a', fontSize: 14,
-                borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0',
+                color: theme.text, fontSize: 14,
+                borderWidth: 1, borderColor: theme.border,
                 maxHeight: 100,
               }}
               placeholder="Type a message..."
@@ -610,12 +608,12 @@ export default function LoanDetailsScreen() {
               onChangeText={setChatInput}
               multiline
             />
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Send"
               onPress={handleSendChat}
               disabled={sendingChat || !chatInput.trim()}
               style={{
                 width: 42, height: 42, borderRadius: 21, marginLeft: 10,
-                backgroundColor: chatInput.trim() ? tabColor : (isDark ? '#334155' : '#e2e8f0'),
+                backgroundColor: chatInput.trim() ? tabColor : (theme.border),
                 alignItems: 'center', justifyContent: 'center',
               }}
             >
@@ -633,7 +631,7 @@ export default function LoanDetailsScreen() {
         <ScrollView style={{ flex: 1, paddingHorizontal: 16 }} contentContainerStyle={{ paddingVertical: 12, paddingBottom: 40 }}>
           {changelog.length === 0 && (
             <View style={{ alignItems: 'center', marginTop: 60 }}>
-              <FontAwesome name="history" size={40} color={isDark ? '#334155' : '#e2e8f0'} />
+              <FontAwesome name="history" size={40} color={theme.border} />
               <Text style={{ color: '#94a3b8', marginTop: 12, fontSize: 14 }}>No activity recorded yet.</Text>
             </View>
           )}
@@ -643,17 +641,17 @@ export default function LoanDetailsScreen() {
               <View style={{ alignItems: 'center', marginRight: 12, width: 24 }}>
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: tabColor, marginTop: 4 }} />
                 {idx < changelog.length - 1 && (
-                  <View style={{ flex: 1, width: 2, backgroundColor: isDark ? '#334155' : '#e2e8f0', marginTop: 4 }} />
+                  <View style={{ flex: 1, width: 2, backgroundColor: theme.border, marginTop: 4 }} />
                 )}
               </View>
-              <View style={{ flex: 1, backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9', marginBottom: 2 }}>
-                <Text style={{ color: isDark ? '#fff' : '#0f172a', fontWeight: '600', fontSize: 14 }}>{entry.action}</Text>
+              <View style={{ flex: 1, backgroundColor: theme.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: theme.surfaceMuted, marginBottom: 2 }}>
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>{entry.action}</Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
                   <Text style={{ color: '#6366f1', fontSize: 11, fontWeight: '600' }}>{entry.actorName}</Text>
                   <Text style={{ color: '#94a3b8', fontSize: 11 }}>{new Date(entry.timestamp).toLocaleString()}</Text>
                 </View>
                 {entry.before && entry.after && (
-                  <View style={{ marginTop: 8, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderRadius: 8, padding: 8 }}>
+                  <View style={{ marginTop: 8, backgroundColor: theme.background, borderRadius: 8, padding: 8 }}>
                     {Object.keys(entry.after).map(k => (
                       <Text key={k} style={{ color: '#94a3b8', fontSize: 11 }}>
                         {k}: <Text style={{ color: '#ef4444', textDecorationLine: 'line-through' }}>{String((entry.before as any)[k])}</Text>
@@ -669,15 +667,14 @@ export default function LoanDetailsScreen() {
         </ScrollView>
       )}
       {/* ── Record Payment Modal ───────────────────────────────────────────── */}
-      <Modal
+      <FormSheet
         visible={showRecordPayment}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowRecordPayment(false)}
+        onClose={() => setShowRecordPayment(false)}
+        variant="center"
+        cardClassName="dark:bg-slate-800"
+        accessibilityLabel={iAmLender ? 'Record payment received' : 'Record payment made'}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
-          <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 24, padding: 24, width: '100%', maxWidth: 380 }}>
-            <Text style={{ color: isDark ? '#fff' : '#0f172a', fontSize: 18, fontWeight: '800', marginBottom: 4 }}>
+            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 4 }}>
               {iAmLender ? 'Record Payment Received' : 'Record Payment Made'}
             </Text>
             <Text style={{ color: '#94a3b8', fontSize: 13, marginBottom: 20 }}>
@@ -686,24 +683,33 @@ export default function LoanDetailsScreen() {
                 : 'This will notify the lender to confirm they received payment.'}
             </Text>
 
-            <Text style={{ color: isDark ? '#cbd5e1' : '#475569', fontSize: 13, fontWeight: '600', marginBottom: 8 }}>Amount</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600', marginBottom: 8 }}>Amount</Text>
             <TextInput
               style={{
-                backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                backgroundColor: theme.background,
                 borderRadius: 12, padding: 14, fontSize: 18, fontWeight: '700',
-                color: isDark ? '#fff' : '#0f172a',
-                borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0',
-                marginBottom: 16,
+                color: theme.text,
+                borderWidth: 1,
+                borderColor: errors.recordAmount ? '#ef4444' : (theme.border),
+                marginBottom: errors.recordAmount ? 6 : 16,
               }}
               placeholder="0.00"
               placeholderTextColor="#94a3b8"
               value={recordPaymentAmount}
-              onChangeText={setRecordPaymentAmount}
+              onChangeText={(value) => { clearError('recordAmount'); setRecordPaymentAmount(value); }}
+              accessibilityLabel="Payment amount"
+              aria-invalid={!!errors.recordAmount}
               keyboardType="decimal-pad"
               autoFocus
             />
+            {errors.recordAmount ? (
+              <Text accessibilityRole="alert" style={{ color: '#dc2626', fontSize: 12, fontWeight: '600', marginBottom: 12 }}>{errors.recordAmount}</Text>
+            ) : null}
 
-            <Text style={{ color: isDark ? '#cbd5e1' : '#475569', fontSize: 13, fontWeight: '600', marginBottom: 8 }}>Account</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600', marginBottom: 8 }}>Account</Text>
+            {errors.recordAccount ? (
+              <Text accessibilityRole="alert" style={{ color: '#dc2626', fontSize: 12, fontWeight: '600', marginBottom: 8 }}>{errors.recordAccount}</Text>
+            ) : null}
             {accounts.length === 0 ? (
               <Text style={{ color: '#ef4444', fontSize: 13, marginBottom: 16 }}>No accounts set up. Please add an account first.</Text>
             ) : (
@@ -711,16 +717,16 @@ export default function LoanDetailsScreen() {
                 {accounts.map(acc => (
                   <TouchableOpacity
                     key={acc.id}
-                    onPress={() => setRecordAccountId(acc.id)}
+                    onPress={() => { clearError('recordAccount'); setRecordAccountId(acc.id); }}
                     style={{
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                       padding: 11, borderRadius: 10, marginBottom: 6,
-                      backgroundColor: recordAccountId === acc.id ? (tabColor + '22') : (isDark ? '#0f172a' : '#f8fafc'),
+                      backgroundColor: recordAccountId === acc.id ? (tabColor + '22') : (theme.background),
                       borderWidth: 1,
-                      borderColor: recordAccountId === acc.id ? tabColor : (isDark ? '#334155' : '#e2e8f0'),
+                      borderColor: recordAccountId === acc.id ? tabColor : (theme.border),
                     }}
                   >
-                    <Text style={{ color: isDark ? '#fff' : '#0f172a', fontWeight: '600', fontSize: 14 }}>{acc.name}</Text>
+                    <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>{acc.name}</Text>
                     <Text style={{ color: '#94a3b8', fontSize: 12 }}>{formatCurrency(acc.balance)}</Text>
                   </TouchableOpacity>
                 ))}
@@ -745,9 +751,7 @@ export default function LoanDetailsScreen() {
                 }
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
       {/* ── Confirm Payment Modal ─────────────────────────────────────────── */}
       <Modal
         visible={showConfirmModal}
@@ -756,12 +760,12 @@ export default function LoanDetailsScreen() {
         onRequestClose={() => { setShowConfirmModal(false); setConfirmModalData(null); }}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
-          <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 24, padding: 24, width: '100%', maxWidth: 380 }}>
-            <Text style={{ color: isDark ? '#fff' : '#0f172a', fontSize: 18, fontWeight: '800', marginBottom: 4 }}>
+          <View style={{ backgroundColor: theme.surface, borderRadius: 24, padding: 24, width: '100%', maxWidth: 380 }}>
+            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 4 }}>
               Confirm Repayment
             </Text>
             <Text style={{ color: '#94a3b8', fontSize: 13, marginBottom: 4 }}>
-              Amount: <Text style={{ color: isDark ? '#fff' : '#0f172a', fontWeight: '700' }}>{formatCurrency(confirmModalData?.amount ?? 0)}</Text>
+              Amount: <Text style={{ color: theme.text, fontWeight: '700' }}>{formatCurrency(confirmModalData?.amount ?? 0)}</Text>
             </Text>
             <Text style={{ color: '#94a3b8', fontSize: 13, marginBottom: 20 }}>
               {isLent
@@ -769,7 +773,7 @@ export default function LoanDetailsScreen() {
                 : 'Select the account from which this payment was sent.'}
             </Text>
 
-            <Text style={{ color: isDark ? '#cbd5e1' : '#475569', fontSize: 13, fontWeight: '600', marginBottom: 8 }}>Account</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600', marginBottom: 8 }}>Account</Text>
             {accounts.length === 0 ? (
               <Text style={{ color: '#ef4444', fontSize: 13, marginBottom: 16 }}>No accounts set up.</Text>
             ) : (
@@ -781,12 +785,12 @@ export default function LoanDetailsScreen() {
                     style={{
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                       padding: 11, borderRadius: 10, marginBottom: 6,
-                      backgroundColor: confirmAccountId === acc.id ? '#16a34a22' : (isDark ? '#0f172a' : '#f8fafc'),
+                      backgroundColor: confirmAccountId === acc.id ? '#16a34a22' : (theme.background),
                       borderWidth: 1,
-                      borderColor: confirmAccountId === acc.id ? '#16a34a' : (isDark ? '#334155' : '#e2e8f0'),
+                      borderColor: confirmAccountId === acc.id ? '#16a34a' : (theme.border),
                     }}
                   >
-                    <Text style={{ color: isDark ? '#fff' : '#0f172a', fontWeight: '600', fontSize: 14 }}>{acc.name}</Text>
+                    <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>{acc.name}</Text>
                     <Text style={{ color: '#94a3b8', fontSize: 12 }}>{formatCurrency(acc.balance)}</Text>
                   </TouchableOpacity>
                 ))}

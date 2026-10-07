@@ -7,9 +7,12 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Animated, Modal, PanResponder, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { useSelector } from 'react-redux';
 import { Category, useTransactions } from '../context/TransactionContext';
 import { operatingTransactions, sumMoney } from '@/utils/finance';
+import { themeTokens } from '@/constants/theme';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -153,7 +156,7 @@ function MergeModal({ source, candidates, onConfirm, onClose }: MergeModalProps)
         <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: '80%' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <Text style={{ fontSize: 18, fontWeight: '700', color: '#0f172a' }}>Merge Category</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={onClose}>
               <FontAwesome name="times" size={22} color="#64748b" />
             </TouchableOpacity>
           </View>
@@ -211,7 +214,9 @@ function MergeModal({ source, candidates, onConfirm, onClose }: MergeModalProps)
 
 export default function ManageCategoriesScreen() {
   const colorScheme = useColorScheme();
+  const { errors, validate, clearError, resetErrors } = useFormErrors<'name'>();
   const isDark = colorScheme === 'dark';
+  const theme = themeTokens(isDark);
   const router = useRouter();
   const { categories, addCategory, updateCategory, deleteCategory } = useTransactions();
   const transactions = useSelector((s: RootState) => s.transactions.items);
@@ -301,7 +306,7 @@ export default function ManageCategoriesScreen() {
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleAdd = async () => {
     const name = (formData.name ?? '').trim();
-    if (!name) { Alert.alert('Validation', 'Please enter a category name.'); return; }
+    if (!validate({ name: !name && 'Enter a name for this category.' })) return;
     try {
       await addCategory({ name, icon: formData.icon!, color: formData.color!, type: formData.type!, parentId: formData.parentId });
       setShowAddModal(false);
@@ -312,7 +317,7 @@ export default function ManageCategoriesScreen() {
   const handleEdit = async () => {
     if (!editingCategory) return;
     const name = (formData.name ?? '').trim();
-    if (!name) { Alert.alert('Validation', 'Please enter a category name.'); return; }
+    if (!validate({ name: !name && 'Enter a name for this category.' })) return;
     try {
       await updateCategory(editingCategory.id, { name, icon: formData.icon!, color: formData.color!, type: formData.type!, parentId: formData.parentId });
       setEditingCategory(null);
@@ -370,6 +375,7 @@ export default function ManageCategoriesScreen() {
   };
 
   const resetForm = () => {
+    resetErrors();
     setFormData({ name: '', icon: 'folder', color: '#6366f1', type: 'expense', parentId: undefined });
     setOpenIconGroup('finance');
   };
@@ -392,19 +398,19 @@ export default function ManageCategoriesScreen() {
           onMerge={() => setMergingCategory(cat)}
         >
           <View style={{
-            backgroundColor: isDark ? '#1e293b' : '#fff',
+            backgroundColor: theme.surface,
             borderRadius: 16,
             paddingVertical: 10,
             paddingHorizontal: 12,
             borderWidth: 1,
-            borderColor: isDark ? '#334155' : '#f1f5f9',
+            borderColor: theme.surfaceMuted,
             elevation: 1,
           }}>
             {/* Main row */}
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {/* Collapse toggle (only when has children) */}
               {hasChildren ? (
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Expand or collapse subcategories" accessibilityState={{ expanded: !isCollapsed }}
                   onPress={() => toggleCollapse(cat.id)}
                   style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}
                 >
@@ -422,7 +428,7 @@ export default function ManageCategoriesScreen() {
               {/* Info */}
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }} numberOfLines={1}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: theme.text }} numberOfLines={1}>
                     {cat.name}
                   </Text>
                   {hasChildren && (
@@ -453,13 +459,13 @@ export default function ManageCategoriesScreen() {
 
               {/* Actions */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
                   onPress={() => openAdd(cat.id)}
                   style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: cat.color + '18', justifyContent: 'center', alignItems: 'center' }}
                 >
                   <FontAwesome name="plus" size={11} color={cat.color} />
                 </TouchableOpacity>
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit"
                   onPress={() => openEdit(cat)}
                   style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center' }}
                 >
@@ -477,7 +483,7 @@ export default function ManageCategoriesScreen() {
                     {stat.sharePercent.toFixed(1)}%
                   </Text>
                 </View>
-                <View style={{ height: 4, backgroundColor: isDark ? '#334155' : '#f1f5f9', borderRadius: 2, overflow: 'hidden' }}>
+                <View style={{ height: 4, backgroundColor: theme.surfaceMuted, borderRadius: 2, overflow: 'hidden' }}>
                   <View style={{ height: '100%', width: `${Math.min(100, stat.sharePercent)}%`, backgroundColor: cat.color, borderRadius: 2 }} />
                 </View>
               </View>
@@ -503,7 +509,7 @@ export default function ManageCategoriesScreen() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <View style={{ flex: 1, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }}>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       <StatusBar style="light" />
 
       {/* Header */}
@@ -512,11 +518,11 @@ export default function ManageCategoriesScreen() {
         style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 }}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <TouchableOpacity onPress={() => router.back()} style={{ width: 36, height: 36, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, justifyContent: 'center', alignItems: 'center' }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 36, height: 36, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, justifyContent: 'center', alignItems: 'center' }}>
             <FontAwesome name="arrow-left" size={14} color="#fff" />
           </TouchableOpacity>
           <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Manage Categories</Text>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
             onPress={() => openAdd()}
             style={{ width: 36, height: 36, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, justifyContent: 'center', alignItems: 'center' }}
           >
@@ -542,10 +548,10 @@ export default function ManageCategoriesScreen() {
 
       {/* Search + Sort */}
       <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4, gap: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 12, paddingHorizontal: 12, height: 40, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderRadius: 12, paddingHorizontal: 12, height: 40, borderWidth: 1, borderColor: theme.surfaceMuted }}>
           <FontAwesome name="search" size={15} color="#94a3b8" />
           <TextInput
-            style={{ flex: 1, marginLeft: 10, fontSize: 15, color: isDark ? '#f1f5f9' : '#0f172a' }}
+            style={{ flex: 1, marginLeft: 10, fontSize: 15, color: theme.text }}
             placeholder="Search categories..."
             placeholderTextColor="#94a3b8"
             value={search}
@@ -553,7 +559,7 @@ export default function ManageCategoriesScreen() {
             clearButtonMode="while-editing"
           />
           {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setSearch('')}>
               <FontAwesome name="times-circle" size={16} color="#94a3b8" />
             </TouchableOpacity>
           )}
@@ -561,7 +567,7 @@ export default function ManageCategoriesScreen() {
 
         {/* Filter tabs + Sort */}
         <View style={{ flexDirection: 'row', gap: 7 }}>
-          <View style={{ flex: 1, flexDirection: 'row', backgroundColor: isDark ? '#1e293b' : '#fff', padding: 3, borderRadius: 12, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
+          <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.surface, padding: 3, borderRadius: 12, borderWidth: 1, borderColor: theme.surfaceMuted }}>
             {(['all', 'income', 'expense'] as FilterMode[]).map(f => (
               <TouchableOpacity
                 key={f}
@@ -575,14 +581,14 @@ export default function ManageCategoriesScreen() {
 
           {/* Sort button */}
           <View>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Sort categories"
               onPress={() => setShowSortMenu(v => !v)}
-              style={{ width: 40, height: 40, backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
+              style={{ width: 40, height: 40, backgroundColor: theme.surface, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.surfaceMuted }}
             >
               <FontAwesome name="sort-amount-desc" size={14} color="#9333ea" />
             </TouchableOpacity>
             {showSortMenu && (
-              <View style={{ position: 'absolute', top: 44, right: 0, backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 12, padding: 5, zIndex: 100, minWidth: 148, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, elevation: 10, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}>
+              <View style={{ position: 'absolute', top: 44, right: 0, backgroundColor: theme.surface, borderRadius: 12, padding: 5, zIndex: 100, minWidth: 148, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, elevation: 10, borderWidth: 1, borderColor: theme.surfaceMuted }}>
                 {([['name', 'A–Z Name'], ['usage', 'Most Used'], ['amount', 'Highest Spend']] as [SortMode, string][]).map(([mode, label]) => (
                   <TouchableOpacity
                     key={mode}
@@ -590,7 +596,7 @@ export default function ManageCategoriesScreen() {
                     style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingHorizontal: 10, borderRadius: 9, backgroundColor: sort === mode ? '#f3e8ff' : 'transparent' }}
                   >
                     <FontAwesome name={sort === mode ? 'check' : 'circle-o'} size={12} color={sort === mode ? '#9333ea' : '#94a3b8'} style={{ marginRight: 9 }} />
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: sort === mode ? '#9333ea' : (isDark ? '#f1f5f9' : '#0f172a') }}>{label}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: sort === mode ? '#9333ea' : (theme.text) }}>{label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -611,7 +617,7 @@ export default function ManageCategoriesScreen() {
             <View style={{ width: 72, height: 72, backgroundColor: isDark ? '#1e293b' : '#f1f5f9', borderRadius: 36, justifyContent: 'center', alignItems: 'center', marginBottom: 14 }}>
               <FontAwesome name="folder-open" size={30} color="#cbd5e1" />
             </View>
-            <Text style={{ fontSize: 17, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a', marginBottom: 6 }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: theme.text, marginBottom: 6 }}>
               {search ? 'No matches' : 'No Categories'}
             </Text>
             <Text style={{ fontSize: 14, color: '#94a3b8' }}>
@@ -624,50 +630,54 @@ export default function ManageCategoriesScreen() {
       </ScrollView>
 
       {/* Add / Edit Modal */}
-      <Modal
+      <FormSheet
         visible={showAddModal || editingCategory !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => { setShowAddModal(false); setEditingCategory(null); resetForm(); }}
+        onClose={() => { setShowAddModal(false); setEditingCategory(null); resetForm(); }}
+        maxHeight="92%"
+        scrollable={false}
+        accessibilityLabel={editingCategory ? 'Edit category' : 'Add category'}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: isDark ? '#0f172a' : '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: '92%' }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: theme.text }}>
                 {editingCategory ? 'Edit Category' : 'Add Category'}
               </Text>
-              <TouchableOpacity onPress={() => { setShowAddModal(false); setEditingCategory(null); resetForm(); }}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => { setShowAddModal(false); setEditingCategory(null); resetForm(); }}>
                 <FontAwesome name="times" size={22} color="#64748b" />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Preview */}
-              <View style={{ backgroundColor: isDark ? '#1e293b' : '#f8fafc', borderRadius: 18, padding: 16, marginBottom: 20, flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ backgroundColor: theme.surfaceMuted, borderRadius: 18, padding: 16, marginBottom: 20, flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ width: 52, height: 52, borderRadius: 15, backgroundColor: (formData.color ?? '#6366f1') + '20', justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
                   <CategoryIcon icon={formData.icon} size={24} color={formData.color ?? '#6366f1'} />
                 </View>
                 <View>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>{formData.name || 'Category Name'}</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>{formData.name || 'Category Name'}</Text>
                   <Text style={{ fontSize: 13, color: '#94a3b8', textTransform: 'capitalize', marginTop: 2 }}>{formData.type}</Text>
                 </View>
               </View>
 
               {/* Name */}
               <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 6, letterSpacing: 0.5 }}>NAME</Text>
-              <View style={{ backgroundColor: isDark ? '#1e293b' : '#f8fafc', borderRadius: 14, paddingHorizontal: 16, marginBottom: 20, borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0' }}>
+              <View style={{ backgroundColor: theme.surfaceMuted, borderRadius: 14, paddingHorizontal: 16, marginBottom: errors.name ? 6 : 20, borderWidth: 1, borderColor: errors.name ? '#ef4444' : (theme.border) }}>
                 <TextInput
-                  style={{ height: 50, fontSize: 15, color: isDark ? '#f1f5f9' : '#0f172a' }}
+                  style={{ height: 50, fontSize: 15, color: theme.text }}
                   placeholder="Enter category name"
                   placeholderTextColor="#94a3b8"
                   value={formData.name}
-                  onChangeText={text => setFormData(prev => ({ ...prev, name: text }))}
+                  accessibilityLabel="Category name"
+                  aria-invalid={!!errors.name}
+                  onChangeText={text => { clearError('name'); setFormData(prev => ({ ...prev, name: text })); }}
                 />
               </View>
+              {errors.name ? (
+                <Text accessibilityRole="alert" style={{ color: '#dc2626', fontSize: 12, fontWeight: '600', marginBottom: 14 }}>{errors.name}</Text>
+              ) : null}
 
               {/* Type */}
               <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 6, letterSpacing: 0.5 }}>TYPE</Text>
-              <View style={{ flexDirection: 'row', backgroundColor: isDark ? '#1e293b' : '#f8fafc', padding: 4, borderRadius: 14, marginBottom: 20, borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0' }}>
+              <View style={{ flexDirection: 'row', backgroundColor: theme.surfaceMuted, padding: 4, borderRadius: 14, marginBottom: 20, borderWidth: 1, borderColor: theme.border }}>
                 {(['expense', 'income'] as const).map(t => (
                   <TouchableOpacity
                     key={t}
@@ -684,7 +694,7 @@ export default function ManageCategoriesScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
                 <TouchableOpacity
                   onPress={() => setFormData(prev => ({ ...prev, parentId: undefined }))}
-                  style={{ marginRight: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 2, borderColor: !formData.parentId ? '#9333ea' : (isDark ? '#334155' : '#e2e8f0'), backgroundColor: !formData.parentId ? '#f3e8ff' : 'transparent' }}
+                  style={{ marginRight: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 2, borderColor: !formData.parentId ? '#9333ea' : (theme.border), backgroundColor: !formData.parentId ? '#f3e8ff' : 'transparent' }}
                 >
                   <Text style={{ fontWeight: '600', color: !formData.parentId ? '#9333ea' : '#94a3b8' }}>None</Text>
                 </TouchableOpacity>
@@ -698,7 +708,7 @@ export default function ManageCategoriesScreen() {
                   <TouchableOpacity
                     key={c.id}
                     onPress={() => setFormData(prev => ({ ...prev, parentId: c.id }))}
-                    style={{ marginRight: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 2, borderColor: formData.parentId === c.id ? c.color : (isDark ? '#334155' : '#e2e8f0'), backgroundColor: formData.parentId === c.id ? c.color + '18' : 'transparent', flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    style={{ marginRight: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 2, borderColor: formData.parentId === c.id ? c.color : (theme.border), backgroundColor: formData.parentId === c.id ? c.color + '18' : 'transparent', flexDirection: 'row', alignItems: 'center', gap: 6 }}
                   >
                     <CategoryIcon icon={c.icon} size={13} color={c.color} />
                     <Text style={{ fontWeight: '600', color: formData.parentId === c.id ? c.color : '#94a3b8' }}>{c.name}</Text>
@@ -710,16 +720,16 @@ export default function ManageCategoriesScreen() {
               <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 10, letterSpacing: 0.5 }}>ICON</Text>
               <View style={{ marginBottom: 20 }}>
                 {ICON_GROUPS.map(group => (
-                  <View key={group.id} style={{ marginBottom: 8, borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0', borderRadius: 16, overflow: 'hidden' }}>
+                  <View key={group.id} style={{ marginBottom: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 16, overflow: 'hidden' }}>
                     <TouchableOpacity
                       onPress={() => setOpenIconGroup(prev => prev === group.id ? '' : group.id)}
-                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, backgroundColor: isDark ? '#1e293b' : '#f8fafc' }}
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, backgroundColor: theme.surfaceMuted }}
                     >
-                      <Text style={{ fontWeight: '600', color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 14 }}>{group.title}</Text>
+                      <Text style={{ fontWeight: '600', color: theme.text, fontSize: 14 }}>{group.title}</Text>
                       <FontAwesome name={openIconGroup === group.id ? 'chevron-up' : 'chevron-down'} size={11} color="#94a3b8" />
                     </TouchableOpacity>
                     {openIconGroup === group.id && (
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 10, backgroundColor: isDark ? '#0f172a' : '#fff' }}>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 10, backgroundColor: theme.surface }}>
                         {group.items.map(icon => (
                           <TouchableOpacity
                             key={`${group.id}-${icon}`}
@@ -739,7 +749,7 @@ export default function ManageCategoriesScreen() {
               <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 10, letterSpacing: 0.5 }}>COLOR</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 24 }}>
                 {AVAILABLE_COLORS.map(color => (
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm"
                     key={color}
                     onPress={() => setFormData(prev => ({ ...prev, color }))}
                     style={{ width: 44, height: 44, borderRadius: 22, margin: 5, backgroundColor: color, justifyContent: 'center', alignItems: 'center', transform: [{ scale: formData.color === color ? 1.15 : 1 }] }}
@@ -760,9 +770,7 @@ export default function ManageCategoriesScreen() {
                 </Text>
               </TouchableOpacity>
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
 
       {/* Merge Modal */}
       {mergingCategory && (

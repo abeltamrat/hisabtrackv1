@@ -119,7 +119,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
 
   const financeItems: MenuItem[] = [
     { id: 'budget', title: 'Budget Management', icon: 'pie-chart', route: '/budget', color: '#a855f7' },
-    { id: 'cards', title: 'Cards & Accounts', icon: 'credit-card', route: '/cards', color: '#f59e0b' },
+    { id: 'cards', title: 'Cards & Savings', icon: 'credit-card', route: '/cards', color: '#f59e0b' },
     { id: 'transfer', title: 'Transfer Money', icon: 'exchange', route: '/transfer', color: '#3b82f6' },
     { id: 'categories', title: 'Manage Categories', icon: 'tags', route: '/categories', color: '#10b981' },
     { id: 'loans', title: 'Loans & Debts', icon: 'line-chart', route: '/loans', color: '#ef4444' },
@@ -320,7 +320,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     >
       <View className="flex-1 bg-black/50">
         {/* Backdrop - tap to close */}
-        <TouchableOpacity
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close menu"
           activeOpacity={1}
           onPress={onClose}
           className="absolute inset-0"
@@ -345,6 +345,8 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
         >
           {/* Close Button */}
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Close menu"
             onPress={onClose}
             className={closeButtonClass}
           >

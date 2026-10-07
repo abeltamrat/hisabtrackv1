@@ -159,11 +159,11 @@ export default function AccountDetail() {
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
       <StatusBar style="auto" />
       <View className="px-6 pt-6 pb-4 flex-row justify-between items-center">
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
           <FontAwesome name="arrow-left" size={18} color="#000" />
         </TouchableOpacity>
         <Text className="font-bold text-lg">{account.name}</Text>
-        <TouchableOpacity onPress={handleDeleteAccount} className="w-10 h-10 bg-red-50 rounded-xl justify-center items-center">
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete" onPress={handleDeleteAccount} className="w-10 h-10 bg-red-50 rounded-xl justify-center items-center">
           <FontAwesome name="trash" size={18} color="#ef4444" />
         </TouchableOpacity>
       </View>

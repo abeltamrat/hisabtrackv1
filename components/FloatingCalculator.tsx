@@ -71,7 +71,7 @@ export default function FloatingCalculator({ onUseAmount }: FloatingCalculatorPr
           <View className="bg-slate-50 dark:bg-slate-900 rounded-t-3xl p-5">
             <View className="flex-row items-center justify-between mb-4">
               <Text className="text-slate-900 dark:text-white text-lg font-bold">Quick calculator</Text>
-              <TouchableOpacity onPress={() => setVisible(false)} className="p-2"><FontAwesome name="times" size={20} color="#64748b" /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close calculator" onPress={() => setVisible(false)} className="p-2"><FontAwesome name="times" size={20} color="#64748b" /></TouchableOpacity>
             </View>
             <View className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-4 items-end">
               <Text className="text-slate-500 dark:text-slate-400 text-sm" numberOfLines={1}>{display}</Text>

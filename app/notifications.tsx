@@ -117,7 +117,7 @@ export default function NotificationsScreen() {
         className="px-6 pt-6 pb-8 rounded-b-[32px]"
       >
         <View className="flex-row items-center justify-between mb-4">
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back"
             onPress={() => router.back()}
             className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
           >
@@ -230,7 +230,7 @@ export default function NotificationsScreen() {
                   </View>
 
                   {/* Delete Button */}
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
                     onPress={() => handleDelete(notification.id, notification.title)}
                     className="ml-2 w-8 h-8 bg-red-50 dark:bg-red-900/30 rounded-lg justify-center items-center"
                   >

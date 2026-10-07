@@ -187,6 +187,21 @@ test('persisted loan money is normalized to cents',async()=>{
  await db.updateLoan({...loan,reminderEnabled:true});
  const stored=(await db.getLoans())[0];assert.equal(stored.remaining_balance,100.13);
 });
+test('loan deletion preserves cash and repayment history',async()=>{
+ const {db}=make();const a=await db.createAccount(account('A'));
+ const historical=await db.createLoanWithCash({
+  type:'BORROWED',principal_amount:100,interest_rate:0,start_date:1,due_date:2,
+  lender_borrower_name:'B',status:'ACTIVE',remaining_balance:100,
+ },a.id,0);
+ await assert.rejects(db.deleteLoan(historical.id),/cash ledger/);
+ assert.ok((await db.getLoans()).some(item=>item.id===historical.id));
+ const unused=await db.createLoan({
+  type:'BORROWED',principal_amount:50,interest_rate:0,start_date:1,due_date:2,
+  lender_borrower_name:'C',status:'ACTIVE',remaining_balance:50,
+ });
+ await db.deleteLoan(unused.id);
+ assert.equal((await db.getLoans()).some(item=>item.id===unused.id),false);
+});
 test('calendar periods include today and exclude future postings without 30-day approximations',()=>{
  const now=new Date(2026,1,15,10).getTime();const period=finance.reportPeriod('month',now);
  assert.equal(period.start,new Date(2026,1,1).getTime());assert.equal(period.days,15);

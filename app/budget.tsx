@@ -176,11 +176,11 @@ export default function BudgetScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity onPress={() => selectedGroup ? setSelectedGroup(null) : router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => selectedGroup ? setSelectedGroup(null) : router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">{selectedGroup || 'Budget Management'}</Text>
-          <TouchableOpacity onPress={() => router.push('/budget-modal')} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add" onPress={() => router.push('/budget-modal')} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="plus" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -327,10 +327,10 @@ export default function BudgetScreen() {
                     </View>
                     <View className="items-end">
                       <View className="flex-row gap-2 mb-1">
-                        <TouchableOpacity onPress={() => handleEdit(budget)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit" onPress={() => handleEdit(budget)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                           <FontAwesome name="pencil" size={12} color="#3b82f6" />
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleDelete(budget.id)} className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete" onPress={() => handleDelete(budget.id)} className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
                           <FontAwesome name="trash" size={12} color="#ef4444" />
                         </TouchableOpacity>
                       </View>

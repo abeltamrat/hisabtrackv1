@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useState, useEffect } from 'react';
 import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
 
 
 interface Goal {
@@ -156,11 +157,11 @@ export default function FinancialGoalsScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-4">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">Financial Goals</Text>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
             onPress={() => setShowAddModal(true)}
             className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
           >
@@ -224,13 +225,13 @@ export default function FinancialGoalsScreen() {
                     <Text className="text-slate-500 text-sm">{goal.category}</Text>
                   </View>
                   <View className="flex-row">
-                    <TouchableOpacity
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit"
                       onPress={() => openEditModal(goal)}
                       className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-xl justify-center items-center mr-2"
                     >
                       <FontAwesome name="edit" size={16} color="#3b82f6" />
                     </TouchableOpacity>
-                    <TouchableOpacity
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
                       onPress={() => handleDeleteGoal(goal.id)}
                       className="w-10 h-10 bg-red-50 dark:bg-red-900/30 rounded-xl justify-center items-center"
                     >
@@ -312,19 +313,17 @@ export default function FinancialGoalsScreen() {
         <View className="h-8" />
       </ScrollView>
 
-      <Modal
+      <FormSheet
         visible={showAddModal || editingGoal !== null}
-        transparent
-        animationType="none"
-        onRequestClose={resetForm}
+        onClose={resetForm}
+        scrollable={false}
+        accessibilityLabel={editingGoal ? 'Edit goal' : 'Add goal'}
       >
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-3xl p-6" style={{ maxHeight: '90%' }}>
             <View className="flex-row justify-between items-center mb-6">
               <Text className="text-slate-900 dark:text-white text-xl font-bold">
                 {editingGoal ? 'Edit Goal' : 'Add New Goal'}
               </Text>
-              <TouchableOpacity onPress={resetForm}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={resetForm}>
                 <FontAwesome name="times" size={24} color="#64748b" />
               </TouchableOpacity>
             </View>
@@ -398,6 +397,9 @@ export default function FinancialGoalsScreen() {
                 {availableIcons.map((icon) => (
                   <TouchableOpacity
                     key={icon}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${icon} icon`}
+                    accessibilityState={{ selected: formData.icon === icon }}
                     onPress={() => setFormData({ ...formData, icon })}
                     className={`w-14 h-14 justify-center items-center m-1 rounded-xl ${formData.icon === icon ? 'bg-primary-500' : 'bg-slate-100 dark:bg-slate-800'
                       }`}
@@ -415,7 +417,7 @@ export default function FinancialGoalsScreen() {
               <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-3">Select Color</Text>
               <View className="flex-row flex-wrap mb-6">
                 {availableColors.map((color) => (
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm"
                     key={color}
                     onPress={() => setFormData({ ...formData, color })}
                     className="w-12 h-12 rounded-full m-2 justify-center items-center"
@@ -440,9 +442,7 @@ export default function FinancialGoalsScreen() {
                 </Text>
               </TouchableOpacity>
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
     </View>
   );
 }

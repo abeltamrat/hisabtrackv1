@@ -14,6 +14,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { sumMoney } from '@/utils/finance';
 import { useDispatch, useSelector } from 'react-redux';
 import { getDatabase } from '@/services/database';
@@ -33,6 +35,7 @@ export default function Accounts() {
   const [draftCounts, setDraftCounts] = useState<Record<string, number>>({});
 
   const [accountName, setAccountName] = useState('');
+  const { errors, validate, clearError, resetErrors } = useFormErrors<'name' | 'balance'>();
   const [accountType, setAccountType] = useState<AccountType>('CASH');
   const [initialBalance, setInitialBalance] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -403,6 +406,7 @@ export default function Accounts() {
   }, [accounts]);
 
   const resetForm = () => {
+    resetErrors();
     setAccountName('');
     setInitialBalance('');
     setAccountType('CASH');
@@ -521,16 +525,13 @@ export default function Accounts() {
   };
 
   const handleSaveAccount = async () => {
-    if (!accountName.trim()) {
-      Alert.alert('Error', 'Please enter account name');
-      return;
-    }
-
     const balance = initialBalance.trim() === '' ? 0 : parseFloat(initialBalance);
-    if (isNaN(balance)) {
-      Alert.alert('Error', 'Please enter a valid balance');
-      return;
-    }
+    // Both problems surface at once, next to the field they belong to, instead
+    // of one blocking dialog at a time that named no field.
+    if (!validate({
+      name: !accountName.trim() && 'Enter a name for this account.',
+      balance: initialBalance.trim() !== '' && isNaN(balance) && 'Enter a number, for example 1500.00.',
+    })) return;
 
     // Auto-fetch logo if not selected
     let finalLogo = accountLogo;
@@ -905,11 +906,11 @@ export default function Accounts() {
       {/* Header */}
       <LinearGradient colors={['#059669', '#047857']} className="px-6 pt-6 pb-8 rounded-b-[32px]" style={{ elevation: 4 }}>
         <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">Accounts</Text>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
             onPress={() => { resetForm(); setShowAddModal(true); }}
             className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
           >
@@ -1023,10 +1024,10 @@ export default function Accounts() {
 
                   <View className="items-end">
                     <View className="flex-row gap-2 mb-1">
-                      <TouchableOpacity onPress={() => handleEdit(account)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit" onPress={() => handleEdit(account)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                         <FontAwesome name="pencil" size={12} color="#3b82f6" />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDelete(account.id, account.balance)} className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete" onPress={() => handleDelete(account.id, account.balance)} className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
                         <FontAwesome name="trash" size={12} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
@@ -1104,31 +1105,18 @@ export default function Accounts() {
       </ScrollView>
 
       {/* Add/Edit Account Modal */}
-      <Modal
+      <FormSheet
         visible={showAddModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowAddModal(false)}
+        onClose={() => setShowAddModal(false)}
+        variant="center"
+        cardClassName="max-w-md shadow-2xl"
+        accessibilityLabel={editingId ? 'Edit account' : 'Add account'}
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={() => setShowAddModal(false)}
-          className="flex-1 bg-black/50 justify-center items-center px-6"
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl max-h-[90%]"
-          >
-            <ScrollView
-              showsVerticalScrollIndicator={true}
-              nestedScrollEnabled={true}
-            >
               <View className="flex-row justify-between items-center mb-6">
                 <Text className="text-slate-900 dark:text-white text-xl font-bold">
                   {editingId ? 'Edit Account' : 'New Account'}
                 </Text>
-                <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowAddModal(false)}>
                   <FontAwesome name="times" size={24} color="#64748b" />
                 </TouchableOpacity>
               </View>
@@ -1161,10 +1149,12 @@ export default function Accounts() {
                     placeholder="e.g. Chase Bank"
                     placeholderTextColor="#94a3b8"
                     value={accountName}
-                    onChangeText={searchLogos}
+                    onChangeText={(value) => { clearError('name'); searchLogos(value); }}
+                    accessibilityLabel="Account name"
+                    aria-invalid={!!errors.name}
                   />
                   {accountLogo && (
-                    <TouchableOpacity onPress={() => setAccountLogo(null)} className="p-2">
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setAccountLogo(null)} className="p-2">
                       <FontAwesome name="times-circle" size={16} color="#94a3b8" />
                     </TouchableOpacity>
                   )}
@@ -1264,13 +1254,18 @@ export default function Accounts() {
                   {editingId ? 'Current Balance' : 'Initial Balance'}
                 </Text>
                 <TextInput
-                  className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
+                  className={`bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base border ${errors.balance ? 'border-red-500' : 'border-transparent'}`}
                   placeholder="0.00"
                   placeholderTextColor="#94a3b8"
                   keyboardType="decimal-pad"
                   value={initialBalance}
-                  onChangeText={setInitialBalance}
+                  onChangeText={(value) => { clearError('balance'); setInitialBalance(value); }}
+                  accessibilityLabel={editingId ? 'Current balance' : 'Initial balance'}
+                  aria-invalid={!!errors.balance}
                 />
+                {errors.balance ? (
+                  <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.balance}</Text>
+                ) : null}
               </View>
 
               {/* Account Number */}
@@ -1323,30 +1318,18 @@ export default function Accounts() {
                   </Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      </FormSheet>
       {/* Sync Selection Modal */}
-      <Modal
+      <FormSheet
         visible={showSmsList}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowSmsList(false)}
+        onClose={() => setShowSmsList(false)}
+        variant="center"
+        cardClassName="max-w-md shadow-2xl dark:bg-slate-800"
+        accessibilityLabel="Select SMS senders"
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={() => setShowSmsList(false)}
-          className="flex-1 bg-black/50 justify-center items-center px-6"
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl"
-          >
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-slate-900 dark:text-white text-xl font-bold">Select Senders</Text>
-              <TouchableOpacity onPress={() => setShowSmsList(false)}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowSmsList(false)}>
                 <FontAwesome name="times" size={20} color="#64748b" />
               </TouchableOpacity>
             </View>
@@ -1364,7 +1347,7 @@ export default function Accounts() {
                   className="flex-1 text-slate-900 dark:text-white text-sm ml-2 p-0 h-8"
                 />
                 {smsSearchQuery ? (
-                  <TouchableOpacity onPress={() => setSmsSearchQuery('')} className="p-1">
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setSmsSearchQuery('')} className="p-1">
                     <FontAwesome name="times-circle" size={14} color="#94a3b8" />
                   </TouchableOpacity>
                 ) : null}
@@ -1430,9 +1413,7 @@ export default function Accounts() {
             >
               <Text className="text-white font-bold text-center">Done</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      </FormSheet>
 
       {/* Sync Management Modal */}
       <Modal

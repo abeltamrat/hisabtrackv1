@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Animated, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Animated, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -58,6 +60,7 @@ export default function ManageSMSRulesScreen() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingRule, setEditingRule] = useState<SMSRuleItem | null>(null);
   const [editDescription, setEditDescription] = useState('');
+  const { errors, validate, clearError } = useFormErrors<'description'>();
   const [editCategory, setEditCategory] = useState('');
   const [showCategorySelector, setShowCategorySelector] = useState(false);
 
@@ -187,10 +190,7 @@ export default function ManageSMSRulesScreen() {
 
   const handleSaveRule = async () => {
     if (!editingRule) return;
-    if (!editDescription.trim()) {
-      Alert.alert('Error', 'Please enter a description');
-      return;
-    }
+    if (!validate({ description: !editDescription.trim() && 'Enter a description for this rule.' })) return;
 
     try {
       await SMSLearningService.updateRule(editingRule.key, {
@@ -493,13 +493,13 @@ export default function ManageSMSRulesScreen() {
 
           {/* Action Buttons */}
           <View className="flex-row ml-3 mt-1">
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit"
               onPress={() => handleEditRule(rule)}
               className="w-9 h-9 bg-teal-50 dark:bg-teal-900/30 rounded-xl justify-center items-center mr-2 border border-teal-100 dark:border-teal-900"
             >
               <FontAwesome name="pencil" size={14} color="#14b8a6" />
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
               onPress={() => handleDeleteRule(rule)}
               className="w-9 h-9 bg-red-50 dark:bg-red-900/30 rounded-xl justify-center items-center border border-red-100 dark:border-red-900"
             >
@@ -524,7 +524,7 @@ export default function ManageSMSRulesScreen() {
         style={{ elevation: 8 }}
       >
         <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back"
             onPress={() => router.back()}
             className="w-12 h-12 bg-white/20 backdrop-blur-lg rounded-2xl justify-center items-center"
           >
@@ -534,7 +534,7 @@ export default function ManageSMSRulesScreen() {
             <Text className="text-white text-xl font-bold">SMS Learning Rules</Text>
             <Text className="text-white/90 text-xs mt-1">Auto-normalizing banking texts</Text>
           </View>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
             onPress={handleClearAll}
             disabled={rules.length === 0}
             className={`w-12 h-12 rounded-2xl justify-center items-center ${
@@ -656,7 +656,7 @@ export default function ManageSMSRulesScreen() {
             className="flex-1 ml-3 text-slate-900 dark:text-white font-medium text-sm"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setSearchQuery('')}>
               <FontAwesome name="times-circle" size={16} color="#94a3b8" />
             </TouchableOpacity>
           )}
@@ -757,10 +757,13 @@ export default function ManageSMSRulesScreen() {
         animationType="slide"
         onRequestClose={() => setShowAICalibration(false)}
       >
-        <View className="flex-1 bg-slate-50 dark:bg-slate-900">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          className="flex-1 bg-slate-50 dark:bg-slate-900"
+        >
           <LinearGradient colors={['#4f46e5', '#7c3aed']} className="px-6 pt-8 pb-6 rounded-b-[28px]">
             <View className="flex-row items-center">
-              <TouchableOpacity onPress={() => setShowAICalibration(false)} className="w-10 h-10 rounded-xl bg-white/20 justify-center items-center">
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowAICalibration(false)} className="w-10 h-10 rounded-xl bg-white/20 justify-center items-center">
                 <FontAwesome name="times" size={18} color="#fff" />
               </TouchableOpacity>
               <View className="flex-1 ml-4">
@@ -864,28 +867,23 @@ export default function ManageSMSRulesScreen() {
               </View>
             </ScrollView>
           )}
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Edit Rule Modal */}
-      <Modal
+      <FormSheet
         visible={showEditModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => {
-          setShowEditModal(false);
-          setEditingRule(null);
-        }}
+        onClose={() => { setShowEditModal(false); setEditingRule(null); }}
+        maxHeight="85%"
+        accessibilityLabel="Edit SMS rule"
       >
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] max-h-[85%] pb-8">
-            <View className="p-6">
+            <View>
               {/* Modal Header */}
               <View className="flex-row items-center justify-between mb-6">
                 <Text className="text-slate-900 dark:text-white font-bold text-xl">
                   Edit Mapping Rule
                 </Text>
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                   onPress={() => {
                     setShowEditModal(false);
                     setEditingRule(null);
@@ -903,11 +901,16 @@ export default function ManageSMSRulesScreen() {
                 </Text>
                 <TextInput
                   value={editDescription}
-                  onChangeText={setEditDescription}
+                  onChangeText={(value) => { clearError('description'); setEditDescription(value); }}
                   placeholder="e.g. CBE Transfer"
                   placeholderTextColor="#94a3b8"
-                  className="bg-slate-50 dark:bg-slate-800 px-4 py-4 rounded-xl text-slate-900 dark:text-white font-semibold border-2 border-slate-200 dark:border-slate-700"
+                  accessibilityLabel="Rule description"
+                  aria-invalid={!!errors.description}
+                  className={`bg-slate-50 dark:bg-slate-800 px-4 py-4 rounded-xl text-slate-900 dark:text-white font-semibold border-2 ${errors.description ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'}`}
                 />
+                {errors.description ? (
+                  <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.description}</Text>
+                ) : null}
               </View>
 
               {/* Category Selector */}
@@ -986,9 +989,7 @@ export default function ManageSMSRulesScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
     </View>
   );
 }

@@ -14,7 +14,7 @@ export default function TermsOfServiceScreen() {
                 colors={['#f59e0b', '#d97706']}
                 className="pt-3 pb-6 px-6"
             >
-                <TouchableOpacity onPress={() => router.back()} className="mb-4">
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="mb-4">
                     <FontAwesome name="arrow-left" size={24} color="#fff" />
                 </TouchableOpacity>
                 <Text className="text-white text-3xl font-bold">Terms of Service</Text>

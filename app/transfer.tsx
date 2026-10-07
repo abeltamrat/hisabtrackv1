@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { useDispatch, useSelector } from 'react-redux';
 
 export default function TransferScreen() {
@@ -24,6 +25,7 @@ export default function TransferScreen() {
   }, [currency, formatCurrency]);
 
   const [amount, setAmount] = useState('');
+  const { errors, validate, clearError } = useFormErrors<'amount' | 'from' | 'to'>();
   const [fromAccount, setFromAccount] = useState('');
   const [toAccount, setToAccount] = useState('');
   const [tagsInput, setTagsInput] = useState('');
@@ -45,18 +47,16 @@ export default function TransferScreen() {
 
   const handleTransfer = async () => {
     const numericAmount = parseFloat(amount);
-    if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
-      return;
-    }
-    if (!fromAccount || !toAccount) {
-      Alert.alert('Error', 'Please select both accounts');
-      return;
-    }
-    if (fromAccount === toAccount) {
-      Alert.alert('Error', 'Cannot transfer to the same account');
-      return;
-    }
+    // Reported against the amount and the account pickers rather than through
+    // a dialog that named no field.
+    if (!validate({
+      amount: (!amount || isNaN(numericAmount) || numericAmount <= 0)
+        && 'Enter an amount greater than zero.',
+      from: !fromAccount && 'Choose the account the money leaves.',
+      to: !toAccount
+        ? 'Choose the account the money arrives in.'
+        : fromAccount === toAccount && 'Choose a different account from the source.',
+    })) return;
 
     const value = numericAmount;
     const sourceAcc = accounts.find((account) => account.id === fromAccount);
@@ -127,11 +127,11 @@ export default function TransferScreen() {
       {/* Header */}
       <LinearGradient colors={['#2563eb', '#1d4ed8']} className="px-6 pt-3 pb-8 rounded-b-[32px]" style={{ elevation: 4 }}>
         <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="close" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">Transfer Money</Text>
-          <TouchableOpacity onPress={handleTransfer} className="w-10 h-10 bg-secondary-500 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm" onPress={handleTransfer} className="w-10 h-10 bg-secondary-500 rounded-xl justify-center items-center">
             <FontAwesome name="check" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -147,18 +147,28 @@ export default function TransferScreen() {
               placeholderTextColor="rgba(255,255,255,0.5)"
               keyboardType="decimal-pad"
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(value) => { clearError('amount'); setAmount(value); }}
+              accessibilityLabel="Transfer amount"
+              aria-invalid={!!errors.amount}
               autoFocus
               style={{ outline: Platform.OS === 'web' ? 'none' : undefined } as any}
             />
           </View>
+          {errors.amount ? (
+            <Text accessibilityRole="alert" className="text-white bg-red-600/90 px-3 py-1.5 rounded-lg text-xs font-semibold mt-3">
+              {errors.amount}
+            </Text>
+          ) : null}
         </View>
       </LinearGradient>
 
       <ScrollView className="flex-1 px-6 -mt-6" showsVerticalScrollIndicator={false}>
         {/* From Account */}
         <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">From Account</Text>
+          <Text className="text-slate-900 dark:text-white text-base font-bold mb-1">From Account</Text>
+          {errors.from ? (
+            <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-3">{errors.from}</Text>
+          ) : <View className="mb-3" />}
           <View className="space-y-3">
             {accounts.length === 0 ? (
               <Text className="text-slate-500">No accounts available.</Text>
@@ -174,7 +184,7 @@ export default function TransferScreen() {
                       ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500'
                       : 'bg-slate-50 dark:bg-slate-900 border-transparent'
                       }`}
-                    onPress={() => setFromAccount(account.id)}
+                    onPress={() => { clearError('from'); clearError('to'); setFromAccount(account.id); }}
                   >
                     <View
                       className="w-12 h-12 rounded-2xl justify-center items-center mr-4"
@@ -208,7 +218,10 @@ export default function TransferScreen() {
 
         {/* To Account */}
         <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700 mt-2" style={{ elevation: 4 }}>
-          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">To Account</Text>
+          <Text className="text-slate-900 dark:text-white text-base font-bold mb-1">To Account</Text>
+          {errors.to ? (
+            <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-3">{errors.to}</Text>
+          ) : <View className="mb-3" />}
           <View className="space-y-3">
             {accounts.length === 0 ? (
               <Text className="text-slate-500">No accounts available.</Text>
@@ -224,7 +237,7 @@ export default function TransferScreen() {
                       ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500'
                       : 'bg-slate-50 dark:bg-slate-900 border-transparent'
                       }`}
-                    onPress={() => setToAccount(account.id)}
+                    onPress={() => { clearError('to'); setToAccount(account.id); }}
                   >
                     <View
                       className="w-12 h-12 rounded-2xl justify-center items-center mr-4"

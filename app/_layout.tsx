@@ -327,7 +327,11 @@ function ThemedStack() {
 
   return (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ statusBarStyle: 'dark' }}>
+      {/* Derived from the theme. This was pinned to 'dark', which put dark
+          status-bar icons on the dark app bar in dark mode, and it also fought
+          the per-screen `<StatusBar style="auto" />` so the winner depended on
+          mount order. */}
+      <Stack screenOptions={{ statusBarStyle: isDark ? 'light' : 'dark' }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="account" options={{ headerShown: false }} />

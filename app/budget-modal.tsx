@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { useDispatch, useSelector } from 'react-redux';
 
 export default function AddBudgetScreen() {
@@ -31,6 +32,7 @@ export default function AddBudgetScreen() {
   const existingBudget = isEdit ? budgets.find(b => b.id === id?.toString()) : undefined;
 
   const [amount, setAmount] = useState(initialAmount ? initialAmount.toString() : '');
+  const { errors, validate, clearError } = useFormErrors<'amount' | 'category'>();
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [period, setPeriod] = useState<'MONTHLY' | 'WEEKLY'>(
     initialPeriod === 'WEEKLY' ? 'WEEKLY' : 'MONTHLY'
@@ -67,17 +69,12 @@ export default function AddBudgetScreen() {
 
   const handleSave = async () => {
     const numericAmount = parseFloat(amount);
-    if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount greater than zero.');
-      return;
-    }
-    if (!selectedCategory || !expenseCategoryNames.has(selectedCategory)) {
-      Alert.alert(
-        'Select Expense Category',
-        'Please choose a valid expense category for this budget.'
-      );
-      return;
-    }
+    if (!validate({
+      amount: (!amount || isNaN(numericAmount) || numericAmount <= 0)
+        && 'Enter a limit greater than zero.',
+      category: (!selectedCategory || !expenseCategoryNames.has(selectedCategory))
+        && 'Choose an expense category for this budget.',
+    })) return;
 
     const periodRange = BudgetService.getCurrentPeriodRange(period);
 
@@ -126,11 +123,11 @@ export default function AddBudgetScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="close" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">{isEdit ? 'Edit Budget' : 'Set Budget'}</Text>
-          <TouchableOpacity onPress={handleSave} className="w-10 h-10 bg-secondary-500 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm" onPress={handleSave} className="w-10 h-10 bg-secondary-500 rounded-xl justify-center items-center">
             <FontAwesome name="check" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -146,10 +143,17 @@ export default function AddBudgetScreen() {
               placeholderTextColor="rgba(255,255,255,0.5)"
               keyboardType="decimal-pad"
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(value) => { clearError('amount'); setAmount(value); }}
+              accessibilityLabel="Budget limit"
+              aria-invalid={!!errors.amount}
               autoFocus
             />
           </View>
+          {errors.amount ? (
+            <Text accessibilityRole="alert" className="text-white bg-red-600/90 px-3 py-1.5 rounded-lg text-xs font-semibold mt-3">
+              {errors.amount}
+            </Text>
+          ) : null}
         </View>
       </LinearGradient>
 
@@ -165,7 +169,10 @@ export default function AddBudgetScreen() {
 
         {/* Category Selection */}
         <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
-          <Text className="text-slate-900 dark:text-white text-base font-bold mb-4">Category</Text>
+          <Text className="text-slate-900 dark:text-white text-base font-bold mb-1">Category</Text>
+          {errors.category ? (
+            <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-3">{errors.category}</Text>
+          ) : <View className="mb-3" />}
           <View className="pb-4">
             {rootCategories.map((category) => (
               <View key={category.id} className="mb-4">
@@ -175,7 +182,7 @@ export default function AddBudgetScreen() {
                       ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
                       : 'bg-slate-50 dark:bg-slate-900 border-transparent'
                     }`}
-                  onPress={() => setSelectedCategory(category.name)}
+                  onPress={() => { clearError('category'); setSelectedCategory(category.name); }}
                 >
                   <View className="flex-row items-center w-full">
                     <View
@@ -203,7 +210,7 @@ export default function AddBudgetScreen() {
                         ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
                         : 'bg-slate-100 dark:bg-slate-700 border-transparent'
                       }`}
-                    onPress={() => setSelectedCategory(childCategory.name)}
+                    onPress={() => { clearError('category'); setSelectedCategory(childCategory.name); }}
                   >
                     <View className="flex-row items-center w-full">
                       <View className="w-1 h-4 bg-slate-300 dark:bg-slate-600 mr-2 rounded-full" />

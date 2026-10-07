@@ -18,6 +18,7 @@ import { Alert } from '@/utils/alert';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
 import { useDispatch, useSelector } from 'react-redux';
+import { themeTokens } from '@/constants/theme';
 
 const BUNDLED_LOGO_MAP = new Map(BUNDLED_LOGOS.map(b => [b.url, b]));
 
@@ -43,18 +44,19 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
+  const theme = themeTokens(isDark);
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
-        <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#e2e8f0' }}>
+        <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}>
             <TouchableOpacity onPress={onClose}>
               <Text style={{ color: '#94a3b8', fontSize: 16 }}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontWeight: '700', fontSize: 16 }}>{label}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 16 }}>{label}</Text>
             <TouchableOpacity onPress={() => { onClose(); onConfirm(pendingRef.current); }}>
               <Text style={{ color: '#6366f1', fontWeight: '700', fontSize: 16 }}>Done</Text>
             </TouchableOpacity>
@@ -84,6 +86,7 @@ export default function TransactionsScreen() {
   const { formatCurrency, fontSize } = useAppSettings();
   const { actualTheme } = useTheme();
   const isDark = actualTheme === 'dark';
+  const theme = themeTokens(isDark);
   const isVerySmall = fontSize === 'V.Small';
   const headerTitleSize = fontSize === 'V.Small' ? 'text-lg' : fontSize === 'Small' ? 'text-xl' : fontSize === 'Large' ? 'text-3xl' : 'text-2xl';
   const labelSize = fontSize === 'V.Small' ? 'text-[11px]' : fontSize === 'Small' ? 'text-xs' : fontSize === 'Large' ? 'text-base' : 'text-sm';
@@ -311,26 +314,32 @@ export default function TransactionsScreen() {
           <Text className={`text-slate-900 dark:text-white ${headerTitleSize} font-bold`}>{t('transactions')}</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Card view"
+              accessibilityState={{ selected: viewMode === 'card' }}
               onPress={() => setViewMode('card')}
               style={{
                 width: isVerySmall ? 36 : 40, height: isVerySmall ? 36 : 40,
                 borderRadius: 12, justifyContent: 'center', alignItems: 'center',
-                backgroundColor: viewMode === 'card' ? '#6366f1' : (isDark ? '#1e293b' : '#ffffff'),
+                backgroundColor: viewMode === 'card' ? '#6366f1' : (theme.surface),
                 borderWidth: 1,
-                borderColor: viewMode === 'card' ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+                borderColor: viewMode === 'card' ? '#6366f1' : (theme.border),
                 elevation: 1,
               }}
             >
               <FontAwesome name="th-large" size={isVerySmall ? 14 : 16} color={viewMode === 'card' ? '#ffffff' : '#64748b'} />
             </TouchableOpacity>
             <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Table view"
+              accessibilityState={{ selected: viewMode === 'table' }}
               onPress={() => setViewMode('table')}
               style={{
                 width: isVerySmall ? 36 : 40, height: isVerySmall ? 36 : 40,
                 borderRadius: 12, justifyContent: 'center', alignItems: 'center',
-                backgroundColor: viewMode === 'table' ? '#6366f1' : (isDark ? '#1e293b' : '#ffffff'),
+                backgroundColor: viewMode === 'table' ? '#6366f1' : (theme.surface),
                 borderWidth: 1,
-                borderColor: viewMode === 'table' ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+                borderColor: viewMode === 'table' ? '#6366f1' : (theme.border),
                 elevation: 1,
               }}
             >
@@ -350,7 +359,7 @@ export default function TransactionsScreen() {
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setSearchQuery('')}>
               <FontAwesome name="times-circle" size={16} color="#94a3b8" />
             </TouchableOpacity>
           )}
@@ -393,13 +402,13 @@ export default function TransactionsScreen() {
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
-              backgroundColor: selectedCategories.length > 0 ? '#6366f1' : (isDark ? '#1e293b' : '#fff'),
-              borderWidth: 1, borderColor: selectedCategories.length > 0 ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+              backgroundColor: selectedCategories.length > 0 ? '#6366f1' : (theme.surface),
+              borderWidth: 1, borderColor: selectedCategories.length > 0 ? '#6366f1' : (theme.border),
               elevation: 1,
             }}
           >
             <FontAwesome name="tag" size={11} color={selectedCategories.length > 0 ? '#fff' : '#94a3b8'} />
-            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: selectedCategories.length > 0 ? '#fff' : (isDark ? '#94a3b8' : '#64748b') }} numberOfLines={1}>
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: selectedCategories.length > 0 ? '#fff' : (theme.textMuted) }} numberOfLines={1}>
               {selectedCategories.length > 1 ? `${selectedCategories.length} Categories` : 'Category'}
             </Text>
             {selectedCategories.length > 0 && <FontAwesome name="times-circle" size={11} color="#fff" style={{ marginLeft: 4 }} />}
@@ -411,13 +420,13 @@ export default function TransactionsScreen() {
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
-              backgroundColor: selectedTags.length > 0 ? '#6366f1' : (isDark ? '#1e293b' : '#fff'),
-              borderWidth: 1, borderColor: selectedTags.length > 0 ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+              backgroundColor: selectedTags.length > 0 ? '#6366f1' : (theme.surface),
+              borderWidth: 1, borderColor: selectedTags.length > 0 ? '#6366f1' : (theme.border),
               elevation: 1,
             }}
           >
             <FontAwesome name="hashtag" size={11} color={selectedTags.length > 0 ? '#fff' : '#94a3b8'} />
-            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: selectedTags.length > 0 ? '#fff' : (isDark ? '#94a3b8' : '#64748b') }} numberOfLines={1}>
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: selectedTags.length > 0 ? '#fff' : (theme.textMuted) }} numberOfLines={1}>
               {selectedTags.length > 1 ? `${selectedTags.length} Tags` : 'Tags'}
             </Text>
             {selectedTags.length > 0 && <FontAwesome name="times-circle" size={11} color="#fff" style={{ marginLeft: 4 }} />}
@@ -429,13 +438,13 @@ export default function TransactionsScreen() {
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
-              backgroundColor: filterAccountIds.length > 0 ? '#6366f1' : (isDark ? '#1e293b' : '#fff'),
-              borderWidth: 1, borderColor: filterAccountIds.length > 0 ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+              backgroundColor: filterAccountIds.length > 0 ? '#6366f1' : (theme.surface),
+              borderWidth: 1, borderColor: filterAccountIds.length > 0 ? '#6366f1' : (theme.border),
               elevation: 1,
             }}
           >
             <FontAwesome name="bank" size={11} color={filterAccountIds.length > 0 ? '#fff' : '#94a3b8'} />
-            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: filterAccountIds.length > 0 ? '#fff' : (isDark ? '#94a3b8' : '#64748b') }} numberOfLines={1}>
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: filterAccountIds.length > 0 ? '#fff' : (theme.textMuted) }} numberOfLines={1}>
               {filterAccountIds.length > 1 ? `${filterAccountIds.length} Accounts` : 'Account'}
             </Text>
             {filterAccountIds.length > 0 && <FontAwesome name="times-circle" size={11} color="#fff" style={{ marginLeft: 4 }} />}
@@ -447,13 +456,13 @@ export default function TransactionsScreen() {
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
-              backgroundColor: (dateFrom || dateTo) ? '#6366f1' : (isDark ? '#1e293b' : '#fff'),
-              borderWidth: 1, borderColor: (dateFrom || dateTo) ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0'),
+              backgroundColor: (dateFrom || dateTo) ? '#6366f1' : (theme.surface),
+              borderWidth: 1, borderColor: (dateFrom || dateTo) ? '#6366f1' : (theme.border),
               elevation: 1,
             }}
           >
             <FontAwesome name="calendar" size={11} color={(dateFrom || dateTo) ? '#fff' : '#94a3b8'} />
-            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: (dateFrom || dateTo) ? '#fff' : (isDark ? '#94a3b8' : '#64748b') }} numberOfLines={1}>Date</Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 4, color: (dateFrom || dateTo) ? '#fff' : (theme.textMuted) }} numberOfLines={1}>Date</Text>
             {(dateFrom || dateTo) && <FontAwesome name="times-circle" size={11} color="#fff" style={{ marginLeft: 4 }} />}
           </TouchableOpacity>
         </View>
@@ -630,7 +639,7 @@ export default function TransactionsScreen() {
         /* ── Bank Statement Table view ── */
         <View style={{ flex: 1 }}>
           {/* Export button bar */}
-          <View style={{ paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', justifyContent: 'flex-end', borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0', backgroundColor: isDark ? '#0f172a' : '#f8fafc' }}>
+          <View style={{ paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', justifyContent: 'flex-end', borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0', backgroundColor: theme.background }}>
             <TouchableOpacity
               onPress={() => setShowExportMenu(true)}
               disabled={exporting}
@@ -695,7 +704,7 @@ export default function TransactionsScreen() {
                     const rowBg = isDark
                       ? (evenRow ? '#1e293b' : '#0f172a')
                       : (evenRow ? '#ffffff' : '#f8fafc');
-                    const textColor = isDark ? '#e2e8f0' : '#1e293b';
+                    const textColor = theme.text;
                     const mutedColor = isDark ? '#64748b' : '#94a3b8';
                     const firstTag = item.tags?.[0];
 
@@ -771,12 +780,12 @@ export default function TransactionsScreen() {
       {/* Category Filter Modal */}
       <Modal visible={showCategoryModal} transparent animationType="slide" onRequestClose={() => setShowCategoryModal(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowCategoryModal(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '75%' }}>
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '75%' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
             <TouchableOpacity onPress={() => { setSelectedCategories([]); setShowCategoryModal(false); }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
             </TouchableOpacity>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>Category</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>Category</Text>
             <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#6366f1' }}>Done</Text>
             </TouchableOpacity>
@@ -794,7 +803,7 @@ export default function TransactionsScreen() {
                     <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: cat.color + '30', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
                       <CategoryIcon icon={cat.icon} size={15} color={cat.color} />
                     </View>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: isSelected ? '#6366f1' : (isDark ? '#e2e8f0' : '#1e293b'), flex: 1 }}>{cat.name}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: isSelected ? '#6366f1' : (theme.text), flex: 1 }}>{cat.name}</Text>
                     {isSelected && <FontAwesome name="check" size={14} color="#6366f1" />}
                   </TouchableOpacity>
                   {children.map((child) => {
@@ -808,7 +817,7 @@ export default function TransactionsScreen() {
                         <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: child.color + '25', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
                           <CategoryIcon icon={child.icon} size={12} color={child.color} />
                         </View>
-                        <Text style={{ fontSize: 13, fontWeight: '500', color: isChildSelected ? '#6366f1' : (isDark ? '#cbd5e1' : '#475569'), flex: 1 }}>{child.name}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '500', color: isChildSelected ? '#6366f1' : (theme.textMuted), flex: 1 }}>{child.name}</Text>
                         {isChildSelected && <FontAwesome name="check" size={12} color="#6366f1" />}
                       </TouchableOpacity>
                     );
@@ -823,12 +832,12 @@ export default function TransactionsScreen() {
       {/* Tag Filter Modal */}
       <Modal visible={showTagModal} transparent animationType="slide" onRequestClose={() => setShowTagModal(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowTagModal(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%' }}>
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
             <TouchableOpacity onPress={() => { setSelectedTags([]); setShowTagModal(false); }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
             </TouchableOpacity>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>Tags</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>Tags</Text>
             <TouchableOpacity onPress={() => setShowTagModal(false)}>
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#6366f1' }}>Done</Text>
             </TouchableOpacity>
@@ -847,7 +856,7 @@ export default function TransactionsScreen() {
                   <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isActive ? '#6366f1' : (isDark ? '#1e293b' : '#e2e8f0'), justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
                     <FontAwesome name="hashtag" size={14} color={isActive ? '#fff' : '#94a3b8'} />
                   </View>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? '#6366f1' : (isDark ? '#e2e8f0' : '#1e293b'), flex: 1 }}>#{tag}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? '#6366f1' : (theme.text), flex: 1 }}>#{tag}</Text>
                   {isActive && <FontAwesome name="check" size={14} color="#6366f1" />}
                 </TouchableOpacity>
               );
@@ -859,12 +868,12 @@ export default function TransactionsScreen() {
       {/* Account Filter Modal */}
       <Modal visible={showAccountModal} transparent animationType="slide" onRequestClose={() => setShowAccountModal(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowAccountModal(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%' }}>
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
             <TouchableOpacity onPress={() => { setFilterAccountIds([]); setShowAccountModal(false); }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
             </TouchableOpacity>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>Account</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>Account</Text>
             <TouchableOpacity onPress={() => setShowAccountModal(false)}>
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#6366f1' }}>Done</Text>
             </TouchableOpacity>
@@ -881,7 +890,7 @@ export default function TransactionsScreen() {
                   <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isActive ? '#6366f1' : (isDark ? '#1e293b' : '#e2e8f0'), justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
                     <FontAwesome name="credit-card" size={14} color={isActive ? '#fff' : '#94a3b8'} />
                   </View>
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? '#6366f1' : (isDark ? '#e2e8f0' : '#1e293b'), flex: 1 }}>{acc.name}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? '#6366f1' : (theme.text), flex: 1 }}>{acc.name}</Text>
                   {isActive && <FontAwesome name="check" size={14} color="#6366f1" />}
                 </TouchableOpacity>
               );
@@ -893,9 +902,9 @@ export default function TransactionsScreen() {
       {/* Date Filter Modal */}
       <Modal visible={showDateModal} transparent animationType="slide" onRequestClose={() => setShowDateModal(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowDateModal(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}>Date Range</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>Date Range</Text>
             <TouchableOpacity onPress={() => setShowDateModal(false)}>
               <FontAwesome name="times" size={18} color="#94a3b8" />
             </TouchableOpacity>
@@ -913,17 +922,17 @@ export default function TransactionsScreen() {
                   setShowDatePicker('from');
                 }
               }}
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateFrom ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0') }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateFrom ? '#6366f1' : (theme.border) }}
             >
               <FontAwesome name="calendar-o" size={16} color={dateFrom ? '#6366f1' : '#94a3b8'} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11, color: '#94a3b8', fontWeight: '500', marginBottom: 2 }}>From Date</Text>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: dateFrom ? (isDark ? '#e2e8f0' : '#1e293b') : '#94a3b8' }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: dateFrom ? (theme.text) : '#94a3b8' }}>
                   {dateFrom ? dateFrom.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Select start date'}
                 </Text>
               </View>
               {dateFrom && (
-                <TouchableOpacity onPress={() => setDateFrom(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setDateFrom(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <FontAwesome name="times-circle" size={16} color="#94a3b8" />
                 </TouchableOpacity>
               )}
@@ -940,17 +949,17 @@ export default function TransactionsScreen() {
                   setShowDatePicker('to');
                 }
               }}
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateTo ? '#6366f1' : (isDark ? '#334155' : '#e2e8f0') }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateTo ? '#6366f1' : (theme.border) }}
             >
               <FontAwesome name="calendar-o" size={16} color={dateTo ? '#6366f1' : '#94a3b8'} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11, color: '#94a3b8', fontWeight: '500', marginBottom: 2 }}>To Date</Text>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: dateTo ? (isDark ? '#e2e8f0' : '#1e293b') : '#94a3b8' }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: dateTo ? (theme.text) : '#94a3b8' }}>
                   {dateTo ? dateTo.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Select end date'}
                 </Text>
               </View>
               {dateTo && (
-                <TouchableOpacity onPress={() => setDateTo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setDateTo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <FontAwesome name="times-circle" size={16} color="#94a3b8" />
                 </TouchableOpacity>
               )}
@@ -958,7 +967,7 @@ export default function TransactionsScreen() {
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
               <TouchableOpacity
                 onPress={() => { setDateFrom(null); setDateTo(null); setShowDateModal(false); }}
-                style={{ flex: 1, paddingVertical: 13, borderRadius: 14, backgroundColor: isDark ? '#1e293b' : '#f1f5f9', alignItems: 'center', borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0' }}
+                style={{ flex: 1, paddingVertical: 13, borderRadius: 14, backgroundColor: isDark ? '#1e293b' : '#f1f5f9', alignItems: 'center', borderWidth: 1, borderColor: theme.border }}
               >
                 <Text style={{ fontSize: 14, fontWeight: '700', color: '#94a3b8' }}>Clear</Text>
               </TouchableOpacity>
@@ -977,15 +986,15 @@ export default function TransactionsScreen() {
       {showExportMenu && (
         <Modal transparent animationType="fade" onRequestClose={() => setShowExportMenu(false)}>
           <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }} onPress={() => setShowExportMenu(false)} activeOpacity={1}>
-            <View style={{ position: 'absolute', right: 16, top: '40%', backgroundColor: isDark ? '#1e293b' : '#ffffff', borderRadius: 16, paddingVertical: 6, minWidth: 200, elevation: 12, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 12, borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0' }}>
+            <View style={{ position: 'absolute', right: 16, top: '40%', backgroundColor: theme.surface, borderRadius: 16, paddingVertical: 6, minWidth: 200, elevation: 12, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 12, borderWidth: 1, borderColor: theme.border }}>
               <TouchableOpacity onPress={() => handleExport('pdf')} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
                 <FontAwesome name="file-pdf-o" size={16} color="#ef4444" style={{ marginRight: 12 }} />
-                <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontSize: 14, fontWeight: '600' }}>Export as PDF</Text>
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>Export as PDF</Text>
               </TouchableOpacity>
-              <View style={{ height: 1, backgroundColor: isDark ? '#334155' : '#f1f5f9', marginHorizontal: 16 }} />
+              <View style={{ height: 1, backgroundColor: theme.surfaceMuted, marginHorizontal: 16 }} />
               <TouchableOpacity onPress={() => handleExport('excel')} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
                 <FontAwesome name="file-excel-o" size={16} color="#16a34a" style={{ marginRight: 12 }} />
-                <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontSize: 14, fontWeight: '600' }}>Export as Excel</Text>
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>Export as Excel</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

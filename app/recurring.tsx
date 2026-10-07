@@ -18,10 +18,12 @@ import { StatusBar } from 'expo-status-bar';
 import React, { createElement, useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
 
 import { useDispatch, useSelector } from 'react-redux';
 
 import { RecurringFrequency, RecurringTransaction } from '@/types/database';
+import { themeTokens } from '@/constants/theme';
 
 type ViewMode = 'LIST' | 'CALENDAR';
 
@@ -34,6 +36,7 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
+  const theme = themeTokens(isDark);
   // Reset ref to current value whenever the sheet opens
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
@@ -41,12 +44,12 @@ const SpinnerPickerSheet = ({
     <Modal transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
-        <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#e2e8f0' }}>
+        <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}>
             <TouchableOpacity onPress={onClose}>
               <Text style={{ color: '#94a3b8', fontSize: 16 }}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontWeight: '700', fontSize: 16 }}>{label}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 16 }}>{label}</Text>
             <TouchableOpacity onPress={() => { onClose(); onConfirm(pendingRef.current); }}>
               <Text style={{ color: '#6366f1', fontWeight: '700', fontSize: 16 }}>Done</Text>
             </TouchableOpacity>
@@ -683,11 +686,11 @@ export default function RecurringTransactionsScreen() {
       {/* Header */}
       <LinearGradient colors={['#9333ea', '#7e22ce']} className="px-6 pt-6 pb-2 rounded-b-[32px]" style={{ elevation: 4 }}>
         <View className="flex-row justify-between items-center mb-6">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">Recurring Transactions</Text>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
             onPress={() => { resetForm(); setShowAddModal(true); }}
             className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
           >
@@ -786,7 +789,7 @@ export default function RecurringTransactionsScreen() {
                     </View>
                     <View className="items-end">
                       <View className="flex-row gap-2 mb-1">
-                        <TouchableOpacity onPress={() => handleEdit(recurring)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit" onPress={() => handleEdit(recurring)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                           <FontAwesome name="pencil" size={12} color="#3b82f6" />
                         </TouchableOpacity>
                       </View>
@@ -831,7 +834,7 @@ export default function RecurringTransactionsScreen() {
                         <Text className="text-purple-600 text-center font-semibold">Execute Now</Text>
                       </TouchableOpacity>
 
-                      <TouchableOpacity
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
                         onPress={() => handleDelete(recurring.id)}
                         className="bg-red-100 dark:bg-red-900/30 px-4 py-3 rounded-xl"
                       >
@@ -912,17 +915,19 @@ export default function RecurringTransactionsScreen() {
       </ScrollView>
 
       {/* Add Modal */}
-      {showAddModal && (
-        <View className="absolute inset-0 bg-black/50 justify-center items-center px-6">
-          <View
-            className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md shadow-2xl"
-            style={{ maxHeight: '90%' }}
-          >
+      <FormSheet
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        variant="center"
+        cardClassName="max-w-md shadow-2xl dark:bg-slate-800"
+        scrollable={false}
+        accessibilityLabel={editingId ? 'Edit recurring transaction' : 'New recurring transaction'}
+      >
             <View className="flex-row justify-between items-center px-6 pt-6 pb-4">
               <Text className="text-slate-900 dark:text-white text-xl font-bold">
                 {editingId ? 'Edit Recurring' : 'New Recurring'}
               </Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowAddModal(false)}>
                 <FontAwesome name="times" size={24} color="#64748b" />
               </TouchableOpacity>
             </View>
@@ -1226,9 +1231,7 @@ export default function RecurringTransactionsScreen() {
               </View>
             </ScrollView>
             <FloatingCalculator onUseAmount={setAmount} />
-          </View>
-        </View>
-      )}
+      </FormSheet>
     </View>
   );
 }

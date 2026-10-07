@@ -144,11 +144,11 @@ export default function AmortizationScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-4">
-          <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">Amortization Calculator</Text>
-          <TouchableOpacity onPress={reset} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh" onPress={reset} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="refresh" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -276,7 +276,7 @@ export default function AmortizationScreen() {
         <View className="flex-1 bg-slate-50 dark:bg-slate-900">
           <View className="px-6 py-4 flex-row justify-between items-center border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <Text className="text-xl font-bold text-slate-900 dark:text-white">Amortization Table</Text>
-            <TouchableOpacity onPress={() => setShowTableModal(false)} className="bg-slate-100 dark:bg-slate-800 p-2 rounded-full">
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowTableModal(false)} className="bg-slate-100 dark:bg-slate-800 p-2 rounded-full">
               <FontAwesome name="times" size={20} color="#64748b" />
             </TouchableOpacity>
           </View>

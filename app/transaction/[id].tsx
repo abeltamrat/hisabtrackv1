@@ -28,7 +28,7 @@ export default function TransactionDetail() {
       <View className="flex-1 bg-slate-50 dark:bg-background-dark">
         <StatusBar style="auto" />
         <View className="px-6 pt-6 pb-4 flex-row items-center">
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back"
             onPress={() => router.back()}
             className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl justify-center items-center shadow-sm border border-slate-100 dark:border-slate-700"
             style={{ elevation: 2 }}
@@ -82,7 +82,7 @@ export default function TransactionDetail() {
 
       {/* Header */}
       <View className="px-6 pt-6 pb-4 flex-row justify-between items-center">
-        <TouchableOpacity
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back"
           onPress={() => router.back()}
           className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl justify-center items-center shadow-sm border border-slate-100 dark:border-slate-700"
           style={{ elevation: 2 }}
@@ -91,13 +91,13 @@ export default function TransactionDetail() {
         </TouchableOpacity>
         <Text className="text-slate-900 dark:text-white font-bold text-lg">Transaction Details</Text>
         <View className="flex-row gap-2">
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit"
             onPress={() => router.push({ pathname: '/modal', params: { edit: transaction.id } })}
             className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-xl justify-center items-center"
           >
             <FontAwesome name="pencil" size={18} color="#3b82f6" />
           </TouchableOpacity>
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
             onPress={handleDelete}
             className="w-10 h-10 bg-red-50 dark:bg-red-900/30 rounded-xl justify-center items-center ml-2"
           >

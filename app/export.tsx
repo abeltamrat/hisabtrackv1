@@ -18,6 +18,7 @@ import React, { createElement, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, ScrollView, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
+import { themeTokens } from '@/constants/theme';
 
 type ExportFormat = 'pdf' | 'excel';
 type ExportTimeRange = 'week' | 'month' | 'year' | 'all' | 'custom';
@@ -45,18 +46,19 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
+  const theme = themeTokens(isDark);
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
-        <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#e2e8f0' }}>
+        <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}>
             <TouchableOpacity onPress={onClose}>
               <Text style={{ color: '#94a3b8', fontSize: 16 }}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontWeight: '700', fontSize: 16 }}>{label}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 16 }}>{label}</Text>
             <TouchableOpacity onPress={() => { onClose(); onConfirm(pendingRef.current); }}>
               <Text style={{ color: '#6366f1', fontWeight: '700', fontSize: 16 }}>Done</Text>
             </TouchableOpacity>
@@ -504,7 +506,7 @@ export default function ExportDataScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center">
-          <TouchableOpacity onPress={() => router.back()} className={`${isVerySmall ? 'w-9 h-9' : 'w-10 h-10'} bg-white/20 rounded-xl justify-center items-center`}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className={`${isVerySmall ? 'w-9 h-9' : 'w-10 h-10'} bg-white/20 rounded-xl justify-center items-center`}>
             <FontAwesome name="arrow-left" size={isVerySmall ? 16 : 18} color="#fff" />
           </TouchableOpacity>
           <Text className={`text-white ${headerTitleSize} font-bold`}>Export Data</Text>

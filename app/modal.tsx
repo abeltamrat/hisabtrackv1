@@ -9,6 +9,7 @@ import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/d
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
+import { useFormErrors } from '@/hooks/useFormErrors';
 
 import { AppDispatch } from '@/store';
 import BudgetService from '@/services/BudgetService';
@@ -19,6 +20,7 @@ import { NotificationService } from '@/services/NotificationService';
 import { formatTagInput, parseTagInput } from '@/utils/tags';
 import FloatingCalculator from '@/components/FloatingCalculator';
 import { useDispatch, useSelector } from 'react-redux';
+import { themeTokens } from '@/constants/theme';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -28,18 +30,19 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
+  const theme = themeTokens(isDark);
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
-        <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#e2e8f0' }}>
+        <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}>
             <TouchableOpacity onPress={onClose}>
               <Text style={{ color: '#94a3b8', fontSize: 16 }}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontWeight: '700', fontSize: 16 }}>{label}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 16 }}>{label}</Text>
             <TouchableOpacity onPress={() => { onClose(); onConfirm(pendingRef.current); }}>
               <Text style={{ color: '#6366f1', fontWeight: '700', fontSize: 16 }}>Done</Text>
             </TouchableOpacity>
@@ -79,6 +82,7 @@ export default function AddTransactionScreen() {
 
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [amount, setAmount] = useState('');
+  const { errors, validate, clearError } = useFormErrors<'amount' | 'account' | 'category'>();
   const [type, setType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [note, setNote] = useState('');
@@ -171,18 +175,12 @@ export default function AddTransactionScreen() {
 
   const handleSave = async () => {
     const numericAmount = parseFloat(amount);
-    if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount greater than 0.');
-      return;
-    }
-    if (!selectedAccountId) {
-      Alert.alert('No Account', 'Please select an account.');
-      return;
-    }
-    if (!selectedCategory) {
-      Alert.alert('No Category', 'Please select a category.');
-      return;
-    }
+    if (!validate({
+      amount: (!amount || isNaN(numericAmount) || numericAmount <= 0)
+        && 'Enter an amount greater than zero.',
+      account: !selectedAccountId && 'Choose the account this belongs to.',
+      category: !selectedCategory && 'Choose a category.',
+    })) return;
 
     // Soft guard: warn when a new expense exceeds the account's available
     // (unlocked) balance. Never hard-block — records mirror real money moves.
@@ -302,7 +300,7 @@ export default function AddTransactionScreen() {
                 : 'bg-slate-50 dark:bg-slate-900 border-transparent'
             }`}
             style={{ marginLeft: indentLeft }}
-            onPress={() => setSelectedCategory(category.name)}
+            onPress={() => { clearError('category'); setSelectedCategory(category.name); }}
           >
             {depth > 0 && (
               <View className="w-0.5 h-3 bg-slate-300 dark:bg-slate-600 mr-2 rounded-full" />
@@ -355,11 +353,11 @@ export default function AddTransactionScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-4">
-          <TouchableOpacity onPress={() => router.back()} className="w-9 h-9 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => router.back()} className="w-9 h-9 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="close" size={16} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-lg font-bold">{isEditing ? 'Edit Transaction' : 'Add Transaction'}</Text>
-          <TouchableOpacity onPress={handleSave} className="w-9 h-9 bg-secondary-500 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm" onPress={handleSave} className="w-9 h-9 bg-secondary-500 rounded-xl justify-center items-center">
             <FontAwesome name="check" size={16} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -375,10 +373,17 @@ export default function AddTransactionScreen() {
               placeholderTextColor="rgba(255,255,255,0.5)"
               keyboardType="decimal-pad"
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(value) => { clearError('amount'); setAmount(value); }}
+              accessibilityLabel="Amount"
+              aria-invalid={!!errors.amount}
               autoFocus
             />
           </View>
+          {errors.amount ? (
+            <Text accessibilityRole="alert" className="text-white bg-red-600/90 px-3 py-1.5 rounded-lg text-xs font-semibold mt-2 self-center">
+              {errors.amount}
+            </Text>
+          ) : null}
         </View>
       </LinearGradient>
 
@@ -420,11 +425,14 @@ export default function AddTransactionScreen() {
         {/* Account Selection */}
         <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
           <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Account</Text>
+          {errors.account ? (
+            <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-2">{errors.account}</Text>
+          ) : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
             {accounts.map((account: any) => (
               <TouchableOpacity
                 key={account.id}
-                onPress={() => setSelectedAccountId(account.id)}
+                onPress={() => { clearError('account'); setSelectedAccountId(account.id); }}
                 className={`mx-1 p-3 rounded-xl border-2 min-w-[90px] items-center ${
                   selectedAccountId === account.id
                     ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
@@ -493,7 +501,10 @@ export default function AddTransactionScreen() {
         </View>
 
         {/* Category Selection */}
-        <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+        <View className={`bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border ${errors.category ? 'border-red-500' : 'border-slate-100 dark:border-slate-700'}`} style={{ elevation: 3 }}>
+          {errors.category ? (
+            <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-2">{errors.category}</Text>
+          ) : null}
           <View className="flex-row justify-between items-center mb-2">
             <Text className="text-slate-900 dark:text-white text-xs font-bold">Category</Text>
             {(() => {

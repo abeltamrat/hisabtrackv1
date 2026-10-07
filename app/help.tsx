@@ -347,7 +347,7 @@ export default function HelpScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row items-center justify-between mb-4">
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back"
             onPress={() => router.back()}
             className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
           >

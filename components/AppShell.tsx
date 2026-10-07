@@ -117,8 +117,13 @@ export default function AppShell({ children }: AppShellProps) {
     setShowPreview(!showPreview);
   };
 
+  // The safe-area strip above the app bar needs the same fill as the bar, or
+  // it renders as a pale band over the dark theme.
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: actualTheme === 'dark' ? '#0f172a' : '#ffffff' }}
+      edges={['top', 'left', 'right']}
+    >
       <DataStatusBanner />
       {/* Top App Bar */}
       <View
@@ -128,7 +133,12 @@ export default function AppShell({ children }: AppShellProps) {
           zIndex: 2000,
         }}
       >
-        <TouchableOpacity onPress={() => setDrawerVisible(true)} style={{ padding: 8 }}>
+        <TouchableOpacity
+          onPress={() => setDrawerVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Open menu"
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+        >
           <FontAwesome name="bars" size={20} color={actualTheme === 'dark' ? '#fff' : '#111827'} />
         </TouchableOpacity>
 
@@ -136,7 +146,13 @@ export default function AppShell({ children }: AppShellProps) {
           <Text className="text-base font-bold text-slate-900 dark:text-white">Hisab Track</Text>
         </View>
 
-        <TouchableOpacity onPress={togglePreview} style={{ padding: 8, position: 'relative' }}>
+        <TouchableOpacity
+          onPress={togglePreview}
+          accessibilityRole="button"
+          accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+          accessibilityState={{ expanded: showPreview }}
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+        >
           <FontAwesome name="bell-o" size={20} color={actualTheme === 'dark' ? '#fff' : '#111827'} />
           {aiUnreadCount > 0 && (
             <View style={{
@@ -199,7 +215,7 @@ export default function AppShell({ children }: AppShellProps) {
 
             {recentNotifications.length === 0 ? (
               <View style={{ padding: 24, alignItems: 'center' }}>
-                <Text style={{ color: '#94a3b8' }}>No notifications</Text>
+                <Text style={{ color: actualTheme === 'dark' ? '#94a3b8' : '#64748b' }}>No notifications</Text>
               </View>
             ) : (
               <ScrollView style={{ maxHeight: 300 }}>
@@ -229,7 +245,7 @@ export default function AppShell({ children }: AppShellProps) {
                         <Text className="text-slate-500 dark:text-slate-400 text-xs" numberOfLines={2}>
                           {notification.message}
                         </Text>
-                        <Text style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>
+                        <Text style={{ color: actualTheme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, marginTop: 4 }}>
                           {new Date(notification.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Text>
                       </View>
@@ -254,13 +270,23 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* Persistent banner when auto-sync is disabled due to native DB errors */}
       {disabledUntil && disabledUntil > Date.now() ? (
-        <View style={{ backgroundColor: '#fee2e2', padding: 8, borderBottomWidth: 1, borderBottomColor: '#fecaca' }}>
+        <View style={{
+          backgroundColor: actualTheme === 'dark' ? '#450a0a' : '#fee2e2',
+          padding: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: actualTheme === 'dark' ? '#7f1d1d' : '#fecaca',
+        }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: '#991b1b', flex: 1 }}>
+            <Text accessibilityRole="alert" style={{ color: actualTheme === 'dark' ? '#fecaca' : '#991b1b', flex: 1 }}>
               Auto-sync disabled due to repeated local database errors. Retry after {new Date(disabledUntil).toLocaleTimeString()}.
             </Text>
-            <TouchableOpacity onPress={retrySync} style={{ padding: 8, marginLeft: 8 }}>
-              <Text style={{ color: '#991b1b', fontWeight: '700' }}>Retry now</Text>
+            <TouchableOpacity
+              onPress={retrySync}
+              accessibilityRole="button"
+              accessibilityLabel="Retry synchronising now"
+              style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8, marginLeft: 8 }}
+            >
+              <Text style={{ color: actualTheme === 'dark' ? '#fecaca' : '#991b1b', fontWeight: '700' }}>Retry now</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -26,9 +26,12 @@ import { StatusBar } from 'expo-status-bar';
 import React, { createElement, useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
+import FormSheet from '@/components/FormSheet';
+import { useFormErrors } from '@/hooks/useFormErrors';
 import { useDispatch, useSelector } from 'react-redux';
 import { NotificationService } from '@/services/NotificationService';
 import { money, sumMoney } from '@/utils/finance';
+import { themeTokens } from '@/constants/theme';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -38,18 +41,19 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
+  const theme = themeTokens(isDark);
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
-        <View style={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#334155' : '#e2e8f0' }}>
+        <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}>
             <TouchableOpacity onPress={onClose}>
               <Text style={{ color: '#94a3b8', fontSize: 16 }}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={{ color: isDark ? '#e2e8f0' : '#1e293b', fontWeight: '700', fontSize: 16 }}>{label}</Text>
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 16 }}>{label}</Text>
             <TouchableOpacity onPress={() => { onClose(); onConfirm(pendingRef.current); }}>
               <Text style={{ color: '#6366f1', fontWeight: '700', fontSize: 16 }}>Done</Text>
             </TouchableOpacity>
@@ -166,6 +170,7 @@ export default function LoansDebtsScreen() {
   const { user } = useAuth();
   const { items: loans } = useSelector((state: RootState) => state.loans);
   const { items: accounts } = useSelector((state: RootState) => state.accounts);
+  const transactions = useSelector((state: RootState) => state.transactions.items);
   const [activeTab, setActiveTab] = useState<LoanType>('LENT');
   const { t } = useI18n();
   const { formatCurrency, fontSize } = useAppSettings();
@@ -205,6 +210,7 @@ export default function LoansDebtsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingItem, setEditingItem] = useState<Loan | null>(null);
+  const { errors, validate, clearError, resetErrors } = useFormErrors<'personName' | 'accountId' | 'amount' | 'dueDate' | 'paymentAmount'>();
   const [formData, setFormData] = useState({
     personName: '',
     accountId: '',
@@ -474,20 +480,15 @@ export default function LoansDebtsScreen() {
   };
 
   const handleAddItem = async () => {
-    if (!formData.accountId) {
-      Alert.alert('Error', 'Please select an account');
-      return;
-    }
-
-    if (!formData.amount || parseFloat(formData.amount) <= 0 || isNaN(parseFloat(formData.amount))) {
-      Alert.alert('Error', 'Please enter a valid amount');
-      return;
-    }
-
-    if (!formData.dueDate) {
-      Alert.alert('Error', 'Please select a due date');
-      return;
-    }
+    const parsed = parseFloat(formData.amount);
+    if (!validate({
+      personName: !formData.personName.trim()
+        && `Enter who this ${activeTab === 'LENT' ? 'loan is to' : 'debt is from'}.`,
+      accountId: !formData.accountId && 'Choose the account the money moves through.',
+      amount: (!formData.amount || isNaN(parsed) || parsed <= 0)
+        && 'Enter an amount greater than zero.',
+      dueDate: !formData.dueDate && 'Pick a due date.',
+    })) return;
 
     try {
       const amount = parseFloat(formData.amount);
@@ -589,10 +590,9 @@ export default function LoansDebtsScreen() {
     }
 
     const amount = parseFloat(formData.amount);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount.');
-      return;
-    }
+    if (!validate({
+      amount: (isNaN(amount) || amount <= 0) && 'Enter an amount greater than zero.',
+    })) return;
     const paid = parseFloat(formData.paidAmount || '0');
     const interestRate = parseFloat(formData.interestRate || '0');
     const startDate = editingItem.start_date || Date.now();
@@ -673,7 +673,22 @@ export default function LoansDebtsScreen() {
 
   const handleDeleteItem = (id: string) => {
     const loan = loans.find(l => l.id === id);
-    const isLinkedAccepted = !!loan?.shared_loan_id && loan?.link_status === 'ACCEPTED';
+    if (!loan) return;
+    const isLinkedAccepted = !!loan.shared_loan_id && loan.link_status === 'ACCEPTED';
+    const hasLedgerHistory = transactions.some(transaction => transaction.loan_id === id);
+
+    if (hasLedgerHistory) {
+      Alert.alert(
+        'Cannot Delete Loan',
+        'This loan has cash or repayment history. Keep it so account balances and financial reports remain accurate.'
+      );
+      return;
+    }
+
+    if (isLinkedAccepted && !user?.uid) {
+      Alert.alert('Cannot Delete Loan', 'Sign in before disconnecting this linked loan.');
+      return;
+    }
 
     Alert.alert(
       'Delete Loan',
@@ -686,24 +701,30 @@ export default function LoansDebtsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            if (loan?.notificationId) {
-              await NotificationService.cancelNotification(loan.notificationId);
+            const result = await dispatch(deleteLoan(id));
+            if (deleteLoan.rejected.match(result)) {
+              Alert.alert('Error', 'Failed to delete loan.');
+              return;
             }
-            // Detach from Firestore before local delete so the other party sees the link is gone
-            if (isLinkedAccepted && loan?.shared_loan_id && user?.uid) {
+
+            // If the remote detach fails, restore the untouched local record so
+            // both participants continue to see a consistent linked loan.
+            if (isLinkedAccepted && loan.shared_loan_id && user?.uid) {
               try {
                 await LinkedLoanService.detachLoan(
                   loan.shared_loan_id,
                   user.uid,
                   user.displayName || user.email || 'User',
                 );
-              } catch (e) {
-                console.warn('[Loans] detachLoan failed — deleting locally anyway:', e);
+              } catch {
+                await (await getDatabase()).upsertLoan(loan);
+                await dispatch(fetchLoans()).unwrap();
+                Alert.alert('Loan Kept', 'The linked loan could not be disconnected. No local loan data was removed.');
+                return;
               }
             }
-            const result = await dispatch(deleteLoan(id));
-            if (deleteLoan.rejected.match(result)) {
-              Alert.alert('Error', 'Failed to delete loan.');
+            if (loan.notificationId) {
+              await NotificationService.cancelNotification(loan.notificationId);
             }
           },
         },
@@ -732,10 +753,9 @@ export default function LoansDebtsScreen() {
 
     const { loan } = pendingPayment;
     const amount = parseFloat(paymentAmountStr);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Error', 'Invalid Amount');
-      return;
-    }
+    if (!validate({
+      paymentAmount: (isNaN(amount) || amount <= 0) && 'Enter a payment greater than zero.',
+    })) return;
 
     const isLinked = !!loan.shared_loan_id && loan.link_status === 'ACCEPTED';
 
@@ -801,6 +821,7 @@ export default function LoansDebtsScreen() {
   };
 
   const resetForm = () => {
+    resetErrors();
     setShowAddModal(false);
     setEditingItem(null);
     setFormData({
@@ -876,6 +897,7 @@ export default function LoansDebtsScreen() {
       setShowDatePicker(false);
     }
     if (event.type === 'set' && selectedDate) {
+      clearError('dueDate');
       setFormData({ ...formData, dueDate: selectedDate.toISOString().split('T')[0] });
     }
   };
@@ -891,26 +913,26 @@ export default function LoansDebtsScreen() {
         style={{ elevation: 4 }}
       >
         <View className="flex-row justify-between items-center mb-4">
-          <TouchableOpacity onPress={() => selectedGroup ? setSelectedGroup(null) : router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => selectedGroup ? setSelectedGroup(null) : router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className={`text-white ${headerTitleSize} font-bold`}>
             {selectedGroup ? selectedGroup : t('loansDebtsTitle')}
           </Text>
           <View className="flex-row items-center">
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="switch" accessibilityLabel="Loan reminders" accessibilityState={{ checked: globalRemindersEnabled }}
               onPress={handleToggleGlobalReminders}
               className={`w-10 h-10 ${globalRemindersEnabled ? 'bg-white/20' : 'bg-red-500/40'} rounded-xl justify-center items-center mr-2`}
             >
               <FontAwesome name={globalRemindersEnabled ? 'bell' : 'bell-slash'} size={18} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Calculator"
               onPress={() => router.push('/amortization')}
               className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center mr-2"
             >
               <FontAwesome name="calculator" size={18} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
               onPress={openAddModal}
               className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
             >
@@ -1090,7 +1112,7 @@ export default function LoansDebtsScreen() {
                       </Text>
                     </View>
                     <View className="flex-row">
-                      <TouchableOpacity
+                      <TouchableOpacity accessibilityRole="switch" accessibilityLabel="Reminder for this loan" accessibilityState={{ checked: !!item.reminderEnabled }}
                         onPress={() => handleToggleIndividualReminder(item.id)}
                         className={`w-10 h-10 ${item.reminderEnabled ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-slate-100 dark:bg-slate-800'} rounded-xl justify-center items-center mr-2`}
                       >
@@ -1098,6 +1120,8 @@ export default function LoansDebtsScreen() {
                       </TouchableOpacity>
                       {/* Non-initiators (is_initiator === false) see a lock icon on linked loans */}
                       <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${item.lender_borrower_name}`}
                         onPress={() => isItemLinked && item.is_initiator === false
                           ? Alert.alert('Cannot Edit', 'Only the user who created this loan link can propose term changes. Use the chat in Loan Details to discuss.')
                           : openEditModal(item)
@@ -1110,7 +1134,7 @@ export default function LoansDebtsScreen() {
                           color={isItemLinked && item.is_initiator === false ? '#94a3b8' : '#3b82f6'}
                         />
                       </TouchableOpacity>
-                      <TouchableOpacity
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
                         onPress={() => handleDeleteItem(item.id)}
                         className="w-10 h-10 bg-red-50 dark:bg-red-900/30 rounded-xl justify-center items-center"
                       >
@@ -1230,14 +1254,13 @@ export default function LoansDebtsScreen() {
       </ScrollView>
 
       {/* Payment Confirmation Modal */}
-      <Modal
+      <FormSheet
         visible={showPaymentModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowPaymentModal(false)}
+        onClose={() => setShowPaymentModal(false)}
+        variant="center"
+        cardClassName="max-w-sm"
+        accessibilityLabel={t('confirmPayment')}
       >
-        <View className="flex-1 bg-black/60 justify-center items-center px-6">
-          <View className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-sm">
             <Text className="text-center text-xl font-bold text-slate-900 dark:text-white mb-4">
               {t('confirmPayment')}
             </Text>
@@ -1246,20 +1269,25 @@ export default function LoansDebtsScreen() {
             </Text>
 
             <TextInput
-              className="bg-slate-50 dark:bg-slate-800 text-center text-slate-900 dark:text-white text-2xl font-bold p-4 rounded-2xl mb-6"
+              className={`bg-slate-50 dark:bg-slate-800 text-center text-slate-900 dark:text-white text-2xl font-bold p-4 rounded-2xl border ${errors.paymentAmount ? 'border-red-500 mb-1.5' : 'border-transparent mb-6'}`}
               placeholder={formatCurrency(0)}
               placeholderTextColor="#cbd5e1"
               keyboardType="decimal-pad"
               value={paymentAmountStr}
-              onChangeText={setPaymentAmountStr}
+              onChangeText={(value) => { clearError('paymentAmount'); setPaymentAmountStr(value); }}
+              accessibilityLabel="Payment amount"
+              aria-invalid={!!errors.paymentAmount}
             />
+            {errors.paymentAmount ? (
+              <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-4 text-center">{errors.paymentAmount}</Text>
+            ) : null}
 
             <Text className="text-slate-700 dark:text-slate-300 font-bold mb-2">{t('selectAccount')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row mb-6">
               {accounts.map(acc => (
                 <TouchableOpacity
                   key={acc.id}
-                  onPress={() => setPaymentAccountId(acc.id)}
+                  onPress={() => { clearError('accountId'); setPaymentAccountId(acc.id); }}
                   className={`mr-2 px-4 py-3 rounded-xl border-2 ${paymentAccountId === acc.id
                     ? 'bg-blue-50 border-blue-500'
                     : 'bg-slate-50 dark:bg-slate-800 border-transparent'
@@ -1285,24 +1313,20 @@ export default function LoansDebtsScreen() {
                 <Text className="text-white text-center font-bold">{t('confirm')}</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
 
       {/* Add/Edit Modal */}
-      <Modal
+      <FormSheet
         visible={showAddModal || editingItem !== null}
-        transparent
-        animationType="none"
-        onRequestClose={resetForm}
+        onClose={resetForm}
+        scrollable={false}
+        accessibilityLabel={editingItem ? 'Edit loan' : 'Add loan'}
       >
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-3xl p-6" style={{ maxHeight: '90%' }}>
             <View className="flex-row justify-between items-center mb-6">
               <Text className="text-slate-900 dark:text-white text-xl font-bold">
                 {editingItem ? `Edit ${activeTab === 'LENT' ? 'Loan' : 'Debt'}` : `Add ${activeTab === 'LENT' ? 'Loan' : 'Debt'}`}
               </Text>
-              <TouchableOpacity onPress={resetForm}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={resetForm}>
                 <FontAwesome name="times" size={24} color="#64748b" />
               </TouchableOpacity>
             </View>
@@ -1311,6 +1335,9 @@ export default function LoansDebtsScreen() {
               {!editingItem && (
                 <View className="mb-4">
                   <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">Select Account</Text>
+                  {errors.accountId ? (
+                    <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-2">{errors.accountId}</Text>
+                  ) : null}
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
                     {accounts.map(acc => (
                       <TouchableOpacity
@@ -1333,14 +1360,17 @@ export default function LoansDebtsScreen() {
               <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">
                 {activeTab === 'LENT' ? 'Borrower Name' : 'Lender Name'}
               </Text>
-              <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 mb-4 z-50 relative">
+              <View className={`bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 z-50 relative border ${errors.personName ? 'border-red-500 mb-1.5' : 'border-transparent mb-4'}`}>
                 <TextInput
                   className="text-slate-900 dark:text-white text-base h-14"
                   placeholder="Enter name"
                   placeholderTextColor="#94a3b8"
                   value={formData.personName}
                   editable={canEditLinkedTerms}
+                  accessibilityLabel="Name of the other party"
+                  aria-invalid={!!errors.personName}
                   onChangeText={(text) => {
+                    clearError('personName');
                     setFormData({ ...formData, personName: text });
                     if (text.trim().length > 0) {
                       const matches = groupNames.filter(name =>
@@ -1422,9 +1452,14 @@ export default function LoansDebtsScreen() {
                   keyboardType="decimal-pad"
                   value={formData.amount}
                   editable={canEditLinkedTerms}
-                  onChangeText={(text) => setFormData({ ...formData, amount: text })}
+                  accessibilityLabel="Loan amount"
+                  aria-invalid={!!errors.amount}
+                  onChangeText={(text) => { clearError('amount'); setFormData({ ...formData, amount: text }); }}
                 />
               </View>
+              {errors.amount ? (
+                <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-3 -mt-2">{errors.amount}</Text>
+              ) : null}
 
               {/* Paid Amount */}
               <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">Paid Amount</Text>
@@ -1456,6 +1491,9 @@ export default function LoansDebtsScreen() {
 
               {/* Due Date */}
               <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">Due Date</Text>
+              {errors.dueDate ? (
+                <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-2">{errors.dueDate}</Text>
+              ) : null}
               {Platform.OS === 'web' ? (
                 <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 mb-4">
                   {createElement('input', {
@@ -1490,6 +1528,7 @@ export default function LoansDebtsScreen() {
                           display: 'default',
                           onChange: (event: any, selectedDate?: Date) => {
                             if (event.type === 'set' && selectedDate) {
+                              clearError('dueDate');
                               setFormData(prev => ({ ...prev, dueDate: selectedDate.toISOString().split('T')[0] }));
                             }
                           },
@@ -1581,9 +1620,7 @@ export default function LoansDebtsScreen() {
               </TouchableOpacity>
             </ScrollView>
             <FloatingCalculator onUseAmount={(value) => setFormData({ ...formData, amount: value })} />
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
     </View>
   );
 }

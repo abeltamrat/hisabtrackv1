@@ -1,5 +1,7 @@
 import { useLedgerClock } from '@/hooks/useLedgerClock';
 import { operatingTransactions, reportPeriod, sumMoney, trendBuckets } from '@/utils/finance';
+import BudgetService from '@/services/BudgetService';
+import ScreenInfoCard from '@/components/ScreenInfoCard';
 import { sessionLocalStorage } from '@/services/SessionStorage';
 import AIInsights from '@/components/AIInsights';
 import { useTransactions } from '@/context/TransactionContext';
@@ -343,6 +345,27 @@ export default function ReportsScreen() {
     return { income: avgInc, expense: avgExp };
   }, [monthlyData, ledgerNow]);
 
+  /**
+   * Budget adherence across the budgets active right now: the share of the
+   * combined limit still unspent. The "Financial Health" ring previously
+   * rendered a hardcoded 0.75 here, so every user was shown 75% budget health
+   * regardless of their data — including users with no budgets at all.
+   * `null` means there is nothing to measure, and the ring is omitted.
+   */
+  const budgetHealth = useMemo(() => {
+    const active = budgets.filter(b => b.start_date <= ledgerNow && b.end_date >= ledgerNow);
+    if (active.length === 0) return null;
+    const metrics = BudgetService.calculateBudgetCollectionMetrics(active, budgets, transactions);
+    const totalLimit = sumMoney(metrics.map(m => m.effectiveLimit));
+    if (totalLimit <= 0) return null;
+    const totalSpent = sumMoney(metrics.map(m => m.spent));
+    return Math.min(Math.max((totalLimit - totalSpent) / totalLimit, 0), 1);
+  }, [budgets, transactions, ledgerNow]);
+
+  // Nothing to report on: no accounts and no postings at all. An empty
+  // *period* still shows the charts, because a quiet month is real data.
+  const hasNoLedgerData = accounts.length === 0 && transactions.length === 0;
+
   const accountsById = useMemo(
     () => new Map(accounts.map((account) => [account.id, account])),
     [accounts]
@@ -524,20 +547,20 @@ export default function ReportsScreen() {
         <View className="flex-row justify-between items-center mb-6">
           <Text className={`text-white font-bold ${headerTitleSize}`}>{t('reports.title')}</Text>
           <View className="flex-row gap-2">
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="AI insights"
               onPress={() => router.push('/aiassistant')}
               className={iconButtonClass}
             >
               <FontAwesome name="magic" size={isVerySmall ? 16 : 18} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh data" accessibilityState={{ busy: isSyncing, disabled: isSyncing }}
               onPress={handleManualSync}
               disabled={isSyncing}
               className={iconButtonClass}
             >
               <FontAwesome name={isSyncing ? "spinner" : "refresh"} size={isVerySmall ? 16 : 18} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Export report" accessibilityState={{ busy: isExporting }}
               onPress={() => setExportModalVisible(true)}
               disabled={isExporting}
               className={iconButtonClass}
@@ -606,8 +629,24 @@ export default function ReportsScreen() {
       </View >
 
       <ScrollView className="flex-1 px-6 mt-4" showsVerticalScrollIndicator={false}>
+        {/* First run: with no ledger history every chart renders as zeroes,
+            which reads as "your finances are empty" rather than "there is
+            nothing to report yet". */}
+        {hasNoLedgerData ? (
+          <ScreenInfoCard
+            icon="bar-chart"
+            title="Your reports will appear here"
+            description="Once you have recorded a few transactions, this screen shows where your money goes, how your months compare, and what is coming up."
+            suggestions={[
+              'Add an account, then record an income or expense to get started.',
+              'On Android, connect a bank SMS sender so transactions are suggested for you.',
+              'Set a budget to see how your spending tracks against it.',
+            ]}
+          />
+        ) : null}
+
         {/* Overview Tab */}
-        {activeTab === 'overview' && (
+        {!hasNoLedgerData && activeTab === 'overview' && (
           <View>
             {/* Summary Cards */}
             <View className="flex-row gap-3 mb-6">
@@ -693,7 +732,7 @@ export default function ReportsScreen() {
         )}
 
         {/* Forecast Tab */}
-        {activeTab === 'forecast' && (
+        {!hasNoLedgerData && activeTab === 'forecast' && (
           <View>
             <View className="flex-row gap-2 mb-4">
               {FORECAST_HORIZONS.map((option) => (
@@ -996,7 +1035,7 @@ export default function ReportsScreen() {
         )}
 
         {/* Income Tab */}
-        {activeTab === 'income' && (
+        {!hasNoLedgerData && activeTab === 'income' && (
           <View>
             <LinearGradient colors={['#22c55e', '#16a34a']} className="rounded-3xl p-6 mb-6">
               <Text className="text-white/90 text-sm mb-2">{t('totalIncome')}</Text>
@@ -1035,7 +1074,7 @@ export default function ReportsScreen() {
         )}
 
         {/* Expense Tab */}
-        {activeTab === 'expense' && (
+        {!hasNoLedgerData && activeTab === 'expense' && (
           <View>
             <LinearGradient colors={['#ef4444', '#dc2626']} className="rounded-3xl p-6 mb-6">
               <Text className="text-white/90 text-sm mb-2">{t('totalExpenses')}</Text>
@@ -1074,7 +1113,7 @@ export default function ReportsScreen() {
         )}
 
         {/* Trends Tab */}
-        {activeTab === 'trends' && (
+        {!hasNoLedgerData && activeTab === 'trends' && (
           <View>
             <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700">
               <Text className={`text-slate-900 dark:text-white ${sectionTitleSize} font-bold mb-4`}>
@@ -1136,7 +1175,7 @@ export default function ReportsScreen() {
         )}
 
         {/* Comparison Tab */}
-        {activeTab === 'comparison' && (
+        {!hasNoLedgerData && activeTab === 'comparison' && (
           <View>
             <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700">
               <Text className={`text-slate-900 dark:text-white ${sectionTitleSize} font-bold mb-4`}>
@@ -1169,14 +1208,21 @@ export default function ReportsScreen() {
               </Text>
               <ProgressChart
                 data={{
-                  labels: ['Savings', 'Budget'],
-                  data: [Math.min(Math.max(summary.savingsRate / 100, 0), 1), 0.75],
+                  labels: budgetHealth === null ? ['Savings'] : ['Savings', 'Budget'],
+                  data: budgetHealth === null
+                    ? [Math.min(Math.max(summary.savingsRate / 100, 0), 1)]
+                    : [Math.min(Math.max(summary.savingsRate / 100, 0), 1), budgetHealth],
                 }}
                 width={screenWidth - 80}
                 height={220}
                 chartConfig={chartConfig}
                 hideLegend={false}
               />
+              <Text className="text-slate-500 dark:text-slate-400 text-[10px] mt-2">
+                {budgetHealth === null
+                  ? 'Savings rate for the selected period. Set a budget to track budget health here.'
+                  : 'Savings rate for the selected period, and the share of your active budgets still unspent.'}
+              </Text>
             </View>
           </View>
         )}

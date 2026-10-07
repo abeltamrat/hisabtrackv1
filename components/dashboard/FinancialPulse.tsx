@@ -12,6 +12,8 @@ interface FinancialPulseProps {
   dueSoonLoanCount: number;
   topExpenseCategoryName?: string;
   topExpenseCategoryAmount?: number;
+  /** False before anything has been recorded, so the card does not assert a verdict. */
+  hasData?: boolean;
   onOpenBudget: () => void;
   onOpenLoans: () => void;
   onOpenAssistant: () => void;
@@ -25,6 +27,7 @@ function FinancialPulse({
   dueSoonLoanCount,
   topExpenseCategoryName,
   topExpenseCategoryAmount = 0,
+  hasData = true,
   onOpenBudget,
   onOpenLoans,
   onOpenAssistant,
@@ -32,6 +35,7 @@ function FinancialPulse({
   const { formatCurrency, fontSize } = useAppSettings();
   const isVerySmall = fontSize === 'V.Small';
   const headline = getHeadline({
+    hasData,
     monthlyNet,
     savingsRate,
     overBudgetCount,
@@ -95,6 +99,7 @@ function FinancialPulse({
 export default memo(FinancialPulse);
 
 function getHeadline({
+  hasData,
   monthlyNet,
   savingsRate,
   overBudgetCount,
@@ -103,6 +108,7 @@ function getHeadline({
   topExpenseCategoryAmount,
   formatCurrency,
 }: {
+  hasData: boolean;
   monthlyNet: number;
   savingsRate: number;
   overBudgetCount: number;
@@ -111,6 +117,11 @@ function getHeadline({
   topExpenseCategoryAmount: number;
   formatCurrency: (amount: number) => string;
 }) {
+  // With an empty ledger every metric is zero, which used to fall through to
+  // "Your financial health is stable" — a verdict on data that does not exist.
+  if (!hasData) {
+    return 'Add an account and record your first transaction, and this card will start tracking your month.';
+  }
   if (monthlyNet < 0) {
     return `This month is negative by ${formatCurrency(Math.abs(monthlyNet))}. Focus on essential spending only this week.`;
   }

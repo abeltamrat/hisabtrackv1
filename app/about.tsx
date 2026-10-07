@@ -18,7 +18,7 @@ export default function AboutScreen() {
                 colors={['#4f46e5', '#6366f1']}
                 className="pt-3 pb-6 px-6"
             >
-                <TouchableOpacity onPress={() => router.back()} className="mb-4">
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="mb-4">
                     <FontAwesome name="arrow-left" size={24} color="#fff" />
                 </TouchableOpacity>
                 <Text className="text-white text-3xl font-bold">About HisabTrack</Text>

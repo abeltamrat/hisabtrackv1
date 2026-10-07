@@ -345,6 +345,7 @@ export default function DashboardScreen() {
             dueSoonLoanCount={dueSoonLoanCount}
             topExpenseCategoryName={topExpenseCategoryEntry?.[0]}
             topExpenseCategoryAmount={topExpenseCategoryEntry?.[1]}
+            hasData={accounts.length > 0 || transactions.length > 0}
             onOpenBudget={() => router.push('/budget')}
             onOpenLoans={() => router.push('/loans')}
             onOpenAssistant={() => router.push('/aiassistant')}

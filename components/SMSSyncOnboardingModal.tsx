@@ -155,7 +155,7 @@ function CategoryPickerSheet({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <TouchableOpacity
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
         className="flex-1 bg-black/40"
         activeOpacity={1}
         onPress={onClose}
@@ -397,7 +397,7 @@ function DraftCard({
           )}
 
           {/* Expand arrow */}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Show or hide details" accessibilityState={{ expanded }}
             onPress={onToggleExpand}
             className="ml-auto p-1"
           >
@@ -941,6 +941,8 @@ export default function SMSSyncOnboardingModal({
 
             {step !== 'syncing' && (
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Close"
                 onPress={onClose}
                 className="w-8 h-8 rounded-full bg-white/20 items-center justify-center ml-2"
               >

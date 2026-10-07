@@ -343,7 +343,7 @@ export default function FinanceAssistantOverlay({ hidden = false }: FinanceAssis
       ) : null}
 
       {showOverlay ? (
-        <TouchableOpacity
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open the finance assistant"
           onPress={() => setIsSheetOpen(true)}
           className="absolute w-14 h-14 rounded-full bg-indigo-600 items-center justify-center"
           style={{ right: 16, bottom: bottomOffset, elevation: 8, zIndex: 1401 }}
@@ -394,7 +394,7 @@ export default function FinanceAssistantOverlay({ hidden = false }: FinanceAssis
                     >
                       <Text className="text-slate-700 dark:text-slate-200 text-xs font-semibold">Full AI</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setIsSheetOpen(false)} className="p-1">
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close the finance assistant" onPress={() => setIsSheetOpen(false)} className="p-1">
                       <FontAwesome name="close" size={20} color="#64748b" />
                     </TouchableOpacity>
                   </View>
@@ -458,7 +458,7 @@ export default function FinanceAssistantOverlay({ hidden = false }: FinanceAssis
                     maxLength={280}
                     onSubmitEditing={() => sendMessage(inputText)}
                   />
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Send message"
                     onPress={() => sendMessage(inputText)}
                     disabled={isTyping || !inputText.trim()}
                     className={`w-12 h-12 rounded-xl items-center justify-center ${isTyping || !inputText.trim() ? 'bg-slate-300 dark:bg-slate-700' : 'bg-indigo-600'}`}
