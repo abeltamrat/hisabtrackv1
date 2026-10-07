@@ -527,6 +527,9 @@ export class SMSSyncService {
     if (parsed.smsId) {
       if (existingTransactions.some(t => t.sms_id === parsed.smsId)) return true;
     }
+    if (parsed.receiptUrl) {
+      if (existingTransactions.some(t => t.receipt_url === parsed.receiptUrl)) return true;
+    }
     return false; // Ambiguous amount/time matches remain available for human review.
   }
 

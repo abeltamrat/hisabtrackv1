@@ -7,7 +7,7 @@ import { DraftTransaction, DraftTransactionService } from '@/services/DraftTrans
 import { SMSLearningService } from '@/services/SMSLearningService';
 import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
-import { addTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
+import { addTransaction, deleteTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
 import { addLoan } from '@/store/slices/loansSlice';
 import { FontAwesome } from '@expo/vector-icons';
 import { SMSSyncService } from '@/services/SMSSyncService';
@@ -430,11 +430,11 @@ export default function DraftTransactionsScreen() {
       await dispatch(fetchAccounts());
 
       const transactionId = (result.payload as any)?.id;
+      const counterpartId = matchedCounterpartId || selectedDraft.paired_draft_id;
       if (transactionId) {
         await DraftTransactionService.markAsRecorded(selectedDraft.id, transactionId);
         // The opposite leg of a paired self-transfer is covered by the same
         // TRANSFER transaction — close it too so it can't be double-recorded.
-        const counterpartId = matchedCounterpartId || selectedDraft.paired_draft_id;
         if (counterpartId) {
           await DraftTransactionService.markAsRecorded(counterpartId, transactionId);
         }
@@ -494,16 +494,31 @@ export default function DraftTransactionsScreen() {
       await BackgroundService.markReconciliationReview();
       setShowConfirmModal(false);
       await loadDrafts();
-      Alert.alert(
-        'Success',
-        recordAsLoan
+      const successMessage = recordAsLoan
           ? loanCreated
             ? `Transaction recorded and ${selectedDraft.type === 'INCOME' ? 'borrowed loan' : 'loan given'} added to Loans.`
             : 'Transaction recorded, but the loan record could not be created. You can add it manually from Loans.'
           : recurringError
             ? `Transaction recorded. Recurring setup needs attention: ${recurringError}`
-            : makeRecurring ? 'Transaction and recurring rule recorded!' : 'Transaction recorded!'
-      );
+            : makeRecurring ? 'Transaction and recurring rule recorded!' : 'Transaction recorded!';
+      if (transactionId && !recordAsLoan && !makeRecurring) {
+        Alert.alert('Transaction recorded', successMessage, [
+          { text: 'Keep', style: 'cancel' },
+          { text: 'Undo', style: 'destructive', onPress: async () => {
+            try {
+              await dispatch(deleteTransaction(transactionId)).unwrap();
+              await DraftTransactionService.reopenRecorded([selectedDraft.id, ...(counterpartId ? [counterpartId] : [])], transactionId);
+              await dispatch(fetchAccounts());
+              await dispatch(fetchTransactions());
+              await loadDrafts();
+            } catch {
+              Alert.alert('Undo failed', 'The transaction could not be reversed.');
+            }
+          } },
+        ], { cancelable: false });
+      } else {
+        Alert.alert('Success', successMessage);
+      }
     } catch (error) {
       console.error('Error recording transaction:', error);
       Alert.alert('Error', 'Failed to record transaction');

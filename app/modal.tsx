@@ -14,7 +14,7 @@ import { useFormErrors } from '@/hooks/useFormErrors';
 import { AppDispatch } from '@/store';
 import BudgetService from '@/services/BudgetService';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
-import { addTransaction, updateTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
+import { addTransaction, deleteTransaction, updateTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { NotificationService } from '@/services/NotificationService';
 import { formatTagInput, parseTagInput } from '@/utils/tags';
@@ -311,6 +311,22 @@ export default function AddTransactionScreen() {
         Alert.alert('Transaction saved', error?.message || 'The recurring rule could not be created.');
         return;
       }
+    }
+    const transactionId = (result.payload as any)?.id as string | undefined;
+    if (!isEditing && !makeRecurring && transactionId) {
+      Alert.alert('Transaction saved', 'The account balance and reports have been updated.', [
+        { text: 'Keep', style: 'cancel', onPress: () => router.back() },
+        { text: 'Undo', style: 'destructive', onPress: async () => {
+          try {
+            await dispatch(deleteTransaction(transactionId)).unwrap();
+            await dispatch(fetchAccounts());
+            router.back();
+          } catch {
+            Alert.alert('Undo failed', 'The transaction could not be reversed.');
+          }
+        } },
+      ], { cancelable: false });
+      return;
     }
     router.back();
   };

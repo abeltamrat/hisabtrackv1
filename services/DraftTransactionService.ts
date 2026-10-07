@@ -173,6 +173,23 @@ export class DraftTransactionService {
     });
   }
 
+  /** Reopen drafts only when they still point at the transaction being undone. */
+  static reopenRecorded(draftIds: string[], transactionId: string): Promise<void> {
+    return this.mutate(async () => {
+      const all = await this.getAll();
+      let changed = false;
+      for (const draft of all) {
+        if (draftIds.includes(draft.id) && draft.matched_transaction_id === transactionId) {
+          draft.status = 'PENDING';
+          draft.is_recorded = false;
+          delete draft.matched_transaction_id;
+          changed = true;
+        }
+      }
+      if (changed) await this.saveAll(all);
+    });
+  }
+
   /**
    * Apply several partial updates in one atomic read-modify-write cycle.
    */

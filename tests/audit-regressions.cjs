@@ -34,6 +34,7 @@ const { BudgetService } = load('./services/BudgetService.ts');
 const { BackupService } = load('./services/BackupService.ts');
 const { findSelfTransferPairs, findTransferCandidates } = load('./utils/transferPairing.ts');
 const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
+const { DraftTransactionService } = load('./services/DraftTransactionService.ts');
 class Adapter {
   rows = { accounts: new Map(), transactions: new Map(), budgets: new Map(), loans: new Map() };
   meta = {}; fail = false;
@@ -189,6 +190,16 @@ test('same-day opposite SMS are suggested for review without being silently merg
  assert.equal(candidates[0].expenseAccountId,'cbe');
  assert.equal(candidates[0].incomeAccountId,'telebirr');
  assert.equal(candidates[0].confidence,'MEDIUM');
+});
+test('undo reopens only SMS drafts linked to the deleted transaction',async()=>{
+ await DraftTransactionService.clearAll();
+ const draft=await DraftTransactionService.add({account_id:'a',type:'EXPENSE',amount:10,category:'Food',description:'Meal',date:1,sms_id:'sms-undo',raw_sms:'bank message',status:'PENDING',is_recorded:false});
+ await DraftTransactionService.markAsRecorded(draft.id,'tx-undo');
+ await DraftTransactionService.reopenRecorded([draft.id],'different-tx');
+ assert.equal((await DraftTransactionService.getAll())[0].status,'RECORDED');
+ await DraftTransactionService.reopenRecorded([draft.id],'tx-undo');
+ const reopened=(await DraftTransactionService.getAll())[0];
+ assert.equal(reopened.status,'PENDING');assert.equal(reopened.is_recorded,false);assert.equal(reopened.matched_transaction_id,undefined);
 });
 test('backups reject invalid records and strip all configured provider keys',()=>{
  assert.equal(BackupService.validateBackup({version:'garbage',timestamp:1,accounts:[{}],transactions:[{amount:-999}],budgets:[],loans:[]}),false);
