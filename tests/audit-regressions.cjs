@@ -36,6 +36,7 @@ const { findSelfTransferPairs, findTransferCandidates } = load('./utils/transfer
 const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
 const { DraftTransactionService } = load('./services/DraftTransactionService.ts');
 const { detectRecurringPattern } = load('./utils/recurringDetection.ts');
+const { SMSLearningService } = load('./services/SMSLearningService.ts');
 class Adapter {
   rows = { accounts: new Map(), transactions: new Map(), budgets: new Map(), loans: new Map() };
   meta = {}; fail = false;
@@ -210,6 +211,13 @@ test('recurring suggestions require three consistent similar transactions',()=>{
  const suggestion=detectRecurringPattern(base,history);
  assert.equal(suggestion.frequency,'MONTHLY');assert.equal(suggestion.confidence,100);assert.equal(suggestion.occurrences,3);
  assert.equal(detectRecurringPattern(base,history.slice(0,1)),null);
+});
+test('SMS learning preserves split ratios and owned transfer routing',async()=>{
+ await SMSLearningService.clearAllRules();
+ await SMSLearningService.learn({accountId:'bank',sender:'CBE',rawMerchant:'My Wallet',correctedDescription:'Transfer',correctedCategory:'Transfer',transactionType:'EXPENSE',transferFromAccountId:'bank',transferToAccountId:'wallet',splits:[{category:'Food',amount:75},{category:'Transport',amount:25}]});
+ const rule=await SMSLearningService.getRule({accountId:'bank',sender:'CBE',rawMerchant:'My Wallet'});
+ assert.equal(rule.transferFromAccountId,'bank');assert.equal(rule.transferToAccountId,'wallet');
+ assert.deepEqual(rule.splitRatios.map(item=>[item.category,item.ratio]),[['Food',0.75],['Transport',0.25]]);
 });
 test('backups reject invalid records and strip all configured provider keys',()=>{
  assert.equal(BackupService.validateBackup({version:'garbage',timestamp:1,accounts:[{}],transactions:[{amount:-999}],budgets:[],loans:[]}),false);

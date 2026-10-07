@@ -228,7 +228,9 @@ export interface RecurringTransaction {
   completedRepetitions: number;
   reminderEnabled: boolean;
   reminderDaysBefore: number;
+  reminderDaysBeforeList?: number[];
   reminderTime?: number;
   notificationId?: string;
+  notificationIds?: string[];
   splits?: TransactionSplit[];
 }

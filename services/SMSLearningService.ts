@@ -10,6 +10,9 @@ export interface SMSRule {
   hitCount?: number;
   confidence?: number;
   transactionType?: 'INCOME' | 'EXPENSE';
+  splitRatios?: Array<{ category: string; ratio: number; description?: string }>;
+  transferFromAccountId?: string;
+  transferToAccountId?: string;
 }
 
 export class SMSLearningService {
@@ -37,6 +40,9 @@ export class SMSLearningService {
     correctedCategory: string;
     isCorrection?: boolean;
     transactionType?: 'INCOME' | 'EXPENSE';
+    splits?: Array<{ category: string; amount: number; description?: string }>;
+    transferFromAccountId?: string;
+    transferToAccountId?: string;
   }): Promise<void> {
     return this.mutate(() => this.doLearn(input));
   }
@@ -50,6 +56,9 @@ export class SMSLearningService {
     correctedCategory: string;
     isCorrection?: boolean;
     transactionType?: 'INCOME' | 'EXPENSE';
+    splits?: Array<{ category: string; amount: number; description?: string }>;
+    transferFromAccountId?: string;
+    transferToAccountId?: string;
   }): Promise<void> {
     const rules = await this.getAllRules();
     const sender = this.normalizeText(input.sender);
@@ -57,6 +66,14 @@ export class SMSLearningService {
 
     let saved = false;
     const isCorrection = input.isCorrection !== false; // default to true if not specified
+    const splitTotal = input.splits?.reduce((sum, split) => sum + split.amount, 0) ?? 0;
+    const learnedExtras = (existing?: SMSRule) => ({
+      splitRatios: input.splits && input.splits.length >= 2 && splitTotal > 0
+        ? input.splits.map(split => ({ category: split.category, description: split.description, ratio: split.amount / splitTotal }))
+        : isCorrection ? undefined : existing?.splitRatios,
+      transferFromAccountId: input.transferFromAccountId ?? existing?.transferFromAccountId,
+      transferToAccountId: input.transferToAccountId ?? existing?.transferToAccountId,
+    });
 
     const merchantKey = this.buildMerchantKey(input.accountId, sender, input.rawMerchant);
     if (merchantKey) {
@@ -71,6 +88,7 @@ export class SMSLearningService {
         hitCount: prevHits + 1,
         confidence: isCorrection ? 1.0 : Math.min(1.0, prevConf + 0.05),
         transactionType: input.transactionType,
+        ...learnedExtras(existing),
       };
       saved = true;
     }
@@ -89,6 +107,7 @@ export class SMSLearningService {
         hitCount: prevHits + 1,
         confidence: isCorrection ? 1.0 : Math.min(1.0, prevConf + 0.05),
         transactionType: input.transactionType,
+        ...learnedExtras(existing),
       };
       saved = true;
     }
@@ -108,6 +127,7 @@ export class SMSLearningService {
         hitCount: prevHits + 1,
         confidence: isCorrection ? 1.0 : Math.min(1.0, prevConf + 0.05),
         transactionType: input.transactionType,
+        ...learnedExtras(existing),
       };
     }
 

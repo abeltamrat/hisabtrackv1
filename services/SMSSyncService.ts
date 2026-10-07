@@ -323,11 +323,10 @@ export class SMSSyncService {
         let transferToAccountId: string | undefined;
         let transferFromAccountId: string | undefined;
         let transferPeerAccountNumber: string | undefined;
+        const allAccts = options.allAccounts ?? [];
 
         if (parsed.isTransfer) {
           isTransfer = true;
-          const allAccts = options.allAccounts ?? [];
-
           const matchAcctNumber = (storedNumber: string | undefined, smsDigits: string): boolean => {
             if (!storedNumber) return false;
             const n = storedNumber.replace(/\D/g, '');
@@ -366,13 +365,18 @@ export class SMSSyncService {
           ? `${parsed.type === 'INCOME' ? 'Received from' : 'Transfer to'} ${parsed.merchant}`
           : `${parsed.type === 'INCOME' ? 'Received' : 'Paid'} via ${sms.address}`;
 
-        if (!isTransfer) {
-          const rule = await SMSLearningService.getRule({
+        const rule = await SMSLearningService.getRule({
             accountId: account.id,
             sender: sms.address,
             rawMerchant: parsed.merchant || '',
             referenceNumber: parsed.referenceNumber,
           });
+        if (rule) {
+          if (rule.transferFromAccountId && allAccts.some(a => a.id === rule.transferFromAccountId)) transferFromAccountId = rule.transferFromAccountId;
+          if (rule.transferToAccountId && allAccts.some(a => a.id === rule.transferToAccountId)) transferToAccountId = rule.transferToAccountId;
+          if (transferFromAccountId && transferToAccountId && transferFromAccountId !== transferToAccountId) isTransfer = true;
+        }
+        if (!isTransfer) {
           if (rule) {
             category = rule.category;
             description = rule.description;
@@ -407,6 +411,13 @@ export class SMSSyncService {
           transfer_to_account_id: transferToAccountId,
           transfer_from_account_id: transferFromAccountId,
           transfer_peer_account_number: transferPeerAccountNumber,
+          suggested_splits: rule?.splitRatios?.length && !isTransfer
+            ? rule.splitRatios.map((split, index, all) => {
+                const prior = all.slice(0, index).reduce((sum, item) => sum + Math.round(parsed.amount * item.ratio * 100) / 100, 0);
+                const amount = index === all.length - 1 ? Math.round((parsed.amount - prior) * 100) / 100 : Math.round(parsed.amount * split.ratio * 100) / 100;
+                return { id: `learned-${parsed.smsId}-${index}`, category: split.category, description: split.description, amount };
+              })
+            : undefined,
           is_loan_disbursement: parsed.isLoanDisbursement || undefined,
         };
 

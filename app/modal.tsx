@@ -26,6 +26,7 @@ import type { RecurringFrequency, TransactionType } from '@/types/database';
 import type { TransactionSplit } from '@/types/database';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import { money, sumMoney } from '@/utils/finance';
+import { useI18n } from '@/contexts/I18nContext';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -67,6 +68,7 @@ const SpinnerPickerSheet = ({
 };
 
 export default function AddTransactionScreen() {
+  const { t } = useI18n();
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { formatCurrency, currency } = useAppSettings();
@@ -308,6 +310,7 @@ export default function AddTransactionScreen() {
           startDate: transactionDate.getTime(),
           reminderEnabled,
           reminderDaysBefore: Number(reminderDaysBefore) || 0,
+          reminderDaysBeforeList: reminderDaysBefore.split(',').map(value => Number(value.trim())).filter(Number.isFinite),
           reminderHour: Math.max(0, hour),
           reminderMinute: Math.max(0, minute),
           splits: splitEnabled ? splits : undefined,
@@ -682,10 +685,10 @@ export default function AddTransactionScreen() {
                   ))}
                 </View>
                 <View className="flex-row mt-3 gap-2">
-                  <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Next due (optional)</Text><TextInput value={recurringNextDate} onChangeText={setRecurringNextDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
-                  <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">End date (optional)</Text><TextInput value={recurringEndDate} onChangeText={setRecurringEndDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                  <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">{t('nextDueOptional')}</Text><TextInput value={recurringNextDate} onChangeText={setRecurringNextDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                  <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">{t('endDateOptional')}</Text><TextInput value={recurringEndDate} onChangeText={setRecurringEndDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
                 </View>
-                <View className="mt-3"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Future occurrences (optional)</Text><TextInput value={recurringOccurrences} onChangeText={setRecurringOccurrences} placeholder="No limit" placeholderTextColor="#94a3b8" keyboardType="number-pad" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                <View className="mt-3"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">{t('futureOccurrencesOptional')}</Text><TextInput value={recurringOccurrences} onChangeText={setRecurringOccurrences} placeholder={t('noLimit')} placeholderTextColor="#94a3b8" keyboardType="number-pad" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
                 <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: reminderEnabled }} onPress={() => setReminderEnabled(!reminderEnabled)} className="flex-row items-center mt-4">
                   <FontAwesome name={reminderEnabled ? 'check-square' : 'square-o'} size={18} color={reminderEnabled ? '#6366f1' : '#94a3b8'} />
                   <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold ml-2">Remind me before it is due</Text>
@@ -693,8 +696,8 @@ export default function AddTransactionScreen() {
                 {reminderEnabled && (
                   <View className="flex-row mt-3 gap-2">
                     <View className="flex-1">
-                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Days before</Text>
-                      <TextInput value={reminderDaysBefore} onChangeText={setReminderDaysBefore} keyboardType="number-pad" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" />
+                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">{t('reminderDaysBefore')}</Text>
+                      <TextInput value={reminderDaysBefore} onChangeText={setReminderDaysBefore} keyboardType="numbers-and-punctuation" placeholder="7, 1, 0" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" />
                     </View>
                     <View className="flex-1">
                       <Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Time (HH:MM)</Text>

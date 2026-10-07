@@ -511,9 +511,7 @@ export default function RecurringTransactionsScreen() {
 
     if (editingId) {
       const old = recurringTransactions.find(t => t.id === editingId);
-      if (old?.notificationId) {
-        await NotificationService.cancelNotification(old.notificationId);
-      }
+      await Promise.all([...new Set([...(old?.notificationIds || []), ...(old?.notificationId ? [old.notificationId] : [])])].map(id => NotificationService.cancelNotification(id)));
     }
 
     const notifId = await scheduleNotification(transactionData);
@@ -586,9 +584,7 @@ export default function RecurringTransactionsScreen() {
   const handleDelete = (id: string) => {
     const doDelete = async () => {
       const deleted = recurringTransactions.find(rt => rt.id === id);
-      if (deleted?.notificationId) {
-        await NotificationService.cancelNotification(deleted.notificationId);
-      }
+      await Promise.all([...new Set([...(deleted?.notificationIds || []), ...(deleted?.notificationId ? [deleted.notificationId] : [])])].map(notificationId => NotificationService.cancelNotification(notificationId)));
       const updated = recurringTransactions.filter(rt => rt.id !== id);
       await saveRecurringTransactions(updated);
     };

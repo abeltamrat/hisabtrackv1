@@ -27,6 +27,7 @@ import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import type { TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 import { detectRecurringPattern } from '@/utils/recurringDetection';
+import { useI18n } from '@/contexts/I18nContext';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -49,6 +50,7 @@ const formatDate = (timestamp: number) => {
 };
 
 export default function DraftTransactionsScreen() {
+  const { t } = useI18n();
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const params = useLocalSearchParams();
@@ -210,8 +212,8 @@ export default function DraftTransactionsScreen() {
       setTransferDestinationAccountId(target.transfer_to_account_id || (target.type === 'INCOME' ? target.account_id : ''));
       setMatchedCounterpartId(target.paired_draft_id || '');
       setRememberOwnedRecipient(false);
-      setSplitEnabled(false);
-      setSplits([]);
+      setSplitEnabled(!!target.suggested_splits?.length);
+      setSplits(target.suggested_splits || []);
       setDismissedRecurringSuggestion(false);
       setNote('');
       setTagsInput('');
@@ -359,8 +361,8 @@ export default function DraftTransactionsScreen() {
     setRecurringNextDate('');
     setRecurringEndDate('');
     setRecurringOccurrences('');
-    setSplitEnabled(false);
-    setSplits([]);
+    setSplitEnabled(!!draft.suggested_splits?.length);
+    setSplits(draft.suggested_splits || []);
     setDismissedRecurringSuggestion(false);
     setNote('');
     setTagsInput('');
@@ -383,18 +385,19 @@ export default function DraftTransactionsScreen() {
         editedType !== selectedDraft.type;
       const learnedSender = selectedDraft.sms_sender || account?.sms_number?.split(',')[0] || '';
 
-      // Transfers carry the forced "Transfer" category — learning them would
-      // poison merchant rules that regular drafts from the same sender rely on.
-      if (learnedSender && editedType !== 'TRANSFER' && (selectedDraft.sender_receiver || selectedDraft.reference_number)) {
+      if (learnedSender && (selectedDraft.sender_receiver || selectedDraft.reference_number)) {
         await SMSLearningService.learn({
           accountId: selectedDraft.account_id,
           sender: learnedSender,
           rawMerchant: selectedDraft.sender_receiver,
           referenceNumber: selectedDraft.reference_number,
           correctedDescription: editedDescription,
-          correctedCategory: editedCategory,
+          correctedCategory: editedType === 'TRANSFER' ? 'Transfer' : editedCategory,
           isCorrection: hasCorrections,
-          transactionType: editedType,
+          transactionType: editedType === 'TRANSFER' ? selectedDraft.type : editedType,
+          splits: editedType !== 'TRANSFER' && splitEnabled ? splits : undefined,
+          transferFromAccountId: editedType === 'TRANSFER' ? transferSourceAccountId : undefined,
+          transferToAccountId: editedType === 'TRANSFER' ? transferDestinationAccountId : undefined,
         });
       }
 
@@ -503,6 +506,7 @@ export default function DraftTransactionsScreen() {
             startDate: selectedDraft.date,
             reminderEnabled,
             reminderDaysBefore: Number(reminderDaysBefore) || 0,
+            reminderDaysBeforeList: reminderDaysBefore.split(',').map(value => Number(value.trim())).filter(Number.isFinite),
             reminderHour: Math.max(0, hour),
             reminderMinute: Math.max(0, minute),
             splits: splitEnabled ? splits : undefined,
@@ -1426,7 +1430,7 @@ export default function DraftTransactionsScreen() {
                   </ScrollView>
                   {!!editedRecipient.trim() && <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: rememberOwnedRecipient }} onPress={() => setRememberOwnedRecipient(!rememberOwnedRecipient)} className="flex-row items-center mt-4">
                     <FontAwesome name={rememberOwnedRecipient ? 'check-square' : 'square-o'} size={18} color={rememberOwnedRecipient ? '#6366f1' : '#94a3b8'} />
-                    <View className="ml-2 flex-1"><Text className="text-slate-800 dark:text-slate-200 text-xs font-bold">Remember this as my account</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Future SMS using “{editedRecipient.trim()}” can identify the owned account automatically.</Text></View>
+                    <View className="ml-2 flex-1"><Text className="text-slate-800 dark:text-slate-200 text-xs font-bold">{t('rememberOwnedAccount')}</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Future SMS using “{editedRecipient.trim()}” can identify the owned account automatically.</Text></View>
                   </TouchableOpacity>}
                 </View>
               )}
@@ -1494,7 +1498,7 @@ export default function DraftTransactionsScreen() {
 
               {/* Editable Fields */}
               <View className="mb-6">
-                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Recipient</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">{t('recipient')}</Text>
                 <TextInput
                   value={editedRecipient}
                   onChangeText={setEditedRecipient}
@@ -1670,7 +1674,7 @@ export default function DraftTransactionsScreen() {
               </View>
 
               {recurringSuggestion && !dismissedRecurringSuggestion && !makeRecurring && <View className="rounded-2xl p-4 mb-3 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
-                <View className="flex-row items-start"><FontAwesome name="magic" size={16} color="#7c3aed" /><View className="flex-1 ml-3"><Text className="text-violet-900 dark:text-violet-200 font-bold">Looks {recurringSuggestion.frequency.toLowerCase()}</Text><Text className="text-violet-700 dark:text-violet-300 text-xs mt-1">{recurringSuggestion.reason} Confidence {recurringSuggestion.confidence}%.</Text><View className="flex-row mt-3 gap-2"><TouchableOpacity onPress={() => { setRecurringFrequency(recurringSuggestion.frequency); setMakeRecurring(true); }} className="bg-violet-600 px-3 py-2 rounded-xl"><Text className="text-white text-xs font-bold">Use suggestion</Text></TouchableOpacity><TouchableOpacity onPress={() => setDismissedRecurringSuggestion(true)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900"><Text className="text-slate-600 dark:text-slate-300 text-xs font-bold">Dismiss</Text></TouchableOpacity></View></View></View>
+                <View className="flex-row items-start"><FontAwesome name="magic" size={16} color="#7c3aed" /><View className="flex-1 ml-3"><Text className="text-violet-900 dark:text-violet-200 font-bold">Looks {recurringSuggestion.frequency.toLowerCase()}</Text><Text className="text-violet-700 dark:text-violet-300 text-xs mt-1">{recurringSuggestion.reason} Confidence {recurringSuggestion.confidence}%.</Text><View className="flex-row mt-3 gap-2"><TouchableOpacity onPress={() => { setRecurringFrequency(recurringSuggestion.frequency); setMakeRecurring(true); }} className="bg-violet-600 px-3 py-2 rounded-xl"><Text className="text-white text-xs font-bold">{t('useSuggestion')}</Text></TouchableOpacity><TouchableOpacity onPress={() => setDismissedRecurringSuggestion(true)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900"><Text className="text-slate-600 dark:text-slate-300 text-xs font-bold">{t('dismiss')}</Text></TouchableOpacity></View></View></View>
               </View>}
 
               <View className="rounded-2xl p-4 mb-6 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
@@ -1688,14 +1692,14 @@ export default function DraftTransactionsScreen() {
                   <View className="flex-row flex-wrap gap-2 mb-4">
                     {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as RecurringFrequency[]).map(item => <TouchableOpacity key={item} onPress={() => setRecurringFrequency(item)} className={`px-3 py-2 rounded-xl ${recurringFrequency === item ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}><Text className={`text-[10px] font-bold ${recurringFrequency === item ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{item}</Text></TouchableOpacity>)}
                   </View>
-                  <View className="flex-row gap-2 mb-3"><View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Next due (optional)</Text><TextInput value={recurringNextDate} onChangeText={setRecurringNextDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View><View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">End date (optional)</Text><TextInput value={recurringEndDate} onChangeText={setRecurringEndDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View></View>
-                  <View className="mb-3"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Future occurrences (optional)</Text><TextInput value={recurringOccurrences} onChangeText={setRecurringOccurrences} placeholder="No limit" placeholderTextColor="#94a3b8" keyboardType="number-pad" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                  <View className="flex-row gap-2 mb-3"><View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">{t('nextDueOptional')}</Text><TextInput value={recurringNextDate} onChangeText={setRecurringNextDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View><View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">{t('endDateOptional')}</Text><TextInput value={recurringEndDate} onChangeText={setRecurringEndDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View></View>
+                  <View className="mb-3"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">{t('futureOccurrencesOptional')}</Text><TextInput value={recurringOccurrences} onChangeText={setRecurringOccurrences} placeholder={t('noLimit')} placeholderTextColor="#94a3b8" keyboardType="number-pad" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
                   <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: reminderEnabled }} onPress={() => setReminderEnabled(!reminderEnabled)} className="flex-row items-center mb-3">
                     <FontAwesome name={reminderEnabled ? 'check-square' : 'square-o'} size={18} color={reminderEnabled ? '#6366f1' : '#94a3b8'} />
                     <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold ml-2">Reminder enabled</Text>
                   </TouchableOpacity>
                   {reminderEnabled && <View className="flex-row gap-2">
-                    <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Days before</Text><TextInput value={reminderDaysBefore} onChangeText={setReminderDaysBefore} keyboardType="number-pad" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                    <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">{t('reminderDaysBefore')}</Text><TextInput value={reminderDaysBefore} onChangeText={setReminderDaysBefore} keyboardType="numbers-and-punctuation" placeholder="7, 1, 0" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
                     <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Time (HH:MM)</Text><TextInput value={reminderTime} onChangeText={setReminderTime} keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
                   </View>}
                 </View>}

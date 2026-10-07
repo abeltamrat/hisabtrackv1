@@ -89,6 +89,15 @@ const EN: LanguageDictionary = {
   totalRemaining: 'Total Remaining',
   paymentProgress: 'Payment Progress',
   selectCurrency: 'Select Currency',
+  recipient: 'Recipient',
+  rememberOwnedAccount: 'Remember this as my account',
+  useSuggestion: 'Use suggestion',
+  dismiss: 'Dismiss',
+  nextDueOptional: 'Next due (optional)',
+  endDateOptional: 'End date (optional)',
+  futureOccurrencesOptional: 'Future occurrences (optional)',
+  noLimit: 'No limit',
+  reminderDaysBefore: 'Days before (commas add reminders)',
 };
 
 const ES: LanguageDictionary = {
@@ -177,6 +186,15 @@ const ES: LanguageDictionary = {
   totalRemaining: 'Total restante',
   paymentProgress: 'Progreso del pago',
   selectCurrency: 'Seleccionar moneda',
+  recipient: 'Destinatario',
+  rememberOwnedAccount: 'Recordar como cuenta propia',
+  useSuggestion: 'Usar sugerencia',
+  dismiss: 'Descartar',
+  nextDueOptional: 'Próxima fecha (opcional)',
+  endDateOptional: 'Fecha final (opcional)',
+  futureOccurrencesOptional: 'Repeticiones futuras (opcional)',
+  noLimit: 'Sin límite',
+  reminderDaysBefore: 'Días antes (comas añaden avisos)',
 };
 
 const AM: LanguageDictionary = {
@@ -265,6 +283,15 @@ const AM: LanguageDictionary = {
   totalRemaining: 'ጠቅላላ ቀሪ',
   paymentProgress: 'የክፍያ ሂደት',
   selectCurrency: 'ገንዘብ አይነት ይምረጡ',
+  recipient: 'ተቀባይ',
+  rememberOwnedAccount: 'ይህን እንደ ራሴ ሂሳብ አስታውስ',
+  useSuggestion: 'ጥቆማውን ተጠቀም',
+  dismiss: 'ዝጋ',
+  nextDueOptional: 'ቀጣይ ቀን (አማራጭ)',
+  endDateOptional: 'ማብቂያ ቀን (አማራጭ)',
+  futureOccurrencesOptional: 'የወደፊት ድግግሞሽ (አማራጭ)',
+  noLimit: 'ገደብ የለም',
+  reminderDaysBefore: 'ቀናት በፊት (ኮማ ተጨማሪ ማስታወሻ ይጨምራል)',
 };
 
 const OM: LanguageDictionary = {
@@ -353,6 +380,15 @@ const OM: LanguageDictionary = {
   totalRemaining: 'Hafe walii',
   paymentProgress: 'Deemsa kaffaltii',
   selectCurrency: 'Maallaqa filadhu',
+  recipient: 'Fudhataa',
+  rememberOwnedAccount: 'Akka herrega koo taʼetti yaadadhu',
+  useSuggestion: 'Yaada fayyadami',
+  dismiss: 'Cufi',
+  nextDueOptional: 'Guyyaa itti aanu (dirqama miti)',
+  endDateOptional: 'Guyyaa xumuraa (dirqama miti)',
+  futureOccurrencesOptional: 'Irra deebiʼiinsa fuulduraa (dirqama miti)',
+  noLimit: 'Daangaa hin qabu',
+  reminderDaysBefore: 'Guyyaa dura (komaan yaadachiisa dabala)',
 };
 
 const TI: LanguageDictionary = {
@@ -441,6 +477,15 @@ const TI: LanguageDictionary = {
   totalRemaining: 'ጠቕላላ ተረፍ',
   paymentProgress: 'ከይዲ ክፍሊት',
   selectCurrency: 'ምንዛሬ ምረጽ',
+  recipient: 'ተቐባሊ',
+  rememberOwnedAccount: 'ከም ናተይ ሕሳብ ዘክሮ',
+  useSuggestion: 'ሓሳብ ተጠቐም',
+  dismiss: 'ዕጸው',
+  nextDueOptional: 'ዝቕጽል ዕለት (ኣማራጺ)',
+  endDateOptional: 'መወዳእታ ዕለት (ኣማራጺ)',
+  futureOccurrencesOptional: 'መጻኢ ድግግም (ኣማራጺ)',
+  noLimit: 'ደረት የለን',
+  reminderDaysBefore: 'ቅድሚ መዓልታት (ኮማ መዘኻኸሪ ይውስኽ)',
 };
 
 const dictionaries: Record<string, LanguageDictionary> = {
