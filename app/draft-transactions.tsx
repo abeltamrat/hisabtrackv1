@@ -749,9 +749,47 @@ export default function DraftTransactionsScreen() {
   const transferCandidates = selectedDraft ? findTransferCandidates(selectedDraft, drafts) : [];
   const confirmCategoryType = editedType === 'INCOME' ? 'income' : 'expense';
   const confirmCategories = categories.filter((category) => category.type === confirmCategoryType);
-  const confirmRootCategories = confirmCategories.filter((category) => !category.parentId);
-  const getConfirmChildCategories = (parentId: string) =>
-    confirmCategories.filter((category) => category.parentId === parentId);
+  const getConfirmChildCategories = (parentId: string | undefined) =>
+    confirmCategories.filter((category) => (category.parentId ?? undefined) === parentId);
+
+  const renderConfirmCategoryTree = (parentId: string | undefined, depth: number): React.ReactNode =>
+    // depth guard keeps a malformed parentId cycle from recursing forever
+    depth > 12 ? null : getConfirmChildCategories(parentId).map((category) => {
+      const isRoot = depth === 0;
+      const isSelected = editedCategory === category.name;
+
+      return (
+        <View key={category.id} className={isRoot ? 'mb-3' : 'mt-2'}>
+          <TouchableOpacity
+            className={`w-full items-center border-2 ${isRoot ? 'p-4 rounded-2xl' : 'p-3 rounded-xl'} ${isSelected ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : isRoot ? 'bg-white dark:bg-slate-900 border-transparent' : 'bg-slate-100 dark:bg-slate-700 border-transparent' }`}
+            style={{ marginLeft: Math.min(depth, 5) * 16 }}
+            onPress={() => setEditedCategory(category.name)}
+          >
+            <View className="flex-row items-center w-full">
+              {!isRoot && <View className="w-1 h-4 bg-slate-300 dark:bg-slate-600 mr-2 rounded-full" />}
+              <View
+                className={`justify-center items-center mr-3 ${isRoot ? 'rounded-2xl' : 'rounded-xl'}`}
+                style={{ width: isRoot ? 40 : 32, height: isRoot ? 40 : 32, backgroundColor: category.color + '20' }}
+              >
+                <CategoryIcon icon={category.icon} size={isRoot ? 18 : 14} color={category.color} />
+              </View>
+              <View className="flex-1">
+                <Text
+                  className={isRoot
+                    ? 'text-slate-900 dark:text-white text-sm font-semibold text-left'
+                    : 'text-slate-700 dark:text-slate-300 text-xs font-medium text-left'}
+                  numberOfLines={2}
+                >
+                  {category.name}
+                </Text>
+              </View>
+              {isSelected && <FontAwesome name="check" size={isRoot ? 16 : 12} color="#6366f1" />}
+            </View>
+          </TouchableOpacity>
+          {renderConfirmCategoryTree(category.id, depth + 1)}
+        </View>
+      );
+    });
 
   useEffect(() => {
     if (!selectedDraft) {
@@ -1537,57 +1575,7 @@ export default function DraftTransactionsScreen() {
                     {editedType === 'INCOME' ? 'Income categories' : 'Expense categories'}
                   </Text>
                   <ScrollView showsVerticalScrollIndicator={false} className="max-h-64" nestedScrollEnabled>
-                    {confirmRootCategories.map((category) => (
-                      <View key={category.id} className="mb-3">
-                        <TouchableOpacity
-                          className={`w-full items-center p-4 rounded-2xl border-2 ${editedCategory === category.name ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : 'bg-white dark:bg-slate-900 border-transparent' }`}
-                          onPress={() => setEditedCategory(category.name)}
-                        >
-                          <View className="flex-row items-center w-full">
-                            <View
-                              className="w-10 h-10 rounded-2xl justify-center items-center mr-3"
-                              style={{ backgroundColor: category.color + '20' }}
-                            >
-                              <CategoryIcon icon={category.icon} size={18} color={category.color} />
-                            </View>
-                            <View className="flex-1">
-                              <Text className="text-slate-900 dark:text-white text-sm font-semibold text-left">
-                                {category.name}
-                              </Text>
-                            </View>
-                            {editedCategory === category.name && (
-                              <FontAwesome name="check" size={16} color="#6366f1" />
-                            )}
-                          </View>
-                        </TouchableOpacity>
-
-                        {getConfirmChildCategories(category.id).map((childCategory) => (
-                          <TouchableOpacity
-                            key={childCategory.id}
-                            className={`w-full items-center p-3 rounded-xl ml-8 mt-2 border-2 ${editedCategory === childCategory.name ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : 'bg-slate-100 dark:bg-slate-700 border-transparent' }`}
-                            onPress={() => setEditedCategory(childCategory.name)}
-                          >
-                            <View className="flex-row items-center w-full">
-                              <View className="w-1 h-4 bg-slate-300 dark:bg-slate-600 mr-2 rounded-full" />
-                              <View
-                                className="w-8 h-8 rounded-xl justify-center items-center mr-3"
-                                style={{ backgroundColor: childCategory.color + '20' }}
-                              >
-                                <CategoryIcon icon={childCategory.icon} size={14} color={childCategory.color} />
-                              </View>
-                              <View className="flex-1">
-                                <Text className="text-slate-700 dark:text-slate-300 text-xs font-medium text-left">
-                                  {childCategory.name}
-                                </Text>
-                              </View>
-                              {editedCategory === childCategory.name && (
-                                <FontAwesome name="check" size={12} color="#6366f1" />
-                              )}
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ))}
+                    {renderConfirmCategoryTree(undefined, 0)}
                   </ScrollView>
                 </View>
               </View>}
