@@ -36,6 +36,16 @@ export interface DraftTransaction {
   is_loan_disbursement?: boolean;
   /** Id of the opposite-leg draft when this is one side of a paired self-transfer. */
   paired_draft_id?: string;
+  confirmation?: {
+    recorded_at: number;
+    type: 'INCOME' | 'EXPENSE' | 'TRANSFER';
+    category: string;
+    description: string;
+    recipient?: string;
+    source_account_id: string;
+    destination_account_id?: string;
+    counterpart_draft_id?: string;
+  };
 }
 
 export interface SMSReconciliationResult {
@@ -160,7 +170,7 @@ export class DraftTransactionService {
   /**
    * Mark draft as recorded
    */
-  static markAsRecorded(draftId: string, transactionId: string): Promise<void> {
+  static markAsRecorded(draftId: string, transactionId: string, confirmation?: DraftTransaction['confirmation']): Promise<void> {
     return this.mutate(async () => {
       const all = await this.getAll();
       const draft = all.find(d => d.id === draftId);
@@ -168,6 +178,7 @@ export class DraftTransactionService {
         draft.status = 'RECORDED';
         draft.is_recorded = true;
         draft.matched_transaction_id = transactionId;
+        if (confirmation) draft.confirmation = confirmation;
         await this.saveAll(all);
       }
     });
@@ -183,6 +194,7 @@ export class DraftTransactionService {
           draft.status = 'PENDING';
           draft.is_recorded = false;
           delete draft.matched_transaction_id;
+          delete draft.confirmation;
           changed = true;
         }
       }

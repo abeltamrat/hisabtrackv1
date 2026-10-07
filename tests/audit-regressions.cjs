@@ -197,12 +197,12 @@ test('same-day opposite SMS are suggested for review without being silently merg
 test('undo reopens only SMS drafts linked to the deleted transaction',async()=>{
  await DraftTransactionService.clearAll();
  const draft=await DraftTransactionService.add({account_id:'a',type:'EXPENSE',amount:10,category:'Food',description:'Meal',date:1,sms_id:'sms-undo',raw_sms:'bank message',status:'PENDING',is_recorded:false});
- await DraftTransactionService.markAsRecorded(draft.id,'tx-undo');
+ await DraftTransactionService.markAsRecorded(draft.id,'tx-undo',{recorded_at:2,type:'EXPENSE',category:'Food',description:'Dinner',source_account_id:'a'});
  await DraftTransactionService.reopenRecorded([draft.id],'different-tx');
  assert.equal((await DraftTransactionService.getAll())[0].status,'RECORDED');
  await DraftTransactionService.reopenRecorded([draft.id],'tx-undo');
  const reopened=(await DraftTransactionService.getAll())[0];
- assert.equal(reopened.status,'PENDING');assert.equal(reopened.is_recorded,false);assert.equal(reopened.matched_transaction_id,undefined);
+ assert.equal(reopened.status,'PENDING');assert.equal(reopened.is_recorded,false);assert.equal(reopened.matched_transaction_id,undefined);assert.equal(reopened.confirmation,undefined);
 });
 test('recurring suggestions require three consistent similar transactions',()=>{
  const base={id:'now',account_id:'a',type:'EXPENSE',amount:100,category:'Rent',description:'Rent',sender_receiver:'Landlord',date:new Date(2026,9,1).getTime()};

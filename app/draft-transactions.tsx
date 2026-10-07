@@ -456,11 +456,21 @@ export default function DraftTransactionsScreen() {
       const transactionId = (result.payload as any)?.id;
       const counterpartId = matchedCounterpartId || selectedDraft.paired_draft_id;
       if (transactionId) {
-        await DraftTransactionService.markAsRecorded(selectedDraft.id, transactionId);
+        const confirmation: NonNullable<DraftTransaction['confirmation']> = {
+          recorded_at: Date.now(),
+          type: isTransferDraft ? 'TRANSFER' : editedType,
+          category: isTransferDraft ? 'Transfer' : editedCategory,
+          description: finalDescription,
+          recipient: editedRecipient.trim() || undefined,
+          source_account_id: isTransferDraft ? transferSourceAccountId : selectedDraft.account_id,
+          destination_account_id: isTransferDraft ? transferDestinationAccountId : undefined,
+          counterpart_draft_id: counterpartId || undefined,
+        };
+        await DraftTransactionService.markAsRecorded(selectedDraft.id, transactionId, confirmation);
         // The opposite leg of a paired self-transfer is covered by the same
         // TRANSFER transaction — close it too so it can't be double-recorded.
         if (counterpartId) {
-          await DraftTransactionService.markAsRecorded(counterpartId, transactionId);
+          await DraftTransactionService.markAsRecorded(counterpartId, transactionId, confirmation);
         }
       }
 
@@ -958,6 +968,12 @@ export default function DraftTransactionsScreen() {
             const isRecorded = draft.status === 'RECORDED';
             const isSelected = selectedIds.has(draft.id);
             const isSelectable = isSelectionMode && !isRecorded;
+            const wasCorrected = !!draft.confirmation && (
+              draft.confirmation.type !== (draft.is_transfer ? 'TRANSFER' : draft.type)
+              || draft.confirmation.category !== draft.category
+              || draft.confirmation.description !== draft.description
+              || (draft.confirmation.recipient || '') !== (draft.sender_receiver || '')
+            );
 
             const draftAccount = accounts.find((a: any) => a.id === draft.account_id);
             const postBalance = draftAccount
@@ -1000,6 +1016,10 @@ export default function DraftTransactionsScreen() {
                         <Text className="text-xs font-bold text-amber-700 dark:text-amber-400">Loan proceeds</Text>
                       </View>
                     )}
+                    {isRecorded && draft.confirmation && (
+                      <View className="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-700"><Text className="text-[10px] font-bold text-slate-600 dark:text-slate-300">Reviewed {new Date(draft.confirmation.recorded_at).toLocaleDateString()}</Text></View>
+                    )}
+                    {wasCorrected && <View className="px-2 py-1 rounded-full bg-violet-100 dark:bg-violet-900/30"><Text className="text-[10px] font-bold text-violet-700 dark:text-violet-300">Corrected</Text></View>}
                   </View>
                   <View className="flex-row items-center gap-3">
                     <TouchableOpacity accessibilityRole="button" accessibilityLabel="View original SMS"
