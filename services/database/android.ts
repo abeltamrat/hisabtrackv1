@@ -319,6 +319,7 @@ export class AndroidDatabase implements IDatabase {
       disaster_recovery_fee: transaction.disaster_recovery_fee,
       receipt_url: transaction.receipt_url,
       tags: normalizeTransactionTags(transaction.tags),
+      splits: transaction.splits,
       updated_at: Date.now(),
     };
 
@@ -352,6 +353,7 @@ export class AndroidDatabase implements IDatabase {
       disaster_recovery_fee: updates.disaster_recovery_fee ?? existing.disaster_recovery_fee,
       receipt_url: updates.receipt_url ?? existing.receipt_url,
       tags: updates.tags !== undefined ? normalizeTransactionTags(updates.tags) : existing.tags,
+      splits: Object.prototype.hasOwnProperty.call(updates, 'splits') ? updates.splits : existing.splits,
       updated_at: Date.now(),
     };
 

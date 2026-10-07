@@ -23,6 +23,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import { themeTokens } from '@/constants/theme';
 import { RecurringTransactionService } from '@/services/RecurringTransactionService';
 import type { RecurringFrequency, TransactionType } from '@/types/database';
+import type { TransactionSplit } from '@/types/database';
+import TransactionSplitEditor from '@/components/TransactionSplitEditor';
+import { money, sumMoney } from '@/utils/finance';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -97,6 +100,8 @@ export default function AddTransactionScreen() {
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDaysBefore, setReminderDaysBefore] = useState('1');
   const [reminderTime, setReminderTime] = useState('09:00');
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [kbdHeight, setKbdHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -154,6 +159,8 @@ export default function AddTransactionScreen() {
       setNote(editingTransaction.description !== editingTransaction.category ? editingTransaction.description : '');
       setTagsInput(formatTagInput(editingTransaction.tags));
       setTransactionDate(new Date(editingTransaction.date));
+      setSplitEnabled(!!editingTransaction.splits?.length);
+      setSplits(editingTransaction.splits || []);
     }
   }, [isEditing, editingTransaction]);
 
@@ -194,6 +201,10 @@ export default function AddTransactionScreen() {
       Alert.alert('Choose destination', 'Select a different account to receive the transfer.');
       return;
     }
+    if (splitEnabled && (splits.length < 2 || splits.some(item => !item.category.trim() || money(item.amount) <= 0) || sumMoney(splits.map(item => item.amount)) !== money(numericAmount))) {
+      Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(numericAmount)}.`);
+      return;
+    }
 
     // Soft guard: warn when a new expense exceeds the account's available
     // (unlocked) balance. Never hard-block — records mirror real money moves.
@@ -227,6 +238,7 @@ export default function AddTransactionScreen() {
       tags: parseTagInput(tagsInput),
       date: transactionDate.getTime(),
       ...(type === 'TRANSFER' ? { to_account_id: toAccountId } : {}),
+      ...(type !== 'TRANSFER' && splitEnabled ? { splits } : { splits: undefined }),
     };
 
     if (type === 'EXPENSE') {
@@ -603,6 +615,23 @@ export default function AddTransactionScreen() {
             {renderCategoryTree(undefined, 0)}
           </ScrollView>
         </View>}
+
+        {type !== 'TRANSFER' && (
+          <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+            <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: splitEnabled }} onPress={() => {
+              const enabled = !splitEnabled;
+              setSplitEnabled(enabled);
+              if (enabled && splits.length === 0) setSplits([
+                { id: `split-${Date.now()}-0`, amount: parseFloat(amount) || 0, category: selectedCategory || filteredCategories[0]?.name || 'Uncategorized' },
+                { id: `split-${Date.now()}-1`, amount: 0, category: filteredCategories[1]?.name || filteredCategories[0]?.name || 'Uncategorized' },
+              ]);
+            }} className="flex-row items-center">
+              <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
+              <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">The account is charged once; reports use each allocation.</Text></View>
+            </TouchableOpacity>
+            {splitEnabled && <View className="mt-3"><TransactionSplitEditor total={parseFloat(amount) || 0} splits={splits} categories={filteredCategories} onChange={setSplits} formatCurrency={formatCurrency} /></View>}
+          </View>
+        )}
 
         {!isEditing && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>

@@ -265,7 +265,7 @@ export default function ManageCategoriesScreen() {
 
     const result: Record<string, CategoryStat> = {};
     for (const cat of categories) {
-      const catTxs = operatingTransactions(transactions.filter(t => t.category === cat.name));
+      const catTxs = operatingTransactions(transactions).filter(t => t.category === cat.name);
       const monthAmount = sumMoney(catTxs.filter(t => t.date >= monthStartMs).map(t => t.amount));
       const lastUsed = catTxs.length > 0 ? Math.max(...catTxs.map(t => t.date)) : null;
       const total = cat.type === 'expense' ? totalExpense : totalIncome;

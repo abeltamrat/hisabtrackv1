@@ -23,6 +23,9 @@ import { parseTagInput } from '@/utils/tags';
 import { RecurringTransactionService } from '@/services/RecurringTransactionService';
 import type { RecurringFrequency, TransactionType } from '@/types/database';
 import { findTransferCandidates } from '@/utils/transferPairing';
+import TransactionSplitEditor from '@/components/TransactionSplitEditor';
+import type { TransactionSplit } from '@/types/database';
+import { money, sumMoney } from '@/utils/finance';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -82,6 +85,8 @@ export default function DraftTransactionsScreen() {
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDaysBefore, setReminderDaysBefore] = useState('1');
   const [reminderTime, setReminderTime] = useState('09:00');
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [note, setNote] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -190,6 +195,8 @@ export default function DraftTransactionsScreen() {
       setTransferSourceAccountId(target.transfer_from_account_id || target.account_id);
       setTransferDestinationAccountId(target.transfer_to_account_id || (target.type === 'INCOME' ? target.account_id : ''));
       setMatchedCounterpartId(target.paired_draft_id || '');
+      setSplitEnabled(false);
+      setSplits([]);
       setNote('');
       setTagsInput('');
       setShowConfirmModal(true);
@@ -332,6 +339,8 @@ export default function DraftTransactionsScreen() {
     setReminderEnabled(true);
     setReminderDaysBefore('1');
     setReminderTime('09:00');
+    setSplitEnabled(false);
+    setSplits([]);
     setNote('');
     setTagsInput('');
     setRecordAsLoan(!!draft.is_loan_disbursement);
@@ -373,6 +382,10 @@ export default function DraftTransactionsScreen() {
         : editedDescription.trim();
 
       const parsedTags = parseTagInput(tagsInput);
+      if (editedType !== 'TRANSFER' && splitEnabled && (splits.length < 2 || splits.some(item => !item.category.trim() || money(item.amount) <= 0) || sumMoney(splits.map(item => item.amount)) !== money(selectedDraft.amount))) {
+        Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(selectedDraft.amount)}.`);
+        return;
+      }
 
       // Outgoing leg knows its destination; incoming leg knows its source —
       // either one records as a single TRANSFER from source to destination.
@@ -406,6 +419,7 @@ export default function DraftTransactionsScreen() {
         vat: expenseLeg.vat,
         disaster_recovery_fee: expenseLeg.disaster_recovery_fee,
         receipt_url: expenseLeg.receipt_url || selectedDraft.receipt_url,
+        ...(editedType !== 'TRANSFER' && splitEnabled ? { splits } : {}),
       }));
 
       if (addTransaction.rejected.match(result)) {
@@ -1490,6 +1504,23 @@ export default function DraftTransactionsScreen() {
                   </ScrollView>
                 </View>
               </View>}
+
+              {editedType !== 'TRANSFER' && (
+                <View className="mb-6">
+                  <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: splitEnabled }} onPress={() => {
+                    const enabled = !splitEnabled;
+                    setSplitEnabled(enabled);
+                    if (enabled && splits.length === 0) setSplits([
+                      { id: `split-${Date.now()}-0`, amount: selectedDraft?.amount || 0, category: editedCategory || confirmCategories[0]?.name || 'Uncategorized' },
+                      { id: `split-${Date.now()}-1`, amount: 0, category: confirmCategories[1]?.name || confirmCategories[0]?.name || 'Uncategorized' },
+                    ]);
+                  }} className="flex-row items-center rounded-2xl p-4 mb-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                    <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
+                    <View className="ml-3 flex-1"><Text className="text-slate-900 dark:text-white font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Keep one bank debit while allocating the purchase in reports.</Text></View>
+                  </TouchableOpacity>
+                  {splitEnabled && <TransactionSplitEditor total={selectedDraft?.amount || 0} splits={splits} categories={confirmCategories} onChange={setSplits} formatCurrency={formatCurrency} />}
+                </View>
+              )}
 
               {/* Tags Input */}
               <View className="mb-6">

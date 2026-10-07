@@ -213,6 +213,18 @@ export default function TransactionDetail() {
               <DetailRow label="Total account debit" value={formatCurrency(transaction.gross_amount)} />
             ) : null}
 
+            {transaction.splits?.length ? (
+              <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-3">
+                <Text className="text-slate-700 dark:text-slate-300 text-xs font-bold uppercase mb-2">Category splits</Text>
+                {transaction.splits.map(split => (
+                  <View key={split.id} className="flex-row justify-between items-start py-2 border-b border-slate-200 dark:border-slate-700">
+                    <View className="flex-1 mr-3"><Text className="text-slate-900 dark:text-white text-sm font-semibold">{split.category}</Text>{split.description ? <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{split.description}</Text> : null}</View>
+                    <Text className="text-slate-900 dark:text-white text-sm font-bold">{formatCurrency(split.amount)}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
             {transaction.sender_receiver ? (
               <DetailRow label={isIncome ? 'Sender' : 'Recipient'} value={transaction.sender_receiver} lines={2} />
             ) : null}

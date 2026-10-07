@@ -1,5 +1,5 @@
 import { useLedgerClock } from '@/hooks/useLedgerClock';
-import { sumMoney, operatingIncome, operatingExpense, cashDelta } from '@/utils/finance';
+import { sumMoney, operatingIncome, operatingExpense, operatingTransactions, cashDelta } from '@/utils/finance';
 // DrawerMenu moved to AppShell — no local import
 import FinancialPulse from '@/components/dashboard/FinancialPulse';
 import RecentTransactions from '@/components/dashboard/RecentTransactions';
@@ -127,11 +127,11 @@ export default function DashboardScreen() {
     return ((balance - prevBalance) / Math.abs(prevBalance)) * 100;
   }, [balance, prevBalance, thisMonthNet]);
   const topExpenseCategoryEntry = useMemo(() => {
-    const totals = thisMonthTransactions
-      .filter(t => operatingExpense(t) > 0)
+    const totals = operatingTransactions(thisMonthTransactions)
+      .filter(t => t.type === 'EXPENSE')
       .reduce((acc, t) => {
-        const key = t.type === 'TRANSFER' ? 'Transfer Fees' : t.category || 'Uncategorized';
-        acc[key] = (acc[key] || 0) + operatingExpense(t);
+        const key = t.category || 'Uncategorized';
+        acc[key] = (acc[key] || 0) + t.amount;
         return acc;
       }, {} as Record<string, number>);
     return Object.entries(totals).sort((l, r) => r[1] - l[1])[0];

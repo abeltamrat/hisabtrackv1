@@ -34,6 +34,8 @@ interface TransactionBase {
   gross_amount?: number;
   category: string;
   tags?: string[];
+  /** Reporting allocations that sum to amount; they never move cash again. */
+  splits?: TransactionSplit[];
   date: number; // Timestamp
   description: string;
   sender_receiver?: string;
@@ -46,6 +48,13 @@ interface TransactionBase {
   disaster_recovery_fee?: number;
   receipt_url?: string;
   updated_at?: number;
+}
+
+export interface TransactionSplit {
+  id: string;
+  amount: number;
+  category: string;
+  description?: string;
 }
 
 export interface StandardTransaction extends TransactionBase {
