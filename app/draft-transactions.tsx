@@ -1593,7 +1593,7 @@ export default function DraftTransactionsScreen() {
                     <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
                     <View className="ml-3 flex-1"><Text className="text-slate-900 dark:text-white font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Keep one bank debit while allocating the purchase in reports.</Text></View>
                   </TouchableOpacity>
-                  {splitEnabled && <TransactionSplitEditor total={selectedDraft?.amount || 0} splits={splits} categories={confirmCategories} onChange={setSplits} formatCurrency={formatCurrency} />}
+                  {splitEnabled && <TransactionSplitEditor total={selectedDraft?.amount || 0} splits={splits} categories={confirmCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} />}
                 </View>
               )}
 

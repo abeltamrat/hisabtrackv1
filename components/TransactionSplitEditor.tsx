@@ -1,21 +1,23 @@
 import { FontAwesome } from '@expo/vector-icons';
-import React from 'react';
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
+import CategoryTreeSelect, { type TreeCategory } from '@/components/CategoryTreeSelect';
+import TagInputField from '@/components/TagInputField';
 import type { TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
-import { formatTagInput, parseTagInput } from '@/utils/tags';
 
-type Category = { id: string; name: string };
+type Category = TreeCategory;
 
 export default function TransactionSplitEditor({
-  total, splits, categories, onChange, formatCurrency,
+  total, splits, categories, onChange, formatCurrency, tagSuggestions = [],
 }: {
   total: number;
   splits: TransactionSplit[];
   categories: Category[];
   onChange: (splits: TransactionSplit[]) => void;
   formatCurrency: (value: number) => string;
+  tagSuggestions?: string[];
 }) {
   const allocated = sumMoney(splits.map(item => Number(item.amount) || 0));
   const remaining = money(total - allocated);
@@ -25,6 +27,20 @@ export default function TransactionSplitEditor({
     amount: Math.max(0, remaining),
     category: categories[0]?.name || 'Uncategorized',
   }]);
+
+  // Tags already used on sibling parts are the likeliest next pick, so they
+  // join the saved list even before they reach a recorded transaction.
+  const suggestionPool = useMemo(() => {
+    const pool = new Map<string, string>();
+    for (const tag of [...splits.flatMap(split => split.tags || []), ...tagSuggestions]) {
+      if (typeof tag !== 'string') continue;
+      const trimmed = tag.trim();
+      if (!trimmed) continue;
+      const key = trimmed.toLowerCase();
+      if (!pool.has(key)) pool.set(key, trimmed);
+    }
+    return [...pool.values()];
+  }, [splits, tagSuggestions]);
 
   return (
     <View className="rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4">
@@ -55,13 +71,16 @@ export default function TransactionSplitEditor({
             placeholderTextColor="#94a3b8"
             className="bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white mb-2"
           />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
-            {categories.map(category => (
-              <TouchableOpacity key={category.id} onPress={() => update(split.id, { category: category.name })} className={`mr-2 px-3 py-2 rounded-xl ${split.category === category.name ? 'bg-indigo-600' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                <Text className={`text-[10px] font-semibold ${split.category === category.name ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{category.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <View className="mb-2">
+            <CategoryTreeSelect
+              categories={categories}
+              value={split.category}
+              onChange={name => update(split.id, { category: name })}
+              accessibilityLabel={`Category for part ${index + 1}`}
+              placeholder="Choose a category"
+              compact
+            />
+          </View>
           <TextInput
             value={split.description || ''}
             onChangeText={value => update(split.id, { description: value })}
@@ -69,13 +88,13 @@ export default function TransactionSplitEditor({
             placeholderTextColor="#94a3b8"
             className="bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white mb-2"
           />
-          <TextInput
-            value={formatTagInput(split.tags)}
-            onChangeText={value => update(split.id, { tags: parseTagInput(value) })}
-            placeholder="Tags for this part (comma separated)"
-            placeholderTextColor="#94a3b8"
-            autoCapitalize="none"
-            className="bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white"
+          <TagInputField
+            tags={split.tags}
+            suggestions={suggestionPool}
+            onChange={value => update(split.id, { tags: value })}
+            placeholder="Tag this part"
+            savedLabel="Saved tags"
+            compact
           />
         </View>
       ))}
