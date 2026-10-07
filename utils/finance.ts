@@ -22,21 +22,47 @@ export function purpose(t: Partial<Transaction>): string {
 export function operatingIncome(t: Transaction) { return t.type === 'INCOME' ? purpose(t) === 'OPERATING' ? t.amount : (t.interest_amount || 0) : 0; }
 export function operatingExpense(t: Transaction) {
   if (t.type === 'TRANSFER') return money((t.fees || 0) + (t.tax || 0));
-  return t.type === 'EXPENSE' ? purpose(t) === 'OPERATING' ? t.amount : (t.interest_amount || 0) : 0;
+  return t.type === 'EXPENSE' ? purpose(t) === 'OPERATING' ? (t.gross_amount ?? t.amount) : (t.interest_amount || 0) : 0;
 }
-export function cashDelta(t: Transaction) { return t.type === 'TRANSFER' ? -money((t.fees || 0) + (t.tax || 0)) : t.type === 'INCOME' ? t.amount : -t.amount; }
+export function cashDelta(t: Transaction) { return t.type === 'TRANSFER' ? -money((t.fees || 0) + (t.tax || 0)) : t.type === 'INCOME' ? t.amount : -(t.gross_amount ?? t.amount); }
 export function operatingTransactions(transactions: Transaction[]): Transaction[] {
   return transactions.flatMap(t => {
     if (t.type === 'TRANSFER') {
       const amount = operatingExpense(t);
       return amount > 0 ? [{ ...t, id: `${t.id}:fees`, type: 'EXPENSE' as const, amount, category: 'Transfer Fees', purpose: 'OPERATING' as const, to_account_id: undefined }] : [];
     }
-    if (purpose(t) === 'OPERATING') return [t];
+    if (purpose(t) === 'OPERATING') {
+      const bankCharges = t.type === 'EXPENSE' && t.gross_amount !== undefined
+        ? money(t.gross_amount - t.amount)
+        : 0;
+      if (bankCharges > 0) {
+        const principal = {
+          ...t,
+          gross_amount: undefined,
+          service_charge: undefined,
+          vat: undefined,
+          disaster_recovery_fee: undefined,
+          fees: undefined,
+          tax: undefined,
+        };
+        const charges = {
+          ...principal,
+          id: `${t.id}:bank-charges`,
+          amount: bankCharges,
+          category: 'Bank Fees',
+          description: `Bank charges for ${t.description}`,
+          sender_receiver: undefined,
+          receipt_url: undefined,
+        };
+        return [principal, charges];
+      }
+      return [t];
+    }
     return t.interest_amount ? [{ ...t, amount: t.interest_amount, category: 'Loan Interest', purpose: 'OPERATING' as const }] : [];
   });
 }
 export function accountDelta(t: Transaction, id: string) {
-  if (t.account_id === id) return t.type === 'INCOME' ? t.amount : -t.amount;
+  if (t.account_id === id) return t.type === 'INCOME' ? t.amount : -(t.gross_amount ?? t.amount);
   return t.type === 'TRANSFER' && t.to_account_id === id ? money(t.amount - (t.fees || 0) - (t.tax || 0)) : 0;
 }
 export function validateTransaction(t: Partial<Transaction>, accounts?: Account[]) {
@@ -44,6 +70,8 @@ export function validateTransaction(t: Partial<Transaction>, accounts?: Account[
   if (t.purpose && !['OPERATING', 'FINANCING', 'ADJUSTMENT'].includes(t.purpose)) throw new Error('Invalid transaction purpose');
   if (minor(t.interest_amount || 0) < 0 || minor(t.interest_amount || 0) > minor(t.amount!)) throw new Error('Invalid interest allocation');
   for (const fee of [t.fees ?? 0, t.tax ?? 0]) if (minor(fee) < 0) throw new Error('Fees cannot be negative');
+  for (const fee of [t.service_charge ?? 0, t.vat ?? 0, t.disaster_recovery_fee ?? 0]) if (minor(fee) < 0) throw new Error('Fees cannot be negative');
+  if (t.gross_amount !== undefined && minor(t.gross_amount) < minor(t.amount!)) throw new Error('Total debit cannot be less than transaction amount');
   if (minor((t.fees || 0) + (t.tax || 0)) > minor(t.amount)) throw new Error('Fees exceed the amount');
   if (t.type === 'TRANSFER' && (!t.to_account_id || t.account_id === t.to_account_id)) throw new Error('Choose distinct transfer accounts');
   if (accounts) {

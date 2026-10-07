@@ -189,16 +189,32 @@ export default function TransactionDetail() {
               value={new Date(transaction.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
             />
 
-            {(transaction.fees ?? 0) > 0 && (
+            {(transaction.fees ?? 0) > 0 && transaction.service_charge === undefined && transaction.disaster_recovery_fee === undefined && (
               <DetailRow label="Fees" value={formatCurrency(transaction.fees!)} />
             )}
 
-            {(transaction.tax ?? 0) > 0 && (
+            {(transaction.service_charge ?? 0) > 0 && (
+              <DetailRow label="Service charge" value={formatCurrency(transaction.service_charge!)} />
+            )}
+
+            {(transaction.vat ?? 0) > 0 && (
+              <DetailRow label="VAT" value={formatCurrency(transaction.vat!)} />
+            )}
+
+            {(transaction.disaster_recovery_fee ?? 0) > 0 && (
+              <DetailRow label="Disaster Recovery" value={formatCurrency(transaction.disaster_recovery_fee!)} />
+            )}
+
+            {(transaction.tax ?? 0) > 0 && transaction.vat === undefined && (
               <DetailRow label="Tax" value={formatCurrency(transaction.tax!)} />
             )}
 
+            {transaction.gross_amount !== undefined ? (
+              <DetailRow label="Total account debit" value={formatCurrency(transaction.gross_amount)} />
+            ) : null}
+
             {transaction.sender_receiver ? (
-              <DetailRow label="Sender / Receiver" value={transaction.sender_receiver} lines={2} />
+              <DetailRow label={isIncome ? 'Sender' : 'Recipient'} value={transaction.sender_receiver} lines={2} />
             ) : null}
 
             {transaction.reference_number ? (

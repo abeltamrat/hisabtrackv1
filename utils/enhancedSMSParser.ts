@@ -1,5 +1,6 @@
 export interface ParsedSMSTransaction {
   amount: number;
+  grossAmount?: number;
   type: 'INCOME' | 'EXPENSE';
   accountNumber?: string;
   merchant?: string;
@@ -7,6 +8,9 @@ export interface ParsedSMSTransaction {
   balance?: number;
   fees?: number;
   tax?: number;
+  serviceCharge?: number;
+  vat?: number;
+  disasterRecoveryFee?: number;
   referenceNumber?: string;
   receiptUrl?: string;
   rawMessage: string;
@@ -42,6 +46,7 @@ const ENHANCED_SMS_PATTERNS: Record<string, any> = {
     balance: /(?:current\s+)?balance\s+is\s+(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     fees: /(?:s\.?\s*charge|service\s+charge)\s+(?:of\s+)?(?:birr|etb|br)\s*([\d,]+\.?\d*)/i,
     tax: /vat\s*(?:\([^)]+\))?\s+of\s+(?:birr|etb|br)?\s*([\d,]+\.?\d*)/i,
+    disasterRecoveryFee: /disaster\s+recovery\s*(?:\([^)]+\))?\s+of\s+(?:birr|etb|br)?\s*([\d,]+\.?\d*)/i,
     // "Ref No FT261751639Z" or "?id=FT..." (URL-based, handled in extractReference)
     reference: /(?:ref(?:erence)?\s*no\.?\s*([A-Z0-9]{6,}))/i,
     merchant: [
@@ -268,21 +273,26 @@ export class EnhancedSMSParser {
         }
       }
       const balance = this.extractAmount(message, patterns.balance);
-      const fees = this.extractAmount(message, patterns.fees);
-      const tax = this.extractAmount(message, patterns.tax);
+      const serviceCharge = this.extractAmount(message, patterns.fees);
+      const vat = this.extractAmount(message, patterns.tax);
+      const disasterRecoveryFee = this.extractAmount(message, patterns.disasterRecoveryFee);
+      const fees = Math.round(((serviceCharge ?? 0) + (disasterRecoveryFee ?? 0)) * 100) / 100 || undefined;
+      const tax = vat;
       const referenceNumber = this.extractReference(message, patterns.reference);
       const merchant = this.extractMerchant(message, patterns.merchant);
       const extractedDate = this.extractDate(message, patterns);
       const receiptUrl = this.extractReceiptUrl(message, patterns.receiptUrl);
 
-      // CBE/similar: "total of ETB X" overrides base amount for EXPENSE
+      // Keep the amount received by the counterparty separate from the amount
+      // debited from the account. CBE's "total of" includes bank charges.
+      let grossAmount: number | undefined;
       if (type === 'EXPENSE') {
         const totalMatch = message.match(/total\s+of\s+(?:birr|etb|br)?\s*([\d,]+\.?\d*)/i);
         if (totalMatch) {
           const total = this.parseAmount(totalMatch[1]);
-          if (total > 0) amount = total;
-        } else if (fees || tax) {
-          amount = Math.round((amount + (fees ?? 0) + (tax ?? 0)) * 100) / 100;
+          if (total > 0) grossAmount = total;
+        } else if (serviceCharge || vat || disasterRecoveryFee) {
+          grossAmount = Math.round((amount + (serviceCharge ?? 0) + (vat ?? 0) + (disasterRecoveryFee ?? 0)) * 100) / 100;
         }
       }
 
@@ -292,6 +302,7 @@ export class EnhancedSMSParser {
 
       return {
         amount,
+        grossAmount,
         type,
         accountNumber,
         merchant,
@@ -299,6 +310,9 @@ export class EnhancedSMSParser {
         balance,
         fees,
         tax,
+        serviceCharge,
+        vat,
+        disasterRecoveryFee,
         referenceNumber,
         receiptUrl,
         rawMessage: message,

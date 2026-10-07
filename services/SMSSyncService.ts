@@ -371,7 +371,9 @@ export class SMSSyncService {
         // Learning & Category Suggestion
         const categoryHint = parsed.categoryHint || EnhancedSMSParser.suggestCategoryHint(parsed.merchant, parsed.rawMessage, parsed.type);
         let category = isTransfer ? 'Transfer' : EnhancedSMSParser.matchCategory(categoryHint, userCategories, parsed.type);
-        let description = parsed.merchant || `${parsed.type === 'INCOME' ? 'Received' : 'Paid'} via ${sms.address}`;
+        let description = parsed.merchant
+          ? `${parsed.type === 'INCOME' ? 'Received from' : 'Transfer to'} ${parsed.merchant}`
+          : `${parsed.type === 'INCOME' ? 'Received' : 'Paid'} via ${sms.address}`;
 
         if (!isTransfer) {
           const rule = await SMSLearningService.getRule({
@@ -390,6 +392,7 @@ export class SMSSyncService {
           account_id: account.id,
           type: parsed.type,
           amount: parsed.amount,
+          gross_amount: parsed.grossAmount,
           category,
           description,
           date: parsed.date,
@@ -399,6 +402,9 @@ export class SMSSyncService {
           reference_number: parsed.referenceNumber,
           fees: parsed.fees,
           tax: parsed.tax,
+          service_charge: parsed.serviceCharge,
+          vat: parsed.vat,
+          disaster_recovery_fee: parsed.disasterRecoveryFee,
           suggested_balance: parsed.balance,
           raw_sms: parsed.rawMessage,
           receipt_url: parsed.receiptUrl,

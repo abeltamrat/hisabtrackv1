@@ -33,6 +33,7 @@ const { ForecastService } = load('./services/ForecastService.ts');
 const { BudgetService } = load('./services/BudgetService.ts');
 const { BackupService } = load('./services/BackupService.ts');
 const { findSelfTransferPairs } = load('./utils/transferPairing.ts');
+const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
 class Adapter {
   rows = { accounts: new Map(), transactions: new Map(), budgets: new Map(), loans: new Map() };
   meta = {}; fail = false;
@@ -81,6 +82,46 @@ test('transfer fees reconcile cash and operating expense; retry is idempotent',a
  const accounts=await db.getAccounts();assert.equal(accounts.find(x=>x.id===a.id).balance,994);assert.equal(accounts.find(x=>x.id===b.id).balance,1000);
  assert.equal(finance.sumMoney((await db.getTransactions()).map(finance.operatingExpense)),6);
  await assert.rejects(db.createTransaction({...input,amount:1007}));
+});
+
+test('recipient payment and bank charges remain separate operating expenses',()=>{
+ const tx={...transaction('a',16200),id:'cbe-payment',description:'Equipment',sender_receiver:'Dawit Asfaw Tirfe',gross_amount:16203.60,fees:3.15,tax:0.45,service_charge:3,vat:0.45,disaster_recovery_fee:0.15};
+ const rows=finance.operatingTransactions([tx]);
+ assert.equal(rows.length,2);
+ assert.equal(rows[0].amount,16200);
+ assert.equal(rows[0].sender_receiver,'Dawit Asfaw Tirfe');
+ assert.equal(rows[1].amount,3.60);
+ assert.equal(rows[1].category,'Bank Fees');
+ assert.equal(finance.sumMoney(rows.map(row=>row.amount)),16203.60);
+ assert.equal(finance.cashDelta(tx),-16203.60);
+});
+
+test('CBE transfer SMS keeps recipient amount, named recipient, receipt, and itemized charges',()=>{
+ const sms='Dear Abel Tamirat Mengistu You have successfully transferred ETB16200.00 from account 1****4191 to account 1****2073 (Dawit Asfaw Tirfe). Service charge of ETB 3.00 and VAT(15%) of ETB0.45 and Disaster Recovery(5%) of 0.15 with total of ETB16203.60 .Your current balance is ETB1,413,826.20. Thanks for Banking with CBE. https://mbreciept.cbe.com.et/v2-hfHCxHyYgQRclLg2fdZ7 for feedback: https://forms.gle/kGNGQpG3mQCCk3iD6';
+ const parsed=EnhancedSMSParser.parseTransaction(sms,'CBE','sms-cbe-1',Date.now());
+ assert.ok(parsed);
+ assert.equal(parsed.type,'EXPENSE');
+ assert.equal(parsed.amount,16200);
+ assert.equal(parsed.grossAmount,16203.60);
+ assert.equal(parsed.accountNumber,'4191');
+ assert.equal(parsed.merchant,'Dawit Asfaw Tirfe');
+ assert.equal(parsed.serviceCharge,3);
+ assert.equal(parsed.vat,0.45);
+ assert.equal(parsed.disasterRecoveryFee,0.15);
+ assert.equal(parsed.fees,3.15);
+ assert.equal(parsed.tax,0.45);
+ assert.equal(parsed.receiptUrl,'https://mbreciept.cbe.com.et/v2-hfHCxHyYgQRclLg2fdZ7');
+});
+
+test('recipient amount and gross SMS debit reconcile without changing legacy expense semantics',async()=>{
+ const {db}=make();
+ const a=await db.createAccount(account('CBE',20000));
+ await db.createTransaction({...transaction(a.id,16200),gross_amount:16203.60,fees:3.15,tax:0.45,service_charge:3,vat:0.45,disaster_recovery_fee:0.15,sender_receiver:'Dawit Asfaw Tirfe',receipt_url:'https://mbreciept.cbe.com.et/test'});
+ assert.equal((await db.getAccounts()).find(x=>x.id===a.id).balance,3796.40);
+ const saved=(await db.getTransactions()).find(x=>x.sms_id===undefined && x.category==='Food');
+ assert.equal(saved.amount,16200);
+ assert.equal(saved.gross_amount,16203.60);
+ assert.equal(saved.disaster_recovery_fee,0.15);
 });
 test('payment failure leaves both loan and cash unchanged',async()=>{
  const {raw,db}=make();const a=await db.createAccount(account('A',500));

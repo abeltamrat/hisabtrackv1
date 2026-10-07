@@ -8,6 +8,7 @@ export interface DraftTransaction {
   account_id: string;
   type: 'INCOME' | 'EXPENSE';
   amount: number;
+  gross_amount?: number;
   category: string;
   description: string;
   date: number; // Transaction date from SMS
@@ -17,6 +18,9 @@ export interface DraftTransaction {
   reference_number?: string;
   fees?: number;
   tax?: number;
+  service_charge?: number;
+  vat?: number;
+  disaster_recovery_fee?: number;
   suggested_balance?: number;
   raw_sms: string;
   receipt_url?: string;

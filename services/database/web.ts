@@ -69,6 +69,7 @@ export class WebDatabase implements IDatabase {
       id: generateUUID(),
       account_id: transaction.account_id,
       amount: transaction.amount,
+      gross_amount: transaction.gross_amount,
       category: transaction.category,
       date: transaction.date,
       description: transaction.description,
@@ -77,6 +78,9 @@ export class WebDatabase implements IDatabase {
       sms_id: transaction.sms_id,
       fees: transaction.fees,
       tax: transaction.tax,
+      service_charge: transaction.service_charge,
+      vat: transaction.vat,
+      disaster_recovery_fee: transaction.disaster_recovery_fee,
       receipt_url: transaction.receipt_url,
       tags: normalizeTransactionTags(transaction.tags),
       updated_at: Date.now(),
@@ -97,6 +101,7 @@ export class WebDatabase implements IDatabase {
       id: existing.id,
       account_id: updates.account_id ?? existing.account_id,
       amount: updates.amount ?? existing.amount,
+      gross_amount: updates.gross_amount ?? existing.gross_amount,
       category: updates.category ?? existing.category,
       date: updates.date ?? existing.date,
       description: updates.description ?? existing.description,
@@ -105,6 +110,9 @@ export class WebDatabase implements IDatabase {
       sms_id: updates.sms_id ?? existing.sms_id,
       fees: updates.fees ?? existing.fees,
       tax: updates.tax ?? existing.tax,
+      service_charge: updates.service_charge ?? existing.service_charge,
+      vat: updates.vat ?? existing.vat,
+      disaster_recovery_fee: updates.disaster_recovery_fee ?? existing.disaster_recovery_fee,
       receipt_url: updates.receipt_url ?? existing.receipt_url,
       tags: updates.tags !== undefined ? normalizeTransactionTags(updates.tags) : existing.tags,
       updated_at: Date.now(),
@@ -127,7 +135,7 @@ export class WebDatabase implements IDatabase {
     const isSource = transaction.account_id === accountId;
     const isDest = transaction.to_account_id === accountId;
     if (transaction.type === 'INCOME' && isSource) return transaction.amount;
-    if (transaction.type === 'EXPENSE' && isSource) return -transaction.amount;
+    if (transaction.type === 'EXPENSE' && isSource) return -(transaction.gross_amount ?? transaction.amount);
     if (transaction.type === 'TRANSFER') {
       // Convention: amount is the gross debit on the source account; the
       // destination receives the net of sender-side fees/VAT (e.g. a

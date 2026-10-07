@@ -30,6 +30,8 @@ interface TransactionBase {
   id: string;
   account_id: string;
   amount: number;
+  /** Total account debit when it differs from the recipient/principal amount. */
+  gross_amount?: number;
   category: string;
   tags?: string[];
   date: number; // Timestamp
@@ -39,6 +41,9 @@ interface TransactionBase {
   sms_id?: string;
   fees?: number;
   tax?: number;
+  service_charge?: number;
+  vat?: number;
+  disaster_recovery_fee?: number;
   receipt_url?: string;
   updated_at?: number;
 }

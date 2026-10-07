@@ -67,6 +67,7 @@ export default function DraftTransactionsScreen() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // Edit states for confirmation
+  const [editedRecipient, setEditedRecipient] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [editedCategory, setEditedCategory] = useState('');
   const [note, setNote] = useState('');
@@ -170,6 +171,7 @@ export default function DraftTransactionsScreen() {
     const target = drafts.find(d => d.id === draftIdParam && d.status === 'PENDING');
     if (target) {
       setSelectedDraft(target);
+      setEditedRecipient(target.sender_receiver || '');
       setEditedDescription(target.description);
       setEditedCategory(target.category);
       setNote('');
@@ -302,6 +304,7 @@ export default function DraftTransactionsScreen() {
 
   const openConfirmModal = (draft: DraftTransaction) => {
     setSelectedDraft(draft);
+    setEditedRecipient(draft.sender_receiver || '');
     setEditedDescription(draft.description);
     setEditedCategory(draft.category);
     setNote('');
@@ -363,11 +366,15 @@ export default function DraftTransactionsScreen() {
         description: finalDescription,
         tags: parsedTags,
         date: selectedDraft.date,
-        sender_receiver: selectedDraft.sender_receiver,
+        sender_receiver: editedRecipient.trim() || undefined,
         reference_number: selectedDraft.reference_number,
         sms_id: selectedDraft.sms_id,
         fees: selectedDraft.fees,
         tax: selectedDraft.tax,
+        gross_amount: selectedDraft.gross_amount,
+        service_charge: selectedDraft.service_charge,
+        vat: selectedDraft.vat,
+        disaster_recovery_fee: selectedDraft.disaster_recovery_fee,
         receipt_url: selectedDraft.receipt_url,
       }));
 
@@ -508,6 +515,10 @@ export default function DraftTransactionsScreen() {
           sms_id: draft.sms_id,
           fees: draft.fees,
           tax: draft.tax,
+          gross_amount: draft.gross_amount,
+          service_charge: draft.service_charge,
+          vat: draft.vat,
+          disaster_recovery_fee: draft.disaster_recovery_fee,
           receipt_url: draft.receipt_url,
         }));
         if (!addTransaction.rejected.match(result)) {
@@ -1278,12 +1289,24 @@ export default function DraftTransactionsScreen() {
 
               {/* Editable Fields */}
               <View className="mb-6">
-                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Description / Merchant</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Recipient</Text>
+                <TextInput
+                  value={editedRecipient}
+                  onChangeText={setEditedRecipient}
+                  className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-slate-900 dark:text-white text-base border border-slate-100 dark:border-slate-700"
+                  placeholder="Who received or sent the money?"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View className="mb-6">
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Description / reason</Text>
                 <TextInput
                   value={editedDescription}
                   onChangeText={setEditedDescription}
                   className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-slate-900 dark:text-white text-base border border-slate-100 dark:border-slate-700"
-                  placeholder="e.g. Starbucks"
+                  placeholder="What was this expense for?"
+                  placeholderTextColor="#94a3b8"
                 />
                 <Text className="text-[10px] text-slate-500 mt-1 italic dark:text-slate-400">
                   * App will learn this mapping for future syncs
@@ -1432,13 +1455,37 @@ export default function DraftTransactionsScreen() {
                     {formatDate(selectedDraft?.date || 0)} {formatTime(selectedDraft?.date || 0)}
                   </Text>
                 </View>
-                {selectedDraft?.fees && (
+                {selectedDraft?.fees && selectedDraft.service_charge === undefined && selectedDraft.disaster_recovery_fee === undefined && (
                   <View className="flex-row justify-between mb-2">
                     <Text className="text-slate-500 dark:text-slate-400 text-sm">Bank Fees</Text>
                     <Text className="text-slate-900 dark:text-white font-medium">{formatCurrency(selectedDraft.fees)}</Text>
                   </View>
                 )}
-                {selectedDraft?.tax && (
+                {selectedDraft?.service_charge !== undefined && (
+                  <View className="flex-row justify-between mb-2">
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">Service charge</Text>
+                    <Text className="text-slate-900 dark:text-white font-medium">{formatCurrency(selectedDraft.service_charge)}</Text>
+                  </View>
+                )}
+                {selectedDraft?.vat !== undefined && (
+                  <View className="flex-row justify-between mb-2">
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">VAT</Text>
+                    <Text className="text-slate-900 dark:text-white font-medium">{formatCurrency(selectedDraft.vat)}</Text>
+                  </View>
+                )}
+                {selectedDraft?.disaster_recovery_fee !== undefined && (
+                  <View className="flex-row justify-between mb-2">
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">Disaster Recovery</Text>
+                    <Text className="text-slate-900 dark:text-white font-medium">{formatCurrency(selectedDraft.disaster_recovery_fee)}</Text>
+                  </View>
+                )}
+                {selectedDraft?.gross_amount !== undefined && (
+                  <View className="flex-row justify-between mb-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold">Total account debit</Text>
+                    <Text className="text-slate-900 dark:text-white font-bold">{formatCurrency(selectedDraft.gross_amount)}</Text>
+                  </View>
+                )}
+                {selectedDraft?.tax && selectedDraft.vat === undefined && (
                   <View className="flex-row justify-between mb-2">
                     <Text className="text-slate-500 dark:text-slate-400 text-sm">Tax / VAT</Text>
                     <Text className="text-slate-900 dark:text-white font-medium">{formatCurrency(selectedDraft.tax)}</Text>
