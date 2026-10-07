@@ -194,11 +194,11 @@ export default function LoginScreen() {
               {mode === 'signin' && (
                 <>
                   <Text className="text-slate-900 text-2xl font-bold mb-2">Sign In</Text>
-                  <Text className="text-slate-500 mb-8">Enter your credentials to continue</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 mb-8">Enter your credentials to continue</Text>
 
                   {/* Email */}
                   <View className="mb-4">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Email or phone</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Email or phone</Text>
                     <TextInput
                       className={`bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 ${errors.identifier ? 'border-red-500' : 'border-slate-200'}`}
                       placeholder="your@email.com or +251912345678"
@@ -218,7 +218,7 @@ export default function LoginScreen() {
 
                   {/* Password */}
                   <View className="mb-6">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Password</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Password</Text>
                     <View className="relative">
                       <TextInput
                         className={`bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 pr-12 ${errors.password ? 'border-red-500' : 'border-slate-200'}`}
@@ -284,7 +284,7 @@ export default function LoginScreen() {
                   </TouchableOpacity>
 
                   <View className="flex-row justify-center items-center">
-                    <Text className="text-slate-500">Don't have an account? </Text>
+                    <Text className="text-slate-500 dark:text-slate-400">Don't have an account? </Text>
                     <TouchableOpacity onPress={() => { resetErrors(); setMode('signup'); }}>
                       <Text className="text-blue-600 font-semibold">Sign Up</Text>
                     </TouchableOpacity>
@@ -295,11 +295,11 @@ export default function LoginScreen() {
               {mode === 'signup' && (
                 <>
                   <Text className="text-slate-900 text-2xl font-bold mb-2">Create Account</Text>
-                  <Text className="text-slate-500 mb-8">Sign up to start tracking your finances</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 mb-8">Sign up to start tracking your finances</Text>
 
                   {/* Name */}
                   <View className="mb-4">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Name (Optional)</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Name (Optional)</Text>
                     <TextInput
                       className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
                       placeholder="Your Name"
@@ -311,7 +311,7 @@ export default function LoginScreen() {
 
                   {/* Phone Number */}
                   <View className="mb-4">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Phone Number (Optional)</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Phone Number (Optional)</Text>
                     <TextInput
                       className={`bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 ${phoneError ? 'border-red-400' : 'border-slate-200'}`}
                       placeholder="09 or +251 or just 9..."
@@ -331,7 +331,7 @@ export default function LoginScreen() {
 
                   {/* Email */}
                   <View className="mb-4">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Email</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Email</Text>
                     <TextInput
                       className={`bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 ${errors.email ? 'border-red-500' : 'border-slate-200'}`}
                       placeholder="your@email.com"
@@ -350,7 +350,7 @@ export default function LoginScreen() {
 
                   {/* Password */}
                   <View className="mb-6">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Password</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Password</Text>
                     <View className="relative">
                       <TextInput
                         className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200 pr-12"
@@ -389,7 +389,7 @@ export default function LoginScreen() {
                   </TouchableOpacity>
 
                   <View className="flex-row justify-center items-center">
-                    <Text className="text-slate-500">Already have an account? </Text>
+                    <Text className="text-slate-500 dark:text-slate-400">Already have an account? </Text>
                     <TouchableOpacity onPress={() => { resetErrors(); setMode('signin'); }}>
                       <Text className="text-blue-600 font-semibold">Sign In</Text>
                     </TouchableOpacity>
@@ -408,12 +408,12 @@ export default function LoginScreen() {
                   </TouchableOpacity>
 
                   <Text className="text-slate-900 text-2xl font-bold mb-2">Reset Password</Text>
-                  <Text className="text-slate-500 mb-8">
+                  <Text className="text-slate-500 dark:text-slate-400 mb-8">
                     Enter your email and we'll send you a reset link
                   </Text>
 
                   <View className="mb-6">
-                    <Text className="text-slate-500 text-sm font-bold mb-2">Email</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Email</Text>
                     <TextInput
                       className="bg-slate-50 text-slate-900 p-4 rounded-xl text-base border-2 border-slate-200"
                       placeholder="your@email.com"

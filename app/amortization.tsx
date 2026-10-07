@@ -164,7 +164,7 @@ export default function AmortizationScreen() {
             <Text className="text-slate-900 dark:text-white text-lg font-bold mb-4">Loan Details</Text>
 
             <View className="mb-4">
-              <Text className="text-slate-500 text-sm font-bold mb-2">Principal Amount ($)</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Principal Amount ($)</Text>
               <TextInput
                 className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
                 placeholder="e.g. 10000"
@@ -176,7 +176,7 @@ export default function AmortizationScreen() {
             </View>
 
             <View className="mb-4">
-              <Text className="text-slate-500 text-sm font-bold mb-2">Annual Interest Rate (%)</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Annual Interest Rate (%)</Text>
               <TextInput
                 className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
                 placeholder="e.g. 5.5"
@@ -188,7 +188,7 @@ export default function AmortizationScreen() {
             </View>
 
             <View className="mb-4">
-              <Text className="text-slate-500 text-sm font-bold mb-2">Loan Term (Years)</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Loan Term (Years)</Text>
               <TextInput
                 className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
                 placeholder="e.g. 5"
@@ -200,19 +200,15 @@ export default function AmortizationScreen() {
             </View>
 
             <View className="mb-6">
-              <Text className="text-slate-500 text-sm font-bold mb-2">Payment Frequency</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Payment Frequency</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
                 {frequencies.map((f) => (
                   <TouchableOpacity
                     key={f.value}
                     onPress={() => setFrequencyValue(f.value)}
-                    className={`mr-2 px-4 py-3 rounded-xl border ${frequencyValue === f.value
-                        ? 'bg-blue-600 border-blue-600'
-                        : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'
-                      }`}
+                    className={`mr-2 px-4 py-3 rounded-xl border ${frequencyValue === f.value ? 'bg-blue-600 border-blue-600' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700' }`}
                   >
-                    <Text className={`font-bold ${frequencyValue === f.value ? 'text-white' : 'text-slate-600 dark:text-slate-400'
-                      }`}>
+                    <Text className={`font-bold ${frequencyValue === f.value ? 'text-white' : 'text-slate-600 dark:text-slate-400' }`}>
                       {f.label}
                     </Text>
                   </TouchableOpacity>
@@ -235,21 +231,21 @@ export default function AmortizationScreen() {
 
               <View className="flex-row justify-between items-center mb-4 border-b border-slate-800 pb-4">
                 <Text className="text-slate-500 dark:text-slate-400">{result.paymentLabel}</Text>
-                <Text className="text-white text-2xl font-bold text-green-400">
+                <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-2xl font-bold text-green-400">
                   {formatCurrency(result.paymentAmount)}
                 </Text>
               </View>
 
               <View className="flex-row justify-between items-center mb-4">
                 <Text className="text-slate-500 dark:text-slate-400">Total Payment</Text>
-                <Text className="text-white font-bold text-lg">
+                <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white font-bold text-lg">
                   {formatCurrency(result.totalPayment)}
                 </Text>
               </View>
 
               <View className="flex-row justify-between items-center mb-6">
                 <Text className="text-slate-500 dark:text-slate-400">Total Interest</Text>
-                <Text className="text-white font-bold text-lg text-red-400">
+                <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white font-bold text-lg text-red-400">
                   {formatCurrency(result.totalInterest)}
                 </Text>
               </View>
@@ -282,11 +278,11 @@ export default function AmortizationScreen() {
           </View>
 
           <View className="flex-row px-4 py-3 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-            <Text className="flex-1 text-xs font-bold text-slate-500 uppercase text-center">Period</Text>
-            <Text className="flex-[2] text-xs font-bold text-slate-500 uppercase text-right">Payment</Text>
-            <Text className="flex-[2] text-xs font-bold text-slate-500 uppercase text-right">Principal</Text>
-            <Text className="flex-[2] text-xs font-bold text-slate-500 uppercase text-right">Interest</Text>
-            <Text className="flex-[2] text-xs font-bold text-slate-500 uppercase text-right">Balance</Text>
+            <Text className="flex-1 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase text-center">Period</Text>
+            <Text className="flex-[2] text-xs font-bold text-slate-500 dark:text-slate-400 uppercase text-right">Payment</Text>
+            <Text className="flex-[2] text-xs font-bold text-slate-500 dark:text-slate-400 uppercase text-right">Principal</Text>
+            <Text className="flex-[2] text-xs font-bold text-slate-500 dark:text-slate-400 uppercase text-right">Interest</Text>
+            <Text className="flex-[2] text-xs font-bold text-slate-500 dark:text-slate-400 uppercase text-right">Balance</Text>
           </View>
 
           <ScrollView className="flex-1">
@@ -296,7 +292,7 @@ export default function AmortizationScreen() {
                 <Text className="flex-[2] text-slate-900 dark:text-white font-medium text-right text-xs">{formatCurrency(row.payment)}</Text>
                 <Text className="flex-[2] text-green-600 font-medium text-right text-xs">{formatCurrency(row.principal)}</Text>
                 <Text className="flex-[2] text-red-500 font-medium text-right text-xs">{formatCurrency(row.interest)}</Text>
-                <Text className="flex-[2] text-slate-500 font-medium text-right text-xs">{formatCurrency(row.balance)}</Text>
+                <Text className="flex-[2] text-slate-500 dark:text-slate-400 font-medium text-right text-xs">{formatCurrency(row.balance)}</Text>
               </View>
             ))}
             <View className="h-8" />

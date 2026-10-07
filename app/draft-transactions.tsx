@@ -660,7 +660,7 @@ export default function DraftTransactionsScreen() {
         {/* Account Info */}
         <View className="bg-white/10 backdrop-blur-lg rounded-2xl p-4">
           <Text className="text-white/90 text-sm mb-1">{account?.name || 'All SMS Accounts'}</Text>
-          <Text className="text-white text-2xl font-bold">
+          <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-2xl font-bold">
             {account ? formatCurrency(account.balance || 0) : `${unrecordedCount} pending draft${unrecordedCount === 1 ? '' : 's'}`}
           </Text>
           {unrecordedCount > 0 && (
@@ -700,7 +700,7 @@ export default function DraftTransactionsScreen() {
       {syncStatus.progress > 0 && syncStatus.progress < 100 && (
         <View className="bg-white dark:bg-slate-900 px-6 py-2 border-b border-slate-100 dark:border-slate-800">
           <View className="flex-row justify-between items-center mb-1">
-            <Text className="text-slate-500 text-[10px] font-bold uppercase">{syncStatus.status}</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase">{syncStatus.status}</Text>
             <Text className="text-primary-600 dark:text-primary-400 text-[10px] font-bold">{syncStatus.progress}%</Text>
           </View>
           <View className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -713,7 +713,7 @@ export default function DraftTransactionsScreen() {
       {showOptions && (
         <View className="bg-white dark:bg-slate-900 px-6 py-4 border-b border-slate-100 dark:border-slate-800">
           <View className="mb-4">
-            <Text className="text-slate-500 text-[10px] font-bold uppercase mb-2">Filter by Type</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase mb-2">Filter by Type</Text>
             <View className="flex-row gap-2">
               {(['all', 'income', 'expense'] as const).map(t => (
                 <TouchableOpacity
@@ -728,7 +728,7 @@ export default function DraftTransactionsScreen() {
           </View>
 
           <View className="mb-4">
-            <Text className="text-slate-500 text-[10px] font-bold uppercase mb-2">Group By</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase mb-2">Group By</Text>
             <View className="flex-row flex-wrap gap-2">
               {(['none', 'date', 'month', 'year', 'type'] as const).map(g => (
                 <TouchableOpacity
@@ -744,7 +744,7 @@ export default function DraftTransactionsScreen() {
 
           {account && (
             <View>
-              <Text className="text-slate-500 text-[10px] font-bold uppercase mb-2">Resync History</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase mb-2">Resync History</Text>
               <TouchableOpacity
                 onPress={handleResyncWithHistory}
                 disabled={refreshing}
@@ -769,12 +769,10 @@ export default function DraftTransactionsScreen() {
             <TouchableOpacity
               key={f}
               onPress={() => setFilter(f)}
-              className={`flex-1 py-2 rounded-lg items-center ${filter === f ? 'bg-white dark:bg-slate-700 shadow-sm' : ''
-                }`}
+              className={`flex-1 py-2 rounded-lg items-center ${filter === f ? 'bg-white dark:bg-slate-700 shadow-sm' : '' }`}
             >
               <Text
-                className={`text-xs font-bold capitalize ${filter === f ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
-                  }`}
+                className={`text-xs font-bold capitalize ${filter === f ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500' }`}
               >
                 {f}
               </Text>
@@ -849,29 +847,19 @@ export default function DraftTransactionsScreen() {
               <TouchableOpacity
                 activeOpacity={isSelectable ? 0.7 : 1}
                 onPress={isSelectable ? () => toggleSelection(draft.id) : undefined}
-                className={`bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-sm border ${
-                  isSelected
-                    ? 'border-indigo-400 dark:border-indigo-500'
-                    : isRecorded
-                    ? 'border-green-200 dark:border-green-900'
-                    : 'border-yellow-200 dark:border-yellow-900'
-                }`}
+                className={`bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-sm border ${ isSelected ? 'border-indigo-400 dark:border-indigo-500' : isRecorded ? 'border-green-200 dark:border-green-900' : 'border-yellow-200 dark:border-yellow-900' }`}
                 style={{ elevation: 2 }}
               >
                 {/* Status Badge */}
                 <View className="flex-row justify-between items-start mb-3">
                   <View className="flex-row items-center gap-2">
                     {isSelectionMode && !isRecorded && (
-                      <View className={`w-6 h-6 rounded-full border-2 justify-center items-center ${
-                        isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 dark:border-slate-600'
-                      }`}>
+                      <View className={`w-6 h-6 rounded-full border-2 justify-center items-center ${ isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 dark:border-slate-600' }`}>
                         {isSelected && <FontAwesome name="check" size={10} color="#fff" />}
                       </View>
                     )}
-                    <View className={`px-3 py-1 rounded-full ${isRecorded ? 'bg-green-100 dark:bg-green-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'
-                      }`}>
-                      <Text className={`text-xs font-bold ${isRecorded ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'
-                        }`}>
+                    <View className={`px-3 py-1 rounded-full ${isRecorded ? 'bg-green-100 dark:bg-green-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30' }`}>
+                      <Text className={`text-xs font-bold ${isRecorded ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400' }`}>
                         {isRecorded ? 'Recorded' : 'Unrecorded'}
                       </Text>
                     </View>
@@ -900,8 +888,7 @@ export default function DraftTransactionsScreen() {
                 {/* Transaction Details */}
                 <View className="flex-row items-center mb-3">
                   <View
-                    className={`w-12 h-12 rounded-xl justify-center items-center mr-3 ${draft.is_transfer ? 'bg-indigo-100 dark:bg-indigo-900/30' : isIncome ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
-                      }`}
+                    className={`w-12 h-12 rounded-xl justify-center items-center mr-3 ${draft.is_transfer ? 'bg-indigo-100 dark:bg-indigo-900/30' : isIncome ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30' }`}
                   >
                     <FontAwesome
                       name={draft.is_transfer ? 'exchange' : isIncome ? 'arrow-down' : 'arrow-up'}
@@ -919,8 +906,7 @@ export default function DraftTransactionsScreen() {
                       <Text className="text-slate-500 text-xs dark:text-slate-400">{formatTime(draft.date)}</Text>
                     </View>
                   </View>
-                  <Text className={`font-bold text-lg ${isIncome ? 'text-green-600' : 'text-red-500'
-                    }`}>
+                  <Text className={`font-bold text-lg ${isIncome ? 'text-green-600' : 'text-red-500' }`}>
                     {isIncome ? '+' : '-'}{formatCurrency(draft.amount)}
                   </Text>
                 </View>
@@ -930,7 +916,7 @@ export default function DraftTransactionsScreen() {
                   <View className="bg-slate-50 dark:bg-slate-900 rounded-xl p-3 mb-3">
                     {draft.fees && (
                       <View className="flex-row justify-between mb-1">
-                        <Text className="text-slate-500 text-xs">Fee</Text>
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Fee</Text>
                         <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
                           {formatCurrency(draft.fees)}
                         </Text>
@@ -938,7 +924,7 @@ export default function DraftTransactionsScreen() {
                     )}
                     {draft.tax && (
                       <View className="flex-row justify-between mb-1">
-                        <Text className="text-slate-500 text-xs">Tax</Text>
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Tax</Text>
                         <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
                           {formatCurrency(draft.tax)}
                         </Text>
@@ -946,7 +932,7 @@ export default function DraftTransactionsScreen() {
                     )}
                     {draft.reference_number && (
                       <View className="flex-row justify-between mb-1">
-                        <Text className="text-slate-500 text-xs">Ref</Text>
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Ref</Text>
                         <Text className="text-slate-700 dark:text-slate-300 text-xs font-mono">
                           {draft.reference_number}
                         </Text>
@@ -954,7 +940,7 @@ export default function DraftTransactionsScreen() {
                     )}
                     {draft.suggested_balance !== undefined && (
                       <View className="flex-row justify-between mb-1">
-                        <Text className="text-slate-500 text-xs">Stated Bank Bal</Text>
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Stated Bank Bal</Text>
                         <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
                           {formatCurrency(draft.suggested_balance)}
                         </Text>
@@ -1134,13 +1120,7 @@ export default function DraftTransactionsScreen() {
                 <TouchableOpacity
                   onPress={bulkAction === 'record' ? handleBulkRecord : handleBulkReject}
                   disabled={isBulkProcessing || selectedDrafts.length === 0}
-                  className={`flex-1 py-3.5 rounded-2xl items-center ${
-                    isBulkProcessing || selectedDrafts.length === 0
-                      ? 'bg-slate-300 dark:bg-slate-700'
-                      : bulkAction === 'record'
-                      ? 'bg-primary-500'
-                      : 'bg-red-500'
-                  }`}
+                  className={`flex-1 py-3.5 rounded-2xl items-center ${ isBulkProcessing || selectedDrafts.length === 0 ? 'bg-slate-300 dark:bg-slate-700' : bulkAction === 'record' ? 'bg-primary-500' : 'bg-red-500' }`}
                 >
                   <Text className="text-white font-bold">
                     {isBulkProcessing
@@ -1222,14 +1202,14 @@ export default function DraftTransactionsScreen() {
               {/* Key Details Row */}
               <View className="flex-row gap-3 mb-6">
                 <View className="flex-1 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl">
-                  <Text className="text-slate-500 text-xs mb-1 uppercase font-bold">Type</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs mb-1 uppercase font-bold">Type</Text>
                   <Text className={`font-bold text-lg ${selectedDraft?.type === 'INCOME' ? 'text-green-600' : 'text-red-500'}`}>
                     {selectedDraft?.type}
                   </Text>
                 </View>
                 <View className="flex-1 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl">
-                  <Text className="text-slate-500 text-xs mb-1 uppercase font-bold">Amount</Text>
-                  <Text className="text-slate-900 dark:text-white font-bold text-lg">
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs mb-1 uppercase font-bold">Amount</Text>
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-slate-900 dark:text-white font-bold text-lg">
                     {formatCurrency(selectedDraft?.amount || 0)}
                   </Text>
                 </View>
@@ -1298,7 +1278,7 @@ export default function DraftTransactionsScreen() {
 
               {/* Editable Fields */}
               <View className="mb-6">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Description / Merchant</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Description / Merchant</Text>
                 <TextInput
                   value={editedDescription}
                   onChangeText={setEditedDescription}
@@ -1311,7 +1291,7 @@ export default function DraftTransactionsScreen() {
               </View>
 
               <View className="mb-6">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Category</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Category</Text>
                 {selectedDraft?.categoryHint && (
                   <View className="flex-row items-center mb-3 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
                     <FontAwesome name="magic" size={11} color="#6366f1" />
@@ -1328,10 +1308,7 @@ export default function DraftTransactionsScreen() {
                     {confirmRootCategories.map((category) => (
                       <View key={category.id} className="mb-3">
                         <TouchableOpacity
-                          className={`w-full items-center p-4 rounded-2xl border-2 ${editedCategory === category.name
-                            ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
-                            : 'bg-white dark:bg-slate-900 border-transparent'
-                            }`}
+                          className={`w-full items-center p-4 rounded-2xl border-2 ${editedCategory === category.name ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : 'bg-white dark:bg-slate-900 border-transparent' }`}
                           onPress={() => setEditedCategory(category.name)}
                         >
                           <View className="flex-row items-center w-full">
@@ -1355,10 +1332,7 @@ export default function DraftTransactionsScreen() {
                         {getConfirmChildCategories(category.id).map((childCategory) => (
                           <TouchableOpacity
                             key={childCategory.id}
-                            className={`w-full items-center p-3 rounded-xl ml-8 mt-2 border-2 ${editedCategory === childCategory.name
-                              ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
-                              : 'bg-slate-100 dark:bg-slate-700 border-transparent'
-                              }`}
+                            className={`w-full items-center p-3 rounded-xl ml-8 mt-2 border-2 ${editedCategory === childCategory.name ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : 'bg-slate-100 dark:bg-slate-700 border-transparent' }`}
                             onPress={() => setEditedCategory(childCategory.name)}
                           >
                             <View className="flex-row items-center w-full">
@@ -1388,7 +1362,7 @@ export default function DraftTransactionsScreen() {
 
               {/* Tags Input */}
               <View className="mb-6">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Tags (Optional)</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Tags (Optional)</Text>
                 <TextInput
                   value={tagsInput}
                   onChangeText={setTagsInput}
@@ -1421,16 +1395,10 @@ export default function DraftTransactionsScreen() {
                           <TouchableOpacity
                             key={tag}
                             onPress={() => handleToggleTag(tag)}
-                            className={`mr-2 px-3 py-1 rounded-full border ${
-                              isSelected
-                                ? 'bg-indigo-600 border-indigo-600'
-                                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                            }`}
+                            className={`mr-2 px-3 py-1 rounded-full border ${ isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' }`}
                           >
                             <Text
-                              className={`text-xs font-medium ${
-                                isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-300'
-                              }`}
+                              className={`text-xs font-medium ${ isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-300' }`}
                             >
                               #{tag}
                             </Text>
@@ -1444,7 +1412,7 @@ export default function DraftTransactionsScreen() {
 
               {/* Note Input */}
               <View className="mb-6">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Note (Optional)</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Note (Optional)</Text>
                 <TextInput
                   value={note}
                   onChangeText={setNote}
@@ -1459,32 +1427,32 @@ export default function DraftTransactionsScreen() {
               {/* Technical Details */}
               <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 mb-6">
                 <View className="flex-row justify-between mb-2">
-                  <Text className="text-slate-500 text-sm">Date</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Date</Text>
                   <Text className="text-slate-900 dark:text-white font-medium">
                     {formatDate(selectedDraft?.date || 0)} {formatTime(selectedDraft?.date || 0)}
                   </Text>
                 </View>
                 {selectedDraft?.fees && (
                   <View className="flex-row justify-between mb-2">
-                    <Text className="text-slate-500 text-sm">Bank Fees</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">Bank Fees</Text>
                     <Text className="text-slate-900 dark:text-white font-medium">{formatCurrency(selectedDraft.fees)}</Text>
                   </View>
                 )}
                 {selectedDraft?.tax && (
                   <View className="flex-row justify-between mb-2">
-                    <Text className="text-slate-500 text-sm">Tax / VAT</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">Tax / VAT</Text>
                     <Text className="text-slate-900 dark:text-white font-medium">{formatCurrency(selectedDraft.tax)}</Text>
                   </View>
                 )}
                 {selectedDraft?.suggested_balance && (
                   <View className="flex-row justify-between mb-2">
-                    <Text className="text-slate-500 text-sm">Expected Balance</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">Expected Balance</Text>
                     <Text className="text-blue-600 dark:text-blue-400 font-bold">{formatCurrency(selectedDraft.suggested_balance)}</Text>
                   </View>
                 )}
                 {selectedDraft?.reference_number && (
                   <View className="flex-row justify-between mb-2">
-                    <Text className="text-slate-500 text-sm">Reference</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">Reference</Text>
                     <Text className="text-slate-900 dark:text-white font-mono text-xs">{selectedDraft.reference_number}</Text>
                   </View>
                 )}
@@ -1501,7 +1469,7 @@ export default function DraftTransactionsScreen() {
 
               {/* Original Message Ref */}
               <View className="mb-8">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Source Message</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Source Message</Text>
                 <View className="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-xl border border-dotted border-slate-300 dark:border-slate-700">
                   <Text className="text-slate-500 dark:text-slate-400 text-xs italic">
                     "{selectedDraft?.raw_sms}"

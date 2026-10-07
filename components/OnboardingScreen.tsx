@@ -288,9 +288,9 @@ function SlideItem({
 
                     {/* Features List */}
                     {slide.features && (
-                        <View className="w-full bg-white/10 rounded-3xl p-6 backdrop-blur-lg">
+                        <View className="w-full bg-white/10 rounded-3xl p-6 backdrop-blur-lg gap-3">
                             {slide.features.map((feature, idx) => (
-                                <View key={idx} className="flex-row items-center mb-3 last:mb-0">
+                                <View key={idx} className="flex-row items-center">
                                     <View className="w-6 h-6 bg-white/20 rounded-full items-center justify-center mr-3">
                                         <FontAwesome name="check" size={12} color="#fff" />
                                     </View>

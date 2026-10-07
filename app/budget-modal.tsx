@@ -178,10 +178,7 @@ export default function AddBudgetScreen() {
               <View key={category.id} className="mb-4">
                 {/* Parent Category */}
                 <TouchableOpacity
-                  className={`w-full items-center p-4 rounded-2xl mb-2 border-2 ${selectedCategory === category.name
-                      ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
-                      : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                    }`}
+                  className={`w-full items-center p-4 rounded-2xl mb-2 border-2 ${selectedCategory === category.name ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                   onPress={() => { clearError('category'); setSelectedCategory(category.name); }}
                 >
                   <View className="flex-row items-center w-full">
@@ -206,10 +203,7 @@ export default function AddBudgetScreen() {
                 {getChildCategories(category.id).map((childCategory) => (
                   <TouchableOpacity
                     key={childCategory.id}
-                    className={`w-full items-center p-3 rounded-xl ml-8 mb-2 border-2 ${selectedCategory === childCategory.name
-                        ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
-                        : 'bg-slate-100 dark:bg-slate-700 border-transparent'
-                      }`}
+                    className={`w-full items-center p-3 rounded-xl ml-8 mb-2 border-2 ${selectedCategory === childCategory.name ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500' : 'bg-slate-100 dark:bg-slate-700 border-transparent' }`}
                     onPress={() => { clearError('category'); setSelectedCategory(childCategory.name); }}
                   >
                     <View className="flex-row items-center w-full">
@@ -244,11 +238,7 @@ export default function AddBudgetScreen() {
               <TouchableOpacity
                 key={p}
                 onPress={() => setPeriod(p)}
-                className={`flex-1 p-4 rounded-2xl border-2 items-center ${
-                  period === p
-                    ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
-                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'
-                }`}
+                className={`flex-1 p-4 rounded-2xl border-2 items-center ${ period === p ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700' }`}
               >
                 <Text className={`font-bold text-sm ${period === p ? 'text-purple-700 dark:text-purple-300' : 'text-slate-700 dark:text-slate-300'}`}>
                   {p === 'MONTHLY' ? 'Monthly' : 'Weekly'}
@@ -284,11 +274,7 @@ export default function AddBudgetScreen() {
             <TouchableOpacity
               key={option.value}
               onPress={() => setRolloverMode(option.value)}
-              className={`rounded-2xl border p-4 mb-3 ${
-                rolloverMode === option.value
-                  ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
-                  : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'
-              }`}
+              className={`rounded-2xl border p-4 mb-3 ${ rolloverMode === option.value ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700' }`}
             >
               <View className="flex-row justify-between items-center mb-1">
                 <Text className="text-slate-900 dark:text-white font-bold">{option.title}</Text>

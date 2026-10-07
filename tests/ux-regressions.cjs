@@ -1312,3 +1312,80 @@ test('a screen that uses t() keeps every locale able to render it', () => {
   ['app', 'components'].forEach(walk);
   assert.deepEqual(unresolvable, []);
 });
+
+// ── Dark mode and overflow ────────────────────────────────────────────────
+function tsxSources() {
+  const out = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) { walk(rel); continue; }
+      if (!/\.tsx$/.test(entry.name)) continue;
+      const raw = fs.readFileSync(path.join(root, rel), 'utf8');
+      // Comments are stripped so notes about removed patterns do not trip these.
+      out.push([rel, raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')]);
+    }
+  };
+  ['app', 'components'].forEach(walk);
+  return out;
+}
+
+test('muted body text is readable on the dark cards', () => {
+  // slate-500 is 4.76:1 on white but only 3.07:1 on the slate-800 cards, so a
+  // bare occurrence looks like text that never switched theme.
+  const offenders = [];
+  for (const [file, src] of tsxSources()) {
+    for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/gs)) {
+      const tokens = (m[1] ?? m[2] ?? '').split(/\s+/);
+      if (!tokens.includes('text-slate-500')) continue;
+      if (tokens.some(t => t.startsWith('dark:text-'))) continue;
+      offenders.push(`${file}: text-slate-500 with no dark variant`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('no CSS pseudo-class or sibling utility is used, since none apply', () => {
+  const offenders = [];
+  for (const [file, src] of tsxSources()) {
+    // `last:`/`active:` and `space-y-*` rely on selectors React Native has no
+    // equivalent for; they compile away and silently do nothing.
+    for (const m of src.matchAll(/\b(last|first|odd|even|hover|active|focus|visited):/g)) {
+      offenders.push(`${file}: ${m[1]}:`);
+    }
+    for (const m of src.matchAll(/\bspace-[xy]-\d/g)) offenders.push(`${file}: ${m[0]}`);
+  }
+  assert.deepEqual(offenders, [], 'use gap-* and activeOpacity instead');
+});
+
+test('no icon colour is hardcoded black or white against an unknown surface', () => {
+  const offenders = [];
+  for (const [file, src] of tsxSources()) {
+    for (const m of src.matchAll(/color="(#000|#000000)"/g)) {
+      offenders.push(`${file}: ${m[1]} is invisible on the dark theme`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('the reported screens constrain long values and amounts', () => {
+  const detail = fs.readFileSync(path.join(root, 'app/transaction/[id].tsx'), 'utf8');
+  // Every label/value row goes through one component that truncates the value.
+  assert.match(detail, /function DetailRow/);
+  assert.match(detail, /numberOfLines=\{lines\}[\s\S]*?className="[^"]*flex-1 text-right"/);
+  // The amount shrinks rather than pushing out of the card.
+  assert.match(detail, /adjustsFontSizeToFit/);
+  assert.match(detail, /themeTokens/, 'icon colours must follow the theme');
+
+  const accounts = fs.readFileSync(path.join(root, 'app/accounts.tsx'), 'utf8');
+  // sms_number is a comma-separated sender list and ran past the card edge.
+  assert.match(accounts, /numberOfLines=\{1\} className="text-slate-500 text-xs dark:text-slate-400">SMS:/);
+  assert.match(accounts, /adjustsFontSizeToFit/);
+  assert.match(accounts, /themeTokens/);
+
+  const account = fs.readFileSync(path.join(root, 'app/account/[id].tsx'), 'utf8');
+  // The header title had no colour class at all, so it rendered black on dark.
+  assert.match(account, /className="font-bold text-lg text-slate-900 dark:text-white flex-1 text-center"/);
+  assert.match(account, /tint=\{isDark \? 'dark' : 'light'\}/);
+  assert.match(account, /adjustsFontSizeToFit/);
+});

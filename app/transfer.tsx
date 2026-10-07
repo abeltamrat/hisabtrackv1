@@ -169,9 +169,9 @@ export default function TransferScreen() {
           {errors.from ? (
             <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-3">{errors.from}</Text>
           ) : <View className="mb-3" />}
-          <View className="space-y-3">
+          <View className="gap-3">
             {accounts.length === 0 ? (
-              <Text className="text-slate-500">No accounts available.</Text>
+              <Text className="text-slate-500 dark:text-slate-400">No accounts available.</Text>
             ) : (
               accounts.map((account: Account) => {
                 const color = getAccountColor(account.id);
@@ -180,10 +180,7 @@ export default function TransferScreen() {
                 return (
                   <TouchableOpacity
                     key={account.id}
-                    className={`flex-row items-center p-4 rounded-2xl border-2 mb-2 ${isSelected
-                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500'
-                      : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                      }`}
+                    className={`flex-row items-center p-4 rounded-2xl border-2 mb-2 ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                     onPress={() => { clearError('from'); clearError('to'); setFromAccount(account.id); }}
                   >
                     <View
@@ -222,9 +219,9 @@ export default function TransferScreen() {
           {errors.to ? (
             <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-3">{errors.to}</Text>
           ) : <View className="mb-3" />}
-          <View className="space-y-3">
+          <View className="gap-3">
             {accounts.length === 0 ? (
-              <Text className="text-slate-500">No accounts available.</Text>
+              <Text className="text-slate-500 dark:text-slate-400">No accounts available.</Text>
             ) : (
               accounts.filter((account) => account.id !== fromAccount).map((account: Account) => {
                 const color = getAccountColor(account.id);
@@ -233,10 +230,7 @@ export default function TransferScreen() {
                 return (
                   <TouchableOpacity
                     key={account.id}
-                    className={`flex-row items-center p-4 rounded-2xl border-2 mb-2 ${isSelected
-                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500'
-                      : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                      }`}
+                    className={`flex-row items-center p-4 rounded-2xl border-2 mb-2 ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                     onPress={() => { clearError('to'); setToAccount(account.id); }}
                   >
                     <View

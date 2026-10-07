@@ -294,11 +294,7 @@ export default function AddTransactionScreen() {
       return (
         <View key={category.id}>
           <TouchableOpacity
-            className={`flex-row items-center py-2 px-3 rounded-xl mb-1 border ${
-              selectedCategory === category.name
-                ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
-                : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-            }`}
+            className={`flex-row items-center py-2 px-3 rounded-xl mb-1 border ${ selectedCategory === category.name ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
             style={{ marginLeft: indentLeft }}
             onPress={() => { clearError('category'); setSelectedCategory(category.name); }}
           >
@@ -433,11 +429,7 @@ export default function AddTransactionScreen() {
               <TouchableOpacity
                 key={account.id}
                 onPress={() => { clearError('account'); setSelectedAccountId(account.id); }}
-                className={`mx-1 p-3 rounded-xl border-2 min-w-[90px] items-center ${
-                  selectedAccountId === account.id
-                    ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500'
-                    : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                }`}
+                className={`mx-1 p-3 rounded-xl border-2 min-w-[90px] items-center ${ selectedAccountId === account.id ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
               >
                 <View className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 justify-center items-center mb-1.5">
                   <FontAwesome
@@ -447,7 +439,7 @@ export default function AddTransactionScreen() {
                   />
                 </View>
                 <Text className="text-slate-900 dark:text-white text-[11px] font-bold mb-0.5" numberOfLines={1}>{account.name}</Text>
-                <Text className="text-slate-500 text-[10px]">{formatCurrency(account.balance)}</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-[10px]">{formatCurrency(account.balance)}</Text>
               </TouchableOpacity>
             ))}
             {accounts.length === 0 && (
@@ -457,7 +449,7 @@ export default function AddTransactionScreen() {
               >
                 <FontAwesome name="plus-circle" size={20} color="#6366f1" />
                 <Text className="text-slate-900 dark:text-white font-bold mt-1 text-xs">No Accounts</Text>
-                <Text className="text-slate-500 text-[10px] text-center mt-0.5">Tap to create one.</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-[10px] text-center mt-0.5">Tap to create one.</Text>
               </TouchableOpacity>
             )}
           </ScrollView>
@@ -576,11 +568,7 @@ export default function AddTransactionScreen() {
                     <TouchableOpacity
                       key={tag}
                       onPress={() => handleToggleTag(tag)}
-                      className={`mr-1.5 px-2.5 py-1 rounded-full border ${
-                        isSelected
-                          ? 'bg-indigo-600 border-indigo-600'
-                          : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-                      }`}
+                      className={`mr-1.5 px-2.5 py-1 rounded-full border ${ isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800' }`}
                     >
                       <Text className={`text-[11px] font-medium ${isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-400'}`}>
                         #{tag}

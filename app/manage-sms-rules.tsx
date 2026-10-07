@@ -416,22 +416,10 @@ export default function ManageSMSRulesScreen() {
             {/* Match Type Badge */}
             <View className="flex-row items-center flex-wrap mb-2">
               <View
-                className={`px-2.5 py-1 rounded-full mr-2 ${
-                  rule.matchBy === 'merchant'
-                    ? 'bg-teal-50 dark:bg-teal-900/30'
-                    : rule.matchBy === 'reference'
-                    ? 'bg-blue-50 dark:bg-blue-900/30'
-                    : 'bg-amber-50 dark:bg-amber-900/30'
-                }`}
+                className={`px-2.5 py-1 rounded-full mr-2 ${ rule.matchBy === 'merchant' ? 'bg-teal-50 dark:bg-teal-900/30' : rule.matchBy === 'reference' ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-amber-50 dark:bg-amber-900/30' }`}
               >
                 <Text
-                  className={`text-xs font-bold ${
-                    rule.matchBy === 'merchant'
-                      ? 'text-teal-700 dark:text-teal-400'
-                      : rule.matchBy === 'reference'
-                      ? 'text-blue-700 dark:text-blue-400'
-                      : 'text-amber-700 dark:text-amber-400'
-                  }`}
+                  className={`text-xs font-bold ${ rule.matchBy === 'merchant' ? 'text-teal-700 dark:text-teal-400' : rule.matchBy === 'reference' ? 'text-blue-700 dark:text-blue-400' : 'text-amber-700 dark:text-amber-400' }`}
                 >
                   {rule.matchBy.toUpperCase()}
                 </Text>
@@ -451,7 +439,7 @@ export default function ManageSMSRulesScreen() {
                 : `Sender: ${rule.sender}`}
             </Text>
 
-            <Text className="text-slate-500 text-xs mb-2">
+            <Text className="text-slate-500 dark:text-slate-400 text-xs mb-2">
               Sender Short Code: {rule.sender}
             </Text>
 
@@ -537,16 +525,14 @@ export default function ManageSMSRulesScreen() {
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete"
             onPress={handleClearAll}
             disabled={rules.length === 0}
-            className={`w-12 h-12 rounded-2xl justify-center items-center ${
-              rules.length === 0 ? 'bg-white/10 opacity-50' : 'bg-white/20'
-            }`}
+            className={`w-12 h-12 rounded-2xl justify-center items-center ${ rules.length === 0 ? 'bg-white/10 opacity-50' : 'bg-white/20' }`}
           >
             <FontAwesome name="trash-o" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
 
         {/* Stats */}
-        <View className="flex-row space-x-3">
+        <View className="flex-row gap-3">
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4">
             <Text className="text-white/90 text-xs font-semibold">Learned Rules</Text>
             <Text className="text-white text-2xl font-bold mt-1">{rules.length}</Text>
@@ -637,7 +623,7 @@ export default function ManageSMSRulesScreen() {
             <TouchableOpacity onPress={() => router.push('/accounts' as any)} className="w-72 bg-white dark:bg-slate-800 rounded-3xl p-5 border border-dashed border-teal-300 dark:border-teal-700 items-center">
               <FontAwesome name="plus-circle" size={24} color="#14b8a6" />
               <Text className="text-slate-900 dark:text-white font-bold mt-2">Connect a bank account</Text>
-              <Text className="text-slate-500 text-xs text-center mt-1">Add its SMS sender to start teaching the parser.</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-xs text-center mt-1">Add its SMS sender to start teaching the parser.</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -670,16 +656,10 @@ export default function ManageSMSRulesScreen() {
         >
           <TouchableOpacity
             onPress={() => setSelectedAccountId('all')}
-            className={`px-4 py-2 rounded-full mr-2 border ${
-              selectedAccountId === 'all'
-                ? 'bg-teal-600 border-teal-600'
-                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-            }`}
+            className={`px-4 py-2 rounded-full mr-2 border ${ selectedAccountId === 'all' ? 'bg-teal-600 border-teal-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' }`}
           >
             <Text
-              className={`text-xs font-bold ${
-                selectedAccountId === 'all' ? 'text-white' : 'text-slate-600 dark:text-slate-300'
-              }`}
+              className={`text-xs font-bold ${ selectedAccountId === 'all' ? 'text-white' : 'text-slate-600 dark:text-slate-300' }`}
             >
               All Accounts
             </Text>
@@ -688,16 +668,10 @@ export default function ManageSMSRulesScreen() {
             <TouchableOpacity
               key={acc.id}
               onPress={() => setSelectedAccountId(acc.id)}
-              className={`px-4 py-2 rounded-full mr-2 border ${
-                selectedAccountId === acc.id
-                  ? 'bg-teal-600 border-teal-600'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-              }`}
+              className={`px-4 py-2 rounded-full mr-2 border ${ selectedAccountId === acc.id ? 'bg-teal-600 border-teal-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' }`}
             >
               <Text
-                className={`text-xs font-bold ${
-                  selectedAccountId === acc.id ? 'text-white' : 'text-slate-600 dark:text-slate-300'
-                }`}
+                className={`text-xs font-bold ${ selectedAccountId === acc.id ? 'text-white' : 'text-slate-600 dark:text-slate-300' }`}
               >
                 {acc.name}
               </Text>
@@ -713,14 +687,10 @@ export default function ManageSMSRulesScreen() {
             <TouchableOpacity
               key={tab}
               onPress={() => setSelectedTab(tab as any)}
-              className={`flex-1 py-2.5 rounded-xl ${
-                selectedTab === tab ? 'bg-teal-600' : ''
-              }`}
+              className={`flex-1 py-2.5 rounded-xl ${ selectedTab === tab ? 'bg-teal-600' : '' }`}
             >
               <Text
-                className={`text-center text-xs font-bold capitalize ${
-                  selectedTab === tab ? 'text-white' : 'text-slate-500 dark:text-slate-400'
-                }`}
+                className={`text-center text-xs font-bold capitalize ${ selectedTab === tab ? 'text-white' : 'text-slate-500 dark:text-slate-400' }`}
               >
                 {tab}
               </Text>
@@ -791,7 +761,7 @@ export default function ManageSMSRulesScreen() {
                 <View className="items-center py-16">
                   <FontAwesome name="comment-o" size={36} color="#94a3b8" />
                   <Text className="text-slate-900 dark:text-white font-bold mt-4">No recent SMS found</Text>
-                  <Text className="text-slate-500 text-xs text-center mt-2">Check this account's SMS sender in Accounts, then try again.</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs text-center mt-2">Check this account's SMS sender in Accounts, then try again.</Text>
                 </View>
               ) : smsSamples.map(sample => (
                 <TouchableOpacity key={sample.id} onPress={() => void runAIParse(sample)} className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 border border-slate-100 dark:border-slate-700">
@@ -814,7 +784,7 @@ export default function ManageSMSRulesScreen() {
                 <Text className="text-green-700 dark:text-green-300 text-xs mt-1">Correct anything that is wrong. Your confirmed version becomes a bank-specific example.</Text>
               </View>
 
-              <Text className="text-slate-500 text-xs font-bold uppercase mb-2">Transaction type</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase mb-2">Transaction type</Text>
               <View className="flex-row mb-4 bg-white dark:bg-slate-800 rounded-2xl p-1 border border-slate-200 dark:border-slate-700">
                 {(['EXPENSE', 'INCOME'] as const).map(type => (
                   <TouchableOpacity key={type} onPress={() => setAIType(type)} className={`flex-1 py-3 rounded-xl ${aiType === type ? (type === 'INCOME' ? 'bg-green-600' : 'bg-red-500') : ''}`}>
@@ -833,7 +803,7 @@ export default function ManageSMSRulesScreen() {
                 ['tax', 'Tax', 'numeric'],
               ].map(([key, label, keyboard]) => (
                 <View key={key} className="mb-3">
-                  <Text className="text-slate-500 text-xs font-bold mb-1.5">{label}</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-1.5">{label}</Text>
                   <TextInput
                     value={aiFields[key] ?? ''}
                     onChangeText={value => setAIFields(previous => ({ ...previous, [key]: value }))}
@@ -845,10 +815,10 @@ export default function ManageSMSRulesScreen() {
                 </View>
               ))}
 
-              <Text className="text-slate-500 text-xs font-bold mb-1.5">Description shown in transactions</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-1.5">Description shown in transactions</Text>
               <TextInput value={aiDescription} onChangeText={setAIDescription} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white mb-3" />
 
-              <Text className="text-slate-500 text-xs font-bold mb-2">Category</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-2">Category</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
                 {categories.map(category => (
                   <TouchableOpacity key={category.id} onPress={() => setAICategory(category.name)} className={`px-4 py-2.5 rounded-full mr-2 border ${aiCategory === category.name ? 'bg-indigo-600 border-indigo-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
@@ -948,11 +918,7 @@ export default function ManageSMSRulesScreen() {
                             setEditCategory(cat.name);
                             setShowCategorySelector(false);
                           }}
-                          className={`flex-row items-center p-3 rounded-xl mb-1 ${
-                            editCategory.toLowerCase() === cat.name.toLowerCase()
-                              ? 'bg-teal-50 dark:bg-teal-900/20'
-                              : ''
-                          }`}
+                          className={`flex-row items-center p-3 rounded-xl mb-1 ${ editCategory.toLowerCase() === cat.name.toLowerCase() ? 'bg-teal-50 dark:bg-teal-900/20' : '' }`}
                         >
                           <View
                             className="w-3.5 h-3.5 rounded-full mr-3"
@@ -969,7 +935,7 @@ export default function ManageSMSRulesScreen() {
               </View>
 
               {/* Action Buttons */}
-              <View className="flex-row space-x-3 mt-4">
+              <View className="flex-row gap-3 mt-4">
                 <TouchableOpacity
                   onPress={() => {
                     setShowEditModal(false);

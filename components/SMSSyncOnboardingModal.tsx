@@ -175,11 +175,7 @@ function CategoryPickerSheet({
               <TouchableOpacity
                 key={cat.id}
                 onPress={() => onSelect(cat.name)}
-                className={`flex-row items-center py-3 px-3 rounded-xl mb-1 ${
-                  isSelected
-                    ? 'bg-indigo-50 dark:bg-indigo-900/40'
-                    : 'bg-transparent'
-                }`}
+                className={`flex-row items-center py-3 px-3 rounded-xl mb-1 ${ isSelected ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'bg-transparent' }`}
               >
                 <View
                   className="w-8 h-8 rounded-full items-center justify-center mr-3"
@@ -188,11 +184,7 @@ function CategoryPickerSheet({
                   <CategoryIcon icon={cat.icon} size={14} color={cat.color} />
                 </View>
                 <Text
-                  className={`flex-1 text-sm font-medium ${
-                    isSelected
-                      ? 'text-indigo-700 dark:text-indigo-300'
-                      : 'text-slate-700 dark:text-slate-200'
-                  }`}
+                  className={`flex-1 text-sm font-medium ${ isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200' }`}
                 >
                   {cat.name}
                 </Text>
@@ -315,11 +307,7 @@ function DraftCard({
             <View className="flex-row items-center gap-1">
               <TouchableOpacity
                 onPress={onToggleAccept}
-                className={`px-2 py-0.5 rounded-full flex-row items-center gap-1 ${
-                  accepted
-                    ? 'bg-emerald-500'
-                    : 'bg-slate-100 dark:bg-slate-700'
-                }`}
+                className={`px-2 py-0.5 rounded-full flex-row items-center gap-1 ${ accepted ? 'bg-emerald-500' : 'bg-slate-100 dark:bg-slate-700' }`}
               >
                 <FontAwesome
                   name="check"
@@ -327,9 +315,7 @@ function DraftCard({
                   color={accepted ? '#fff' : '#94a3b8'}
                 />
                 <Text
-                  className={`text-xs font-semibold ${
-                    accepted ? 'text-white' : 'text-slate-500 dark:text-slate-400'
-                  }`}
+                  className={`text-xs font-semibold ${ accepted ? 'text-white' : 'text-slate-500 dark:text-slate-400' }`}
                 >
                   Accept
                 </Text>
@@ -337,11 +323,7 @@ function DraftCard({
 
               <TouchableOpacity
                 onPress={onToggleAccept}
-                className={`px-2 py-0.5 rounded-full flex-row items-center gap-1 ${
-                  !accepted
-                    ? 'bg-slate-400 dark:bg-slate-600'
-                    : 'bg-slate-100 dark:bg-slate-700'
-                }`}
+                className={`px-2 py-0.5 rounded-full flex-row items-center gap-1 ${ !accepted ? 'bg-slate-400 dark:bg-slate-600' : 'bg-slate-100 dark:bg-slate-700' }`}
               >
                 <FontAwesome
                   name="times"
@@ -349,9 +331,7 @@ function DraftCard({
                   color={!accepted ? '#fff' : '#94a3b8'}
                 />
                 <Text
-                  className={`text-xs font-semibold ${
-                    !accepted ? 'text-white' : 'text-slate-500 dark:text-slate-400'
-                  }`}
+                  className={`text-xs font-semibold ${ !accepted ? 'text-white' : 'text-slate-500 dark:text-slate-400' }`}
                 >
                   Skip
                 </Text>
@@ -695,18 +675,10 @@ export default function SMSSyncOnboardingModal({
               <TouchableOpacity
                 key={opt.value}
                 onPress={() => setSelectedDays(opt.value)}
-                className={`rounded-2xl px-5 py-3 border-2 ${
-                  isSelected
-                    ? 'bg-indigo-600 border-indigo-600'
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                }`}
+                className={`rounded-2xl px-5 py-3 border-2 ${ isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' }`}
               >
                 <Text
-                  className={`text-sm font-semibold ${
-                    isSelected
-                      ? 'text-white'
-                      : 'text-slate-700 dark:text-slate-300'
-                  }`}
+                  className={`text-sm font-semibold ${ isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300' }`}
                 >
                   {opt.label}
                 </Text>
@@ -788,18 +760,10 @@ export default function SMSSyncOnboardingModal({
             <TouchableOpacity
               key={f}
               onPress={() => setDraftFilter(f)}
-              className={`px-4 py-1.5 rounded-full ${
-                draftFilter === f
-                  ? 'bg-indigo-600'
-                  : 'bg-slate-100 dark:bg-slate-700'
-              }`}
+              className={`px-4 py-1.5 rounded-full ${ draftFilter === f ? 'bg-indigo-600' : 'bg-slate-100 dark:bg-slate-700' }`}
             >
               <Text
-                className={`text-xs font-semibold capitalize ${
-                  draftFilter === f
-                    ? 'text-white'
-                    : 'text-slate-600 dark:text-slate-300'
-                }`}
+                className={`text-xs font-semibold capitalize ${ draftFilter === f ? 'text-white' : 'text-slate-600 dark:text-slate-300' }`}
               >
                 {f}
               </Text>
@@ -853,11 +817,7 @@ export default function SMSSyncOnboardingModal({
             <TouchableOpacity
               onPress={handleSave}
               disabled={saving || acceptedCount === 0}
-              className={`py-3 rounded-xl items-center ${
-                saving || acceptedCount === 0
-                  ? 'bg-slate-300 dark:bg-slate-700'
-                  : 'bg-indigo-600'
-              }`}
+              className={`py-3 rounded-xl items-center ${ saving || acceptedCount === 0 ? 'bg-slate-300 dark:bg-slate-700' : 'bg-indigo-600' }`}
               style={{ flex: 2 }}
             >
               {saving ? (

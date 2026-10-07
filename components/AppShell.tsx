@@ -222,8 +222,7 @@ export default function AppShell({ children }: AppShellProps) {
                 {recentNotifications.map(notification => (
                   <TouchableOpacity
                     key={notification.id}
-                    className={`p-3 border-b border-slate-50 dark:border-slate-700/50 ${notification.read ? 'bg-white dark:bg-slate-800' : 'bg-slate-50 dark:bg-slate-700/30'
-                      }`}
+                    className={`p-3 border-b border-slate-50 dark:border-slate-700/50 ${notification.read ? 'bg-white dark:bg-slate-800' : 'bg-slate-50 dark:bg-slate-700/30' }`}
                     onPress={() => handleNotificationPress(notification)}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>

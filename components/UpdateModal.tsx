@@ -89,7 +89,7 @@ export default function UpdateModal({ visible, updateInfo, onClose }: UpdateModa
           </Text>
 
           {updateInfo.releaseNotes && (
-            <Text className="text-slate-500 text-sm text-center mb-4 italic">
+            <Text className="text-slate-500 dark:text-slate-400 text-sm text-center mb-4 italic">
               {updateInfo.releaseNotes}
             </Text>
           )}

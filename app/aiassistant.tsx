@@ -233,7 +233,7 @@ export default function AIAssistantScreen() {
                     <View className="flex-row items-center my-4">
                         <View className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-lg">
                             <ActivityIndicator size="small" color="#6366f1" />
-                            <Text className="text-slate-500 text-sm ml-2">Thinking...</Text>
+                            <Text className="text-slate-500 dark:text-slate-400 text-sm ml-2">Thinking...</Text>
                         </View>
                     </View>
                 )}
@@ -286,8 +286,7 @@ export default function AIAssistantScreen() {
                         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Send"
                             onPress={handleSend}
                             disabled={!inputText.trim() || isLoading}
-                            className={`w-12 h-12 rounded-full items-center justify-center ${inputText.trim() && !isLoading ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'
-                                }`}
+                            className={`w-12 h-12 rounded-full items-center justify-center ${inputText.trim() && !isLoading ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600' }`}
                         >
                             <FontAwesome
                                 name="send"
@@ -365,7 +364,8 @@ function QuickActionButton({
     return (
         <TouchableOpacity
             onPress={onPress}
-            className="flex-row items-center bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-lg active:opacity-70"
+            activeOpacity={0.7}
+            className="flex-row items-center bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-lg"
         >
             <View
                 className="w-12 h-12 rounded-xl items-center justify-center mr-4"

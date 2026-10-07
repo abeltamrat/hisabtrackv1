@@ -188,15 +188,15 @@ export default function BudgetScreen() {
         {/* Summary Card */}
         <View className="bg-white/10 dark:bg-white/5 backdrop-blur-lg rounded-2xl p-5">
           <Text className="text-purple-100 text-sm font-medium mb-2">{summaryLabel}</Text>
-          <Text className="text-white text-3xl font-bold mb-4">{formatCurrency(totalBudget)}</Text>
+          <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-3xl font-bold mb-4">{formatCurrency(totalBudget)}</Text>
           <View className="flex-row justify-between">
             <View>
               <Text className="text-purple-100 text-xs mb-1">Spent</Text>
-              <Text className="text-white text-lg font-bold">{formatCurrency(totalSpent)}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-lg font-bold">{formatCurrency(totalSpent)}</Text>
             </View>
             <View>
               <Text className="text-purple-100 text-xs mb-1">Remaining</Text>
-              <Text className="text-white text-lg font-bold">{formatCurrency(totalRemaining)}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-lg font-bold">{formatCurrency(totalRemaining)}</Text>
             </View>
             <View>
               <Text className="text-purple-100 text-xs mb-1">Progress</Text>
@@ -248,14 +248,14 @@ export default function BudgetScreen() {
                           </View>
                           <View>
                             <Text className="text-slate-900 dark:text-white font-bold text-lg">{name}</Text>
-                            <Text className="text-slate-500 text-sm">{group.items.length} Categories</Text>
+                            <Text className="text-slate-500 dark:text-slate-400 text-sm">{group.items.length} Categories</Text>
                           </View>
                         </View>
                         <FontAwesome name="chevron-right" size={14} color="#94a3b8" />
                       </View>
 
                       <View className="flex-row justify-between mb-2">
-                        <Text className="text-slate-500 text-xs">Total Progress</Text>
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Total Progress</Text>
                         <Text className="text-slate-900 dark:text-white font-bold">{progress.toFixed(0)}%</Text>
                       </View>
 
@@ -271,11 +271,11 @@ export default function BudgetScreen() {
 
                       <View className="flex-row justify-between border-t border-slate-100 dark:border-slate-700 pt-3">
                         <View>
-                          <Text className="text-slate-500 text-xs">Spent</Text>
+                          <Text className="text-slate-500 dark:text-slate-400 text-xs">Spent</Text>
                           <Text className="text-slate-900 dark:text-white font-bold">{formatCurrency(group.totalSpent)}</Text>
                         </View>
                         <View className="items-end">
-                          <Text className="text-slate-500 text-xs">Limit</Text>
+                          <Text className="text-slate-500 dark:text-slate-400 text-xs">Limit</Text>
                           <Text className="text-slate-900 dark:text-white font-bold">{formatCurrency(group.totalLimit)}</Text>
                         </View>
                       </View>

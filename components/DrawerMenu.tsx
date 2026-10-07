@@ -60,7 +60,8 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const sectionWrapperClass = `px-4 ${isVerySmall ? 'py-3' : 'py-4'}`;
   const sectionWrapperMainClass = `px-4 ${isVerySmall ? 'py-4' : 'py-6'}`;
   const sectionTitleClass = `text-slate-500 dark:text-slate-400 ${isVerySmall ? 'text-[10px]' : 'text-xs'} font-bold uppercase mb-3 px-2`;
-  const menuItemClass = `flex-row items-center px-4 ${isVerySmall ? 'py-3' : 'py-4'} rounded-2xl mb-2 active:bg-slate-50 dark:active:bg-slate-800`;
+  // `active:` is a CSS pseudo-class; press feedback comes from activeOpacity.
+  const menuItemClass = `flex-row items-center px-4 ${isVerySmall ? 'py-3' : 'py-4'} rounded-2xl mb-2`;
   const menuIconWrapClass = `${isVerySmall ? 'w-9 h-9 mr-3' : 'w-10 h-10 mr-4'} rounded-xl justify-center items-center`;
   const menuTitleClass = `flex-1 text-slate-900 dark:text-white font-semibold ${isVerySmall ? 'text-sm' : 'text-base'}`;
   const menuChevronSize = isVerySmall ? 12 : 14;

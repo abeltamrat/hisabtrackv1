@@ -478,7 +478,7 @@ export default function HelpScreen() {
             </Text>
           </View>
 
-          <View className="space-y-3">
+          <View className="gap-3">
             <View className="flex-row items-center bg-white dark:bg-slate-800 p-3 rounded-xl">
               <FontAwesome name="envelope" size={16} color="#3b82f6" />
               <Text className="text-slate-600 dark:text-slate-300 text-sm ml-3 flex-1">

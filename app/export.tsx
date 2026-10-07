@@ -517,9 +517,9 @@ export default function ExportDataScreen() {
       <ScrollView className="flex-1 px-6 -mt-6" showsVerticalScrollIndicator={false}>
         <View className={`bg-white dark:bg-slate-800 rounded-3xl ${isVerySmall ? 'p-4' : 'p-6'} mb-6 shadow-lg border border-slate-100 dark:border-slate-700`} style={{ elevation: 4 }}>
           <Text className={`text-slate-900 dark:text-white font-bold ${sectionTitleSize} mb-2`}>What to Export</Text>
-          <Text className={`text-slate-500 ${helperTextSize} mb-4`}>Choose a report type, format, and period.</Text>
+          <Text className={`text-slate-500 dark:text-slate-400 ${helperTextSize} mb-4`}>Choose a report type, format, and period.</Text>
 
-          <View className="space-y-3">
+          <View className="gap-3">
             {exportTypeOptions.map((option) => (
               <TouchableOpacity
                 key={option.value}
@@ -531,7 +531,7 @@ export default function ExportDataScreen() {
                 </View>
                 <View className="flex-1">
                   <Text className={`text-slate-900 dark:text-white font-bold ${actionTextSize}`}>{option.title}</Text>
-                  <Text className={`text-slate-500 ${helperTextSize}`}>{option.description}</Text>
+                  <Text className={`text-slate-500 dark:text-slate-400 ${helperTextSize}`}>{option.description}</Text>
                 </View>
                 {selectedType === option.value ? (
                   <FontAwesome name="check-circle" size={isVerySmall ? 18 : 20} color="#0ea5e9" />
@@ -559,13 +559,13 @@ export default function ExportDataScreen() {
             </View>
             {selectedTimeRange === 'custom' ? (
               <View className="mt-4">
-                <Text className={`text-slate-500 ${helperTextSize} mb-2`}>From</Text>
+                <Text className={`text-slate-500 dark:text-slate-400 ${helperTextSize} mb-2`}>From</Text>
                 <PlatformDatePicker
                   value={customFromDate}
                   onChange={handleCustomFromDateChange}
                   maximumDate={customToDate}
                 />
-                <Text className={`text-slate-500 ${helperTextSize} mt-3 mb-2`}>To</Text>
+                <Text className={`text-slate-500 dark:text-slate-400 ${helperTextSize} mt-3 mb-2`}>To</Text>
                 <PlatformDatePicker
                   value={customToDate}
                   onChange={handleCustomToDateChange}
@@ -588,7 +588,7 @@ export default function ExportDataScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text className={`text-slate-500 ${helperTextSize} mb-2`}>Transaction Type</Text>
+            <Text className={`text-slate-500 dark:text-slate-400 ${helperTextSize} mb-2`}>Transaction Type</Text>
             <View className="flex-row flex-wrap mb-4">
               {TRANSACTION_TYPE_OPTIONS.map((filterType) => (
                 <TouchableOpacity
@@ -603,7 +603,7 @@ export default function ExportDataScreen() {
               ))}
             </View>
 
-            <Text className={`text-slate-500 ${helperTextSize} mb-2`}>Account</Text>
+            <Text className={`text-slate-500 dark:text-slate-400 ${helperTextSize} mb-2`}>Account</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
               <View className="flex-row pr-2">
                 <TouchableOpacity
@@ -628,7 +628,7 @@ export default function ExportDataScreen() {
               </View>
             </ScrollView>
 
-            <Text className={`text-slate-500 ${helperTextSize} mb-2`}>Category</Text>
+            <Text className={`text-slate-500 dark:text-slate-400 ${helperTextSize} mb-2`}>Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View className="flex-row pr-2">
                 <TouchableOpacity
@@ -653,7 +653,7 @@ export default function ExportDataScreen() {
               </View>
             </ScrollView>
 
-            <Text className={`text-slate-500 ${helperTextSize} mt-4 mb-2`}>Tag</Text>
+            <Text className={`text-slate-500 dark:text-slate-400 ${helperTextSize} mt-4 mb-2`}>Tag</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View className="flex-row pr-2">
                 <TouchableOpacity
@@ -702,7 +702,7 @@ export default function ExportDataScreen() {
             </TouchableOpacity>
           </View>
           {selectedType === 'all_data' ? (
-            <Text className="text-slate-500 text-xs mt-3">All Data export supports Excel only.</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-xs mt-3">All Data export supports Excel only.</Text>
           ) : null}
         </View>
 

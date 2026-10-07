@@ -772,8 +772,7 @@ export default function RecurringTransactionsScreen() {
                 >
                   <View className="flex-row items-center mb-4">
                     <View
-                      className={`w-12 h-12 rounded-2xl justify-center items-center mr-4 ${recurring.type === 'INCOME' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
-                        }`}
+                      className={`w-12 h-12 rounded-2xl justify-center items-center mr-4 ${recurring.type === 'INCOME' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30' }`}
                     >
                       <FontAwesome
                         name={getFrequencyIcon(recurring.frequency)}
@@ -785,7 +784,7 @@ export default function RecurringTransactionsScreen() {
                       <Text className="text-slate-900 dark:text-white font-bold text-lg">
                         {recurring.name}
                       </Text>
-                      <Text className="text-slate-500 text-sm">{recurring.category}</Text>
+                      <Text className="text-slate-500 dark:text-slate-400 text-sm">{recurring.category}</Text>
                     </View>
                     <View className="items-end">
                       <View className="flex-row gap-2 mb-1">
@@ -794,19 +793,18 @@ export default function RecurringTransactionsScreen() {
                         </TouchableOpacity>
                       </View>
                       <Text
-                        className={`font-bold text-xl ${recurring.type === 'INCOME' ? 'text-green-600' : 'text-red-600'
-                          }`}
+                        className={`font-bold text-xl ${recurring.type === 'INCOME' ? 'text-green-600' : 'text-red-600' }`}
                       >
                         {recurring.type === 'INCOME' ? '+' : '-'}{formatCurrency(recurring.amount)}
                       </Text>
-                      <Text className="text-slate-500 text-xs">{recurring.frequency}</Text>
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs">{recurring.frequency}</Text>
                     </View>
                   </View>
 
                   <View className="border-t border-slate-100 dark:border-slate-700 pt-4">
                     <View className="flex-row items-center mb-3">
                       <FontAwesome name="calendar" size={14} color="#64748b" />
-                      <Text className="text-slate-500 text-sm ml-2">
+                      <Text className="text-slate-500 dark:text-slate-400 text-sm ml-2">
                         Next: {new Date(recurring.nextDate).toLocaleDateString()}
                       </Text>
                     </View>
@@ -814,14 +812,10 @@ export default function RecurringTransactionsScreen() {
                     <View className="flex-row gap-2">
                       <TouchableOpacity
                         onPress={() => handleToggleActive(recurring.id)}
-                        className={`flex-1 py-3 rounded-xl ${recurring.isActive
-                          ? 'bg-slate-100 dark:bg-slate-700'
-                          : 'bg-green-100 dark:bg-green-900/30'
-                          }`}
+                        className={`flex-1 py-3 rounded-xl ${recurring.isActive ? 'bg-slate-100 dark:bg-slate-700' : 'bg-green-100 dark:bg-green-900/30' }`}
                       >
                         <Text
-                          className={`text-center font-semibold ${recurring.isActive ? 'text-slate-600' : 'text-green-600'
-                            }`}
+                          className={`text-center font-semibold ${recurring.isActive ? 'text-slate-600' : 'text-green-600' }`}
                         >
                           {recurring.isActive ? 'Pause' : 'Resume'}
                         </Text>
@@ -897,7 +891,7 @@ export default function RecurringTransactionsScreen() {
                         </View>
                         <View>
                           <Text className="text-slate-900 dark:text-white font-bold">{item.name}</Text>
-                          <Text className="text-slate-500 text-xs">{item.category}</Text>
+                          <Text className="text-slate-500 dark:text-slate-400 text-xs">{item.category}</Text>
                         </View>
                       </View>
                       <Text className={`font-bold ${item.type === 'INCOME' ? 'text-green-600' : 'text-red-600'}`}>
@@ -946,17 +940,14 @@ export default function RecurringTransactionsScreen() {
 
               {/* Account Selection */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Affected Account</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Affected Account</Text>
                 {accounts && accounts.length > 0 ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-3">
                     {accounts.map((acc: any) => (
                       <TouchableOpacity
                         key={acc.id}
                         onPress={() => setSelectedAccountId(acc.id)}
-                        className={`px-4 py-3 rounded-xl border-2 ${selectedAccountId === acc.id
-                          ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500'
-                          : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                          }`}
+                        className={`px-4 py-3 rounded-xl border-2 ${selectedAccountId === acc.id ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                       >
                         <Text className={selectedAccountId === acc.id ? 'text-indigo-600 font-bold' : 'text-slate-600'}>
                           {acc.name}
@@ -974,7 +965,7 @@ export default function RecurringTransactionsScreen() {
 
               {/* Name */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Name</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Name</Text>
                 <TextInput
                   className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
                   placeholder="e.g. Netflix Subscription"
@@ -986,7 +977,7 @@ export default function RecurringTransactionsScreen() {
 
               {/* Amount */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Amount</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Amount</Text>
                 <TextInput
                   className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
                   placeholder="0.00"
@@ -999,32 +990,24 @@ export default function RecurringTransactionsScreen() {
 
               {/* Type */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Type</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Type</Text>
                 <View className="flex-row gap-2">
                   <TouchableOpacity
                     onPress={() => setType('EXPENSE')}
-                    className={`flex-1 py-3 rounded-xl border-2 ${type === 'EXPENSE'
-                      ? 'bg-red-50 dark:bg-red-900/20 border-red-500'
-                      : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                      }`}
+                    className={`flex-1 py-3 rounded-xl border-2 ${type === 'EXPENSE' ? 'bg-red-50 dark:bg-red-900/20 border-red-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                   >
                     <Text
-                      className={`text-center font-semibold ${type === 'EXPENSE' ? 'text-red-600' : 'text-slate-600'
-                        }`}
+                      className={`text-center font-semibold ${type === 'EXPENSE' ? 'text-red-600' : 'text-slate-600' }`}
                     >
                       Expense
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setType('INCOME')}
-                    className={`flex-1 py-3 rounded-xl border-2 ${type === 'INCOME'
-                      ? 'bg-green-50 dark:bg-green-900/20 border-green-500'
-                      : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                      }`}
+                    className={`flex-1 py-3 rounded-xl border-2 ${type === 'INCOME' ? 'bg-green-50 dark:bg-green-900/20 border-green-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                   >
                     <Text
-                      className={`text-center font-semibold ${type === 'INCOME' ? 'text-green-600' : 'text-slate-600'
-                        }`}
+                      className={`text-center font-semibold ${type === 'INCOME' ? 'text-green-600' : 'text-slate-600' }`}
                     >
                       Income
                     </Text>
@@ -1034,7 +1017,7 @@ export default function RecurringTransactionsScreen() {
 
               {/* Category Selection */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Category</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Category</Text>
                 <ScrollView showsVerticalScrollIndicator={false} className="max-h-40" nestedScrollEnabled={true}>
                   {(() => {
                     const filteredCategories = categories.filter(c => c.type.toLowerCase() === type.toLowerCase());
@@ -1045,10 +1028,7 @@ export default function RecurringTransactionsScreen() {
                       <View key={cat.id} className="mb-2">
                         {/* Parent Category */}
                         <TouchableOpacity
-                          className={`w-full items-center p-3 rounded-xl border-2 ${category === cat.name
-                            ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
-                            : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                            }`}
+                          className={`w-full items-center p-3 rounded-xl border-2 ${category === cat.name ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                           onPress={() => setCategory(cat.name)}
                         >
                           <View className="flex-row items-center w-full">
@@ -1073,10 +1053,7 @@ export default function RecurringTransactionsScreen() {
                         {getChildCategories(cat.id).map((childCat) => (
                           <TouchableOpacity
                             key={childCat.id}
-                            className={`w-full items-center p-2 rounded-lg ml-6 mt-1 border-2 ${category === childCat.name
-                              ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
-                              : 'bg-slate-100 dark:bg-slate-700 border-transparent'
-                              }`}
+                            className={`w-full items-center p-2 rounded-lg ml-6 mt-1 border-2 ${category === childCat.name ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500' : 'bg-slate-100 dark:bg-slate-700 border-transparent' }`}
                             onPress={() => setCategory(childCat.name)}
                           >
                             <View className="flex-row items-center w-full">
@@ -1106,20 +1083,16 @@ export default function RecurringTransactionsScreen() {
 
               {/* Frequency */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Frequency</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Frequency</Text>
                 <View className="flex-row flex-wrap gap-2">
                   {frequencies.map((freq) => (
                     <TouchableOpacity
                       key={freq}
                       onPress={() => setFrequency(freq)}
-                      className={`px-4 py-3 rounded-xl border-2 ${frequency === freq
-                        ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500'
-                        : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                        }`}
+                      className={`px-4 py-3 rounded-xl border-2 ${frequency === freq ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                     >
                       <Text
-                        className={`font-semibold ${frequency === freq ? 'text-purple-600' : 'text-slate-600'
-                          }`}
+                        className={`font-semibold ${frequency === freq ? 'text-purple-600' : 'text-slate-600' }`}
                       >
                         {freq}
                       </Text>
@@ -1130,7 +1103,7 @@ export default function RecurringTransactionsScreen() {
 
               {/* Start Date */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Start Date</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Start Date</Text>
                 {/* Use the helper component */}
                 <PlatformDatePicker
                   value={startDate}
@@ -1145,8 +1118,7 @@ export default function RecurringTransactionsScreen() {
                   onPress={() => setHasEndDate(!hasEndDate)}
                   className="flex-row items-center mb-2"
                 >
-                  <View className={`w-6 h-6 rounded border-2 mr-3 justify-center items-center ${hasEndDate ? 'bg-purple-500 border-purple-500' : 'border-slate-300'
-                    }`}>
+                  <View className={`w-6 h-6 rounded border-2 mr-3 justify-center items-center ${hasEndDate ? 'bg-purple-500 border-purple-500' : 'border-slate-300' }`}>
                     {hasEndDate && <FontAwesome name="check" size={14} color="#fff" />}
                   </View>
                   <Text className="text-slate-700 dark:text-slate-300 font-semibold">Set End Date</Text>
@@ -1166,13 +1138,12 @@ export default function RecurringTransactionsScreen() {
                   onPress={() => setReminderEnabled(!reminderEnabled)}
                   className="flex-row items-center mb-3"
                 >
-                  <View className={`w-6 h-6 rounded border-2 mr-3 justify-center items-center ${reminderEnabled ? 'bg-blue-500 border-blue-500' : 'border-slate-300'
-                    }`}>
+                  <View className={`w-6 h-6 rounded border-2 mr-3 justify-center items-center ${reminderEnabled ? 'bg-blue-500 border-blue-500' : 'border-slate-300' }`}>
                     {reminderEnabled && <FontAwesome name="check" size={14} color="#fff" />}
                   </View>
                   <View className="flex-1">
                     <Text className="text-slate-900 dark:text-white font-bold">🔔 Enable Reminders</Text>
-                    <Text className="text-slate-500 text-xs">Get notified before payment is due</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs">Get notified before payment is due</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -1186,14 +1157,10 @@ export default function RecurringTransactionsScreen() {
                         <TouchableOpacity
                           key={days}
                           onPress={() => setReminderDaysBefore(days)}
-                          className={`flex-1 py-3 rounded-xl border-2 ${reminderDaysBefore === days
-                            ? 'bg-blue-500 border-blue-500'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                            }`}
+                          className={`flex-1 py-3 rounded-xl border-2 ${reminderDaysBefore === days ? 'bg-blue-500 border-blue-500' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' }`}
                         >
                           <Text
-                            className={`text-center font-semibold ${reminderDaysBefore === days ? 'text-white' : 'text-slate-600 dark:text-slate-400'
-                              }`}
+                            className={`text-center font-semibold ${reminderDaysBefore === days ? 'text-white' : 'text-slate-600 dark:text-slate-400' }`}
                           >
                             {days === '0' ? 'Same Day' : `${days}d`}
                           </Text>

@@ -21,9 +21,9 @@ export default function ScreenInfoCard({ icon, title, description, suggestions }
           <Text className="text-indigo-800 dark:text-indigo-200/80 text-sm leading-5 mt-1">{description}</Text>
         </View>
       </View>
-      <View className="mt-4 pt-3 border-t border-indigo-200 dark:border-indigo-900/70">
+      <View className="mt-4 pt-3 border-t border-indigo-200 dark:border-indigo-900/70 gap-2">
         {suggestions.map((suggestion) => (
-          <View key={suggestion} className="flex-row items-start mb-2 last:mb-0">
+          <View key={suggestion} className="flex-row items-start">
             <FontAwesome name="check-circle" size={13} color="#6366f1" style={{ marginTop: 2, marginRight: 8 }} />
             <Text className="flex-1 text-indigo-800 dark:text-indigo-200/80 text-xs leading-5">{suggestion}</Text>
           </View>

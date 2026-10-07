@@ -345,7 +345,7 @@ export default function BanksScreen() {
         </View>
 
         {/* Stats Cards */}
-        <View className="flex-row space-x-3">
+        <View className="flex-row gap-3">
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4" style={{ elevation: 2 }}>
             <View className="flex-row items-center justify-between">
               <View>
@@ -494,7 +494,7 @@ export default function BanksScreen() {
                       resizeMode="contain"
                     />
                   </View>
-                  <Text className="text-slate-500 text-sm mt-2">Bank Logo</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm mt-2">Bank Logo</Text>
                 </View>
               )}
 
@@ -610,13 +610,13 @@ export default function BanksScreen() {
                   placeholderTextColor="#94a3b8"
                   className="bg-slate-50 dark:bg-slate-800 px-4 py-4 rounded-xl text-slate-900 dark:text-white border-2 border-slate-200 dark:border-slate-700"
                 />
-                <Text className="text-slate-500 text-xs mt-2">
+                <Text className="text-slate-500 dark:text-slate-400 text-xs mt-2">
                   Used for automatic transaction detection from SMS
                 </Text>
               </View>
 
               {/* Action Buttons */}
-              <View className="flex-row space-x-3 mb-6">
+              <View className="flex-row gap-3 mb-6">
                 <TouchableOpacity
                   onPress={() => {
                     setShowAddModal(false);

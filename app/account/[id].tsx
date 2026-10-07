@@ -1,6 +1,8 @@
 import { getDatabase } from '@/services/database';
 import { BUNDLED_LOGOS } from '@/assets/bankLogos/et';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { themeTokens } from '@/constants/theme';
 import { DraftTransactionService } from '@/services/DraftTransactionService';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import { AppDispatch, RootState } from '@/store';
@@ -24,6 +26,9 @@ export default function AccountDetail() {
   const accountsState = useSelector((s: RootState) => s.accounts);
   const account = accountsState.items.find(a => a.id === id);
   const { formatCurrency } = useAppSettings();
+  const { actualTheme } = useTheme();
+  const isDark = actualTheme === 'dark';
+  const theme = themeTokens(isDark);
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -134,22 +139,7 @@ export default function AccountDetail() {
       <View className="flex-1 bg-slate-50 dark:bg-background-dark">
         <StatusBar style="auto" />
         <View className="p-6">
-          <Text className="text-slate-500">Account not found</Text>
-        </View>
-        {/* SMS Sync Status */}
-        <View className="mb-4">
-          <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 shadow-sm border border-slate-100 dark:border-slate-700">
-            {Platform.OS === 'web' ? (
-              <Text className="text-slate-500 text-xs">SMS sync not supported on web</Text>
-            ) : (
-              <View>
-                <Text className="text-slate-500 text-xs">SMS messages available: <Text className="font-medium text-slate-900">{smsCount !== null ? smsCount : '—'}</Text></Text>
-                <Text className="text-slate-500 text-xs mt-1">Unrecorded drafts: <Text className="font-medium text-slate-900">{unrecordedDrafts}</Text></Text>
-                <Text className="text-slate-500 text-xs mt-1">Last SMS sync: <Text className="font-medium text-slate-900">{lastSmsSync ? new Date(lastSmsSync).toLocaleString() : 'Never'}</Text></Text>
-                <Text className="text-slate-500 text-xs mt-1">Listening: <Text className="font-medium text-slate-900">{listeningNumber || 'Not configured'}</Text></Text>
-              </View>
-            )}
-          </View>
+          <Text className="text-slate-500 dark:text-slate-400">Account not found</Text>
         </View>
       </View>
     );
@@ -158,12 +148,30 @@ export default function AccountDetail() {
   return (
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
       <StatusBar style="auto" />
-      <View className="px-6 pt-6 pb-4 flex-row justify-between items-center">
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">
-          <FontAwesome name="arrow-left" size={18} color="#000" />
+      <View className="px-6 pt-6 pb-4 flex-row justify-between items-center gap-3">
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          onPress={() => router.back()}
+          className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl justify-center items-center border border-slate-100 dark:border-slate-700"
+        >
+          {/* Was a hardcoded #000, invisible against the dark background. */}
+          <FontAwesome name="arrow-left" size={18} color={theme.textMuted} />
         </TouchableOpacity>
-        <Text className="font-bold text-lg">{account.name}</Text>
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete" onPress={handleDeleteAccount} className="w-10 h-10 bg-red-50 rounded-xl justify-center items-center">
+        {/* Had no colour class at all, so it rendered black-on-dark; and no
+            line limit, so a long account name pushed the buttons apart. */}
+        <Text
+          numberOfLines={1}
+          className="font-bold text-lg text-slate-900 dark:text-white flex-1 text-center"
+        >
+          {account.name}
+        </Text>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Delete"
+          onPress={handleDeleteAccount}
+          className="w-10 h-10 bg-red-50 dark:bg-red-900/30 rounded-xl justify-center items-center"
+        >
           <FontAwesome name="trash" size={18} color="#ef4444" />
         </TouchableOpacity>
       </View>
@@ -180,7 +188,7 @@ export default function AccountDetail() {
               style={{ width: '100%', height: '100%', opacity: 0.3 }}
               resizeMode="cover"
             >
-              <BlurView intensity={80} tint="light" style={{ flex: 1 }} />
+              <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={{ flex: 1 }} />
             </ImageBackground>
           </View>
         )}
@@ -198,18 +206,49 @@ export default function AccountDetail() {
                 </View>
                 <View className="flex-1 mr-2">
                   <Text className="text-slate-900 dark:text-white font-bold text-lg" numberOfLines={1}>{account.name}</Text>
-                  <Text className="text-slate-500 text-sm">{account.type}</Text>
-                  {account.account_number ? <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">Acct: {(account as any).account_number}</Text> : null}
+                  <Text numberOfLines={1} className="text-slate-500 dark:text-slate-400 text-sm">{account.type}</Text>
+                  {account.account_number ? <Text numberOfLines={1} className="text-slate-500 text-xs mt-1 dark:text-slate-400">Acct: {(account as any).account_number}</Text> : null}
                 </View>
               </View>
-              <View className="items-end">
-                <Text className="text-slate-900 dark:text-white font-bold text-xl">{formatCurrency(account.balance)}</Text>
+              <View className="items-end shrink">
+                <Text
+                  adjustsFontSizeToFit
+                  numberOfLines={1}
+                  minimumFontScale={0.7}
+                  className="text-slate-900 dark:text-white font-bold text-xl text-right"
+                >
+                  {formatCurrency(account.balance)}
+                </Text>
               </View>
             </View>
           </View>
 
+          {/* SMS Sync Status */}
           <View className="mb-4">
-            <Text className="text-slate-500 text-sm mb-2">Transactions</Text>
+            <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 shadow-sm border border-slate-100 dark:border-slate-700 gap-1">
+              {Platform.OS === 'web' ? (
+                <Text className="text-slate-500 dark:text-slate-400 text-xs">SMS sync not supported on web</Text>
+              ) : (
+                <>
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs">
+                    SMS messages available: <Text className="font-medium text-slate-900 dark:text-white">{smsCount !== null ? smsCount : '—'}</Text>
+                  </Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs">
+                    Unrecorded drafts: <Text className="font-medium text-slate-900 dark:text-white">{unrecordedDrafts}</Text>
+                  </Text>
+                  <Text numberOfLines={1} className="text-slate-500 dark:text-slate-400 text-xs">
+                    Last SMS sync: <Text className="font-medium text-slate-900 dark:text-white">{lastSmsSync ? new Date(lastSmsSync).toLocaleString() : 'Never'}</Text>
+                  </Text>
+                  <Text numberOfLines={1} className="text-slate-500 dark:text-slate-400 text-xs">
+                    Listening: <Text className="font-medium text-slate-900 dark:text-white">{listeningNumber || 'Not configured'}</Text>
+                  </Text>
+                </>
+              )}
+            </View>
+          </View>
+
+          <View className="mb-4">
+            <Text className="text-slate-500 dark:text-slate-400 text-sm mb-2">Transactions</Text>
             {loading ? (
               <View className="h-24 justify-center items-center">
                 <ActivityIndicator size="small" color="#059669" />
@@ -225,14 +264,31 @@ export default function AccountDetail() {
                     key={tx.id}
                     activeOpacity={0.8}
                     onPress={() => router.push(`/transaction/${tx.id}`)}
-                    className="flex-row justify-between items-center py-3 px-2 border-b border-slate-100 last:border-0"
+                    // `last:` is a CSS pseudo-class with no React Native
+                    // equivalent, so the final row kept its divider too.
+                    className={`flex-row justify-between items-center py-3 px-2 gap-3 ${
+                      tx.id === transactions[transactions.length - 1]?.id
+                        ? ''
+                        : 'border-b border-slate-100 dark:border-slate-700'
+                    }`}
                   >
-                    <View>
-                      <Text className="text-slate-900 dark:text-white font-medium">{tx.description || tx.category || 'Transaction'}</Text>
-                      <Text className="text-slate-500 text-xs dark:text-slate-400">{new Date(tx.date).toLocaleString()}</Text>
+                    <View className="flex-1">
+                      <Text numberOfLines={1} className="text-slate-900 dark:text-white font-medium">
+                        {tx.description || tx.category || 'Transaction'}
+                      </Text>
+                      <Text numberOfLines={1} className="text-slate-500 text-xs dark:text-slate-400">
+                        {new Date(tx.date).toLocaleString()}
+                      </Text>
                     </View>
-                    <View className="items-end">
-                      <Text className={`font-bold ${tx.type === 'INCOME' ? 'text-emerald-600' : 'text-red-500'}`}>{tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(Number(tx.amount))}</Text>
+                    <View className="items-end shrink">
+                      <Text
+                        adjustsFontSizeToFit
+                        numberOfLines={1}
+                        minimumFontScale={0.75}
+                        className={`font-bold text-right ${tx.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}
+                      >
+                        {tx.type === 'INCOME' ? '+' : '-'}{formatCurrency(Number(tx.amount))}
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 ))}

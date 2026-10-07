@@ -909,7 +909,7 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className={`text-slate-900 dark:text-white font-bold ${sectionTitleClass}`}>My Profile</Text>
-              <Text className="text-slate-500 text-xs">Account information</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-xs">Account information</Text>
             </View>
           </View>
 
@@ -992,7 +992,7 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className={`text-slate-900 dark:text-white font-bold ${sectionTitleClass}`}>Security</Text>
-              <Text className={`text-slate-500 ${sectionSubtitleClass}`}>App lock & biometric</Text>
+              <Text className={`text-slate-500 dark:text-slate-400 ${sectionSubtitleClass}`}>App lock & biometric</Text>
             </View>
           </View>
 
@@ -1074,7 +1074,7 @@ export default function SettingsScreen() {
               <Text className="text-slate-900 dark:text-white text-xl font-bold mb-1">
                 {pinStep === 'enter' ? (hasPin ? 'Enter New PIN' : 'Set PIN') : 'Confirm PIN'}
               </Text>
-              <Text className="text-slate-500 text-sm mb-6">
+              <Text className="text-slate-500 dark:text-slate-400 text-sm mb-6">
                 {pinStep === 'enter' ? 'Choose a 4-digit PIN to lock the app' : 'Enter the same PIN again'}
               </Text>
 
@@ -1121,23 +1121,19 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className={`text-slate-900 dark:text-white font-bold ${sectionTitleClass}`}>Appearance</Text>
-              <Text className={`text-slate-500 ${sectionSubtitleClass}`}>Choose your theme</Text>
+              <Text className={`text-slate-500 dark:text-slate-400 ${sectionSubtitleClass}`}>Choose your theme</Text>
             </View>
           </View>
 
-          <View className="space-y-3">
+          <View className="gap-3">
             {themeOptions.map((option) => (
               <TouchableOpacity
                 key={option.value}
                 onPress={() => setTheme(option.value)}
-                className={`flex-row items-center ${isVerySmallFont ? 'p-3 rounded-xl' : 'p-4 rounded-2xl'} border-2 ${theme === option.value
-                  ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500'
-                  : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                  }`}
+                className={`flex-row items-center ${isVerySmallFont ? 'p-3 rounded-xl' : 'p-4 rounded-2xl'} border-2 ${theme === option.value ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
               >
                 <View
-                  className={`${isVerySmallFont ? 'w-9 h-9 mr-3' : 'w-10 h-10 mr-4'} rounded-xl justify-center items-center ${theme === option.value ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700'
-                    }`}
+                  className={`${isVerySmallFont ? 'w-9 h-9 mr-3' : 'w-10 h-10 mr-4'} rounded-xl justify-center items-center ${theme === option.value ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700' }`}
                 >
                   <FontAwesome
                     name={option.icon as any}
@@ -1146,10 +1142,7 @@ export default function SettingsScreen() {
                   />
                 </View>
                 <Text
-                  className={`flex-1 font-bold ${selectorTextClass} ${theme === option.value
-                    ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-700 dark:text-slate-300'
-                    }`}
+                  className={`flex-1 font-bold ${selectorTextClass} ${theme === option.value ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300' }`}
                 >
                   {option.label}
                 </Text>
@@ -1169,11 +1162,11 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className={`text-slate-900 dark:text-white font-bold ${sectionTitleClass}`}>{t('settings')}</Text>
-              <Text className={`text-slate-500 ${sectionSubtitleClass}`}>Customize your app experience</Text>
+              <Text className={`text-slate-500 dark:text-slate-400 ${sectionSubtitleClass}`}>Customize your app experience</Text>
             </View>
           </View>
 
-          <View className="space-y-4">
+          <View className="gap-4">
             {/* Currency */}
             <View>
               <Text className={`text-slate-700 dark:text-slate-300 font-bold mb-2 ${fieldLabelClass}`}>{t('currency')}</Text>
@@ -1198,15 +1191,9 @@ export default function SettingsScreen() {
                   <TouchableOpacity
                     key={opt.code}
                     onPress={() => setLanguage(opt.code as any)}
-                    className={`${selectorPillClass} ${language === opt.code
-                      ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-500'
-                      : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                      }`}
+                    className={`${selectorPillClass} ${language === opt.code ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                   >
-                    <Text className={`font-bold ${selectorTextClass} ${language === opt.code
-                      ? 'text-teal-600 dark:text-teal-400'
-                      : 'text-slate-700 dark:text-slate-300'
-                      }`}>
+                    <Text className={`font-bold ${selectorTextClass} ${language === opt.code ? 'text-teal-600 dark:text-teal-400' : 'text-slate-700 dark:text-slate-300' }`}>
                       {opt.label}
                     </Text>
                   </TouchableOpacity>
@@ -1222,15 +1209,9 @@ export default function SettingsScreen() {
                   <TouchableOpacity
                     key={size.value}
                     onPress={() => setFontSize(size.value)}
-                    className={`${selectorPillClass} ${fontSize === size.value
-                      ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-500'
-                      : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                      }`}
+                    className={`${selectorPillClass} ${fontSize === size.value ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                   >
-                    <Text className={`font-bold ${selectorTextClass} ${fontSize === size.value
-                      ? 'text-teal-600 dark:text-teal-400'
-                      : 'text-slate-700 dark:text-slate-300'
-                      }`}>
+                    <Text className={`font-bold ${selectorTextClass} ${fontSize === size.value ? 'text-teal-600 dark:text-teal-400' : 'text-slate-700 dark:text-slate-300' }`}>
                       {size.label}
                     </Text>
                   </TouchableOpacity>
@@ -1243,13 +1224,13 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700">
                 <View style={{ flex: 1 }}>
                   <Text className="text-slate-900 dark:text-white font-semibold">Use local bank logos when available</Text>
-                  <Text className="text-slate-500 text-sm">Prioritize bundled logos over remote lookups</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Prioritize bundled logos over remote lookups</Text>
                 </View>
                 <View style={{ marginLeft: 12 }}>
                   <Switch value={!!preferLocalLogos} onValueChange={(v) => setPreferLocalLogos(v)} />
                 </View>
               </View>
-              <View className="mt-3 space-y-2">
+              <View className="mt-3 gap-2">
                 <TouchableOpacity onPress={() => router.push('/manage-assets')} className="flex-row items-center p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
                   <View className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl justify-center items-center mr-4">
                     <FontAwesome name="folder" size={18} color="#6366f1" />
@@ -1276,11 +1257,11 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-slate-900 dark:text-white font-bold text-lg">AI Assistant</Text>
-              <Text className="text-slate-500 text-sm">Configure AI features</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm">Configure AI features</Text>
             </View>
           </View>
 
-          <View className="space-y-4">
+          <View className="gap-4">
             <View>
               <View className="flex-row justify-between items-center mb-2">
                 <Text className="text-slate-700 dark:text-slate-300 font-bold">Gemini API Key</Text>
@@ -1344,7 +1325,7 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between">
                 <View className="flex-1 pr-3">
                   <Text className="text-slate-900 dark:text-white font-semibold">Use Puter.js on Web</Text>
-                  <Text className="text-slate-500 text-xs mt-1">
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">
                     Free web AI fallback without storing another API key (requires internet and browser support).
                   </Text>
                 </View>
@@ -1359,18 +1340,18 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between">
                 <View className="flex-1 pr-3">
                   <Text className="text-slate-900 dark:text-white font-semibold">Floating Assistant</Text>
-                  <Text className="text-slate-500 text-xs mt-1">
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">
                     Show the free local assistant button and chat overlay in the app.
                   </Text>
                 </View>
                 <Switch value={assistantOverlay.enabled} onValueChange={setAssistantEnabled} />
               </View>
 
-              <View className={`mt-4 space-y-3 ${assistantOverlay.enabled ? '' : 'opacity-50'}`}>
+              <View className={`mt-4 gap-3 ${assistantOverlay.enabled ? '' : 'opacity-50'}`}>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-1 pr-3">
                     <Text className="text-slate-800 dark:text-slate-200 font-medium">Bottom Tips</Text>
-                    <Text className="text-slate-500 text-xs">Show proactive AI tip messages at the bottom.</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs">Show proactive AI tip messages at the bottom.</Text>
                   </View>
                   <Switch
                     value={assistantOverlay.tipsEnabled}
@@ -1421,11 +1402,11 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-slate-900 dark:text-white font-bold text-lg">Remote Push</Text>
-              <Text className="text-slate-500 text-sm">Register this device and test the backend delivery pipeline</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm">Register this device and test the backend delivery pipeline</Text>
             </View>
           </View>
 
-          <View className="space-y-3">
+          <View className="gap-3">
             <View className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-700">
               <View className="flex-row items-center justify-between mb-3">
                 <Text className="text-slate-900 dark:text-white font-semibold">Device Status</Text>
@@ -1436,41 +1417,41 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View className="space-y-2">
+              <View className="gap-2">
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Signed in</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Signed in</Text>
                   <Text className="text-slate-900 dark:text-white font-semibold">{user?.uid ? 'Yes' : 'No'}</Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Supported</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Supported</Text>
                   <Text className="text-slate-900 dark:text-white font-semibold">{remotePushStatus?.supported ? 'Yes' : 'No'}</Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Device doc</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Device doc</Text>
                   <Text className="text-slate-900 dark:text-white font-semibold">{remotePushStatus?.documentExists ? 'Registered' : 'Not registered'}</Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Notifications</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Notifications</Text>
                   <Text className="text-slate-900 dark:text-white font-semibold">{remotePushStatus?.notificationsEnabled ? 'Granted' : 'Not granted'}</Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Device active</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Device active</Text>
                   <Text className="text-slate-900 dark:text-white font-semibold">{remotePushStatus?.isActive ? 'Yes' : 'No'}</Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Project ID</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Project ID</Text>
                   <Text className="text-slate-900 dark:text-white text-xs font-semibold">
                     {remotePushStatus?.projectId || 'Missing'}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Push token</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Push token</Text>
                   <Text className="text-slate-900 dark:text-white text-xs font-semibold">
                     {remotePushStatus?.expoPushTokenPreview || 'Unavailable'}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Last sync</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Last sync</Text>
                   <Text className="text-slate-900 dark:text-white text-xs font-semibold">
                     {formatBackgroundTime(remotePushStatus?.updatedAt ?? undefined)}
                   </Text>
@@ -1522,15 +1503,15 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-slate-900 dark:text-white font-bold text-lg">Background Alerts</Text>
-              <Text className="text-slate-500 text-sm">Low-power reminders for drafts, inactivity, and review routines</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm">Low-power reminders for drafts, inactivity, and review routines</Text>
             </View>
           </View>
 
-          <View className="space-y-3">
+          <View className="gap-3">
             <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-700">
               <View style={{ flex: 1 }}>
                 <Text className="text-slate-900 dark:text-white font-semibold">Enable background maintenance</Text>
-                <Text className="text-slate-500 text-sm">Lets the OS wake the app occasionally for lightweight checks and local reminders.</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm">Lets the OS wake the app occasionally for lightweight checks and local reminders.</Text>
               </View>
               <View style={{ marginLeft: 12 }}>
                 <Switch
@@ -1540,11 +1521,11 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            <View className={`space-y-3 ${backgroundReminders.backgroundProcessingEnabled ? '' : 'opacity-50'}`}>
+            <View className={`gap-3 ${backgroundReminders.backgroundProcessingEnabled ? '' : 'opacity-50'}`}>
               <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                 <View style={{ flex: 1 }}>
                   <Text className="text-slate-900 dark:text-white font-semibold">Alert on new SMS drafts</Text>
-                  <Text className="text-slate-500 text-sm">Android only. Detects fresh bank SMS transactions that still need review.</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Android only. Detects fresh bank SMS transactions that still need review.</Text>
                 </View>
                 <View style={{ marginLeft: 12 }}>
                   <Switch
@@ -1558,7 +1539,7 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                 <View style={{ flex: 1 }}>
                   <Text className="text-slate-900 dark:text-white font-semibold">Learn my recording time</Text>
-                  <Text className="text-slate-500 text-sm">Learns when you usually add transactions and schedules a daily reminder near that time.</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Learns when you usually add transactions and schedules a daily reminder near that time.</Text>
                 </View>
                 <View style={{ marginLeft: 12 }}>
                   <Switch
@@ -1575,7 +1556,7 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                 <View style={{ flex: 1 }}>
                   <Text className="text-slate-900 dark:text-white font-semibold">Daily financial snapshots</Text>
-                  <Text className="text-slate-500 text-sm">Occasionally shows the day’s recorded income, spending, and transaction count.</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Occasionally shows the day’s recorded income, spending, and transaction count.</Text>
                 </View>
                 <View style={{ marginLeft: 12 }}>
                   <Switch value={backgroundReminders.dailySummaryAlertsEnabled} onValueChange={setDailySummaryAlertsEnabled} disabled={!backgroundReminders.backgroundProcessingEnabled} />
@@ -1585,7 +1566,7 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                 <View style={{ flex: 1 }}>
                     <Text className="text-slate-900 dark:text-white font-semibold">Financial wisdom notifications</Text>
-                    <Text className="text-slate-500 text-sm">Turn off personalized money tips based on your recorded spending.</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">Turn off personalized money tips based on your recorded spending.</Text>
                 </View>
                 <View style={{ marginLeft: 12 }}>
                   <Switch value={backgroundReminders.personalizedTipsEnabled} onValueChange={setPersonalizedTipsEnabled} disabled={!backgroundReminders.backgroundProcessingEnabled} />
@@ -1595,7 +1576,7 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                 <View style={{ flex: 1 }}>
                   <Text className="text-slate-900 dark:text-white font-semibold">Pending draft reminders</Text>
-                  <Text className="text-slate-500 text-sm">Nudges you when SMS transactions stay unrecorded for too long.</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Nudges you when SMS transactions stay unrecorded for too long.</Text>
                 </View>
                 <View style={{ marginLeft: 12 }}>
                   <Switch
@@ -1609,7 +1590,7 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                 <View style={{ flex: 1 }}>
                   <Text className="text-slate-900 dark:text-white font-semibold">Inactivity nudges</Text>
-                  <Text className="text-slate-500 text-sm">Sends a low-frequency reminder after long gaps without opening the app.</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Sends a low-frequency reminder after long gaps without opening the app.</Text>
                 </View>
                 <View style={{ marginLeft: 12 }}>
                   <Switch
@@ -1623,7 +1604,7 @@ export default function SettingsScreen() {
               <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                 <View style={{ flex: 1 }}>
                   <Text className="text-slate-900 dark:text-white font-semibold">Reconciliation reminders</Text>
-                  <Text className="text-slate-500 text-sm">Prompts you to review drafts and balances if you have not reconciled recently.</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Prompts you to review drafts and balances if you have not reconciled recently.</Text>
                 </View>
                 <View style={{ marginLeft: 12 }}>
                   <Switch
@@ -1651,51 +1632,51 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View className="space-y-2">
+              <View className="gap-2">
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Background API</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Background API</Text>
                   <Text className="text-slate-900 dark:text-white font-semibold capitalize">
                     {backgroundStatus?.taskStatus || (backgroundStatusLoading ? 'Loading...' : 'Unknown')}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Task registered</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Task registered</Text>
                   <Text className="text-slate-900 dark:text-white font-semibold">
                     {backgroundStatus?.taskRegistered ? 'Yes' : 'No'}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Notifications</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Notifications</Text>
                   <Text className="text-slate-900 dark:text-white font-semibold">
                     {backgroundStatus?.notificationsEnabled ? 'Granted' : 'Not granted'}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Last app active</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Last app active</Text>
                   <Text className="text-slate-900 dark:text-white text-xs font-semibold">
                     {formatBackgroundTime(backgroundStatus?.state.lastAppActiveAt)}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Last foreground check</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Last foreground check</Text>
                   <Text className="text-slate-900 dark:text-white text-xs font-semibold">
                     {formatBackgroundTime(backgroundStatus?.state.lastForegroundCheckAt)}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Last background check</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Last background check</Text>
                   <Text className="text-slate-900 dark:text-white text-xs font-semibold">
                     {formatBackgroundTime(backgroundStatus?.state.lastBackgroundCheckAt)}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Last SMS scan</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Last SMS scan</Text>
                   <Text className="text-slate-900 dark:text-white text-xs font-semibold">
                     {formatBackgroundTime(backgroundStatus?.state.lastSmsSyncAt)}
                   </Text>
                 </View>
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-slate-500 text-sm">Last reconciliation review</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm">Last reconciliation review</Text>
                   <Text className="text-slate-900 dark:text-white text-xs font-semibold">
                     {formatBackgroundTime(backgroundStatus?.state.lastReconciliationAt)}
                   </Text>
@@ -1734,11 +1715,11 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-slate-900 dark:text-white font-bold text-lg">Permissions & Access</Text>
-              <Text className="text-slate-500 text-sm">Manage app permissions</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm">Manage app permissions</Text>
             </View>
           </View>
 
-          <View className="space-y-3">
+          <View className="gap-3">
             {permissionItems.map((item) => {
               const status = permStatuses[item.id] || 'unknown';
               const isGranted = status === 'granted';
@@ -1751,10 +1732,7 @@ export default function SettingsScreen() {
                   <TouchableOpacity
                     onPress={() => handleRequest(item.id as any)}
                     disabled={isGranted}
-                    className={`px-3 py-1.5 rounded-lg border ${isGranted
-                      ? 'bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800'
-                      : 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
-                      }`}
+                    className={`px-3 py-1.5 rounded-lg border ${isGranted ? 'bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800' : 'bg-slate-200 dark:bg-slate-700 border-slate-300 dark:border-slate-600' }`}
                   >
                     <Text className={`text-xs font-bold ${isGranted ? 'text-green-700 dark:text-green-400' : 'text-slate-600 dark:text-slate-400'}`}>
                       {isGranted ? 'Granted' : 'Enable'}
@@ -1774,11 +1752,11 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-slate-900 dark:text-white font-bold text-lg">Export Data</Text>
-              <Text className="text-slate-500 text-sm">Download your financial data</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm">Download your financial data</Text>
             </View>
           </View>
 
-          <View className="space-y-3">
+          <View className="gap-3">
             <TouchableOpacity
               onPress={() => handleExportTransactions('excel')}
               disabled={exporting}
@@ -1845,15 +1823,15 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-slate-900 dark:text-white font-bold text-lg">Backup & Restore</Text>
-              <Text className="text-slate-500 text-sm">Backup and restore your data</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm">Backup and restore your data</Text>
             </View>
           </View>
 
           <View className="bg-white dark:bg-slate-800 p-4 rounded-xl mb-4">
             <Text className="text-slate-900 dark:text-white font-bold">Data sharing</Text>
-            <Text className="text-slate-500">Cloud sync uploads your accounts, transactions, budgets and loans to Firebase. Shared loans and chat use Firebase separately when you use them.</Text>
+            <Text className="text-slate-500 dark:text-slate-400">Cloud sync uploads your accounts, transactions, budgets and loans to Firebase. Shared loans and chat use Firebase separately when you use them.</Text>
             <Switch value={privacySettings.cloudSyncEnabled} onValueChange={privacySettings.setCloudSyncEnabled} />
-            <Text className="text-slate-500">Allow AI providers to process financial context and unparsed bank SMS, including saved examples. Only enable providers you trust. JSON backups are unencrypted and exclude API keys.</Text>
+            <Text className="text-slate-500 dark:text-slate-400">Allow AI providers to process financial context and unparsed bank SMS, including saved examples. Only enable providers you trust. JSON backups are unencrypted and exclude API keys.</Text>
             <Switch value={privacySettings.aiSharingEnabled} onValueChange={privacySettings.setAiSharingEnabled} />
           </View>
           {!!user && <TouchableOpacity className="p-4 mb-4 rounded-xl border border-red-500" onPress={() => {
@@ -1898,7 +1876,7 @@ export default function SettingsScreen() {
             </label>
           )}
 
-          <View className="space-y-3">
+          <View className="gap-3">
             <TouchableOpacity
               onPress={handleCreateBackup}
               disabled={exporting}
@@ -1953,17 +1931,17 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <View className="space-y-3">
+          <View className="gap-3">
             <View className="flex-row justify-between items-center py-3 border-b border-slate-100 dark:border-slate-700">
-              <Text className="text-slate-500">Version</Text>
+              <Text className="text-slate-500 dark:text-slate-400">Version</Text>
               <Text className="text-slate-900 dark:text-white font-bold">{appVersion}</Text>
             </View>
             <View className="flex-row justify-between items-center py-3 border-b border-slate-100 dark:border-slate-700">
-              <Text className="text-slate-500">Build</Text>
+              <Text className="text-slate-500 dark:text-slate-400">Build</Text>
               <Text className="text-slate-900 dark:text-white font-bold">{appBuild}</Text>
             </View>
             <View className="flex-row justify-between items-center py-3">
-              <Text className="text-slate-500">Developer</Text>
+              <Text className="text-slate-500 dark:text-slate-400">Developer</Text>
               <Text className="text-slate-900 dark:text-white font-bold">HisabTrack</Text>
             </View>
           </View>
@@ -1978,7 +1956,7 @@ export default function SettingsScreen() {
               </View>
               <View className="flex-1">
                 <Text className="text-slate-900 dark:text-white font-bold text-lg">Danger Zone</Text>
-                <Text className="text-slate-500 text-sm">Permanent account actions</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm">Permanent account actions</Text>
               </View>
             </View>
 
@@ -2038,7 +2016,7 @@ export default function SettingsScreen() {
               <Text className="text-slate-900 dark:text-white text-xl font-bold text-center">
                 Confirm Account Reset
               </Text>
-              <Text className="text-slate-500 text-sm text-center mt-2">
+              <Text className="text-slate-500 dark:text-slate-400 text-sm text-center mt-2">
                 Enter your account password to permanently delete your local and online financial data.
               </Text>
             </View>
@@ -2118,16 +2096,10 @@ export default function SettingsScreen() {
                     setCurrency(currOption.code);
                     setShowCurrencyModal(false);
                   }}
-                  className={`py-3 px-4 rounded-xl mb-2 ${currency === currOption.code
-                    ? 'bg-teal-50 dark:bg-teal-900/20'
-                    : 'bg-slate-50 dark:bg-slate-900'
-                    }`}
+                  className={`py-3 px-4 rounded-xl mb-2 ${currency === currOption.code ? 'bg-teal-50 dark:bg-teal-900/20' : 'bg-slate-50 dark:bg-slate-900' }`}
                 >
                   <View className="flex-row justify-between items-center">
-                    <Text className={`font-semibold ${currency === currOption.code
-                      ? 'text-teal-600 dark:text-teal-400'
-                      : 'text-slate-700 dark:text-slate-300'
-                      }`}>
+                    <Text className={`font-semibold ${currency === currOption.code ? 'text-teal-600 dark:text-teal-400' : 'text-slate-700 dark:text-slate-300' }`}>
                       {currOption.code} ({currOption.name})
                     </Text>
                     {currency === currOption.code && (

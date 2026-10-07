@@ -15,6 +15,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
+import { useTheme } from '@/contexts/ThemeContext';
+import { themeTokens } from '@/constants/theme';
 import { useFormErrors } from '@/hooks/useFormErrors';
 import { sumMoney } from '@/utils/finance';
 import { useDispatch, useSelector } from 'react-redux';
@@ -34,6 +36,10 @@ export default function Accounts() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftCounts, setDraftCounts] = useState<Record<string, number>>({});
 
+  // Icon colours are props rather than classes, so the grey tones need the
+  // token palette to follow the theme (#64748b is 3.07:1 on a dark card).
+  const { actualTheme } = useTheme();
+  const theme = themeTokens(actualTheme === 'dark');
   const [accountName, setAccountName] = useState('');
   const { errors, validate, clearError, resetErrors } = useFormErrors<'name' | 'balance'>();
   const [accountType, setAccountType] = useState<AccountType>('CASH');
@@ -923,7 +929,14 @@ export default function Accounts() {
           <View className="items-center">
             <Text className="text-white/90 text-sm mb-2 text-center">Total Balance</Text>
             <View className="flex-row items-center justify-center">
-              <Text className="text-white text-4xl font-bold text-center">{balancesHidden ? '••••••' : formatCurrency(getTotalBalance())}</Text>
+              <Text
+                adjustsFontSizeToFit
+                numberOfLines={1}
+                minimumFontScale={0.55}
+                className="text-white text-4xl font-bold text-center shrink"
+              >
+                {balancesHidden ? '••••••' : formatCurrency(getTotalBalance())}
+              </Text>
             <TouchableOpacity
               onPress={() => setBalancesHidden(!balancesHidden)}
               accessibilityRole="button"
@@ -1012,17 +1025,18 @@ export default function Accounts() {
                       <Text className="text-slate-900 dark:text-white font-bold text-lg" numberOfLines={1}>
                         {account.name}
                       </Text>
-                      <Text className="text-slate-500 text-sm">{account.type}</Text>
+                      <Text numberOfLines={1} className="text-slate-500 dark:text-slate-400 text-sm">{account.type}</Text>
                       {account.account_number ? (
-                        <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">Acct: {account.account_number}</Text>
+                        <Text numberOfLines={1} className="text-slate-500 text-xs mt-1 dark:text-slate-400">Acct: {account.account_number}</Text>
                       ) : null}
                       {account.sms_number ? (
-                        <Text className="text-slate-500 text-xs dark:text-slate-400">SMS: {account.sms_number}</Text>
+                        /* A comma-separated list of senders, so it can be long. */
+                        <Text numberOfLines={1} className="text-slate-500 text-xs dark:text-slate-400">SMS: {account.sms_number}</Text>
                       ) : null}
                     </View>
                   </View>
 
-                  <View className="items-end">
+                  <View className="items-end shrink">
                     <View className="flex-row gap-2 mb-1">
                       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit" onPress={() => handleEdit(account)} className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                         <FontAwesome name="pencil" size={12} color="#3b82f6" />
@@ -1031,7 +1045,12 @@ export default function Accounts() {
                         <FontAwesome name="trash" size={12} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
-                    <Text className="text-slate-900 dark:text-white font-bold text-xl">
+                    <Text
+                      adjustsFontSizeToFit
+                      numberOfLines={1}
+                      minimumFontScale={0.7}
+                      className="text-slate-900 dark:text-white font-bold text-xl text-right"
+                    >
                       {balancesHidden ? '••••••' : formatCurrency(account.balance)}
                     </Text>
                   </View>
@@ -1071,7 +1090,7 @@ export default function Accounts() {
                         <Text className="text-white text-[10px] font-black">{draftCounts[account.id]}</Text>
                       </View>
                     ) : (
-                      <FontAwesome name="list-alt" size={13} color="#64748b" />
+                      <FontAwesome name="list-alt" size={13} color={theme.textMuted} />
                     )}
                     <Text className={`text-xs font-bold ${draftCounts[account.id] > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`}>
                       {draftCounts[account.id] > 0 ? 'Review' : 'Drafts'}
@@ -1094,7 +1113,7 @@ export default function Accounts() {
                       Pending SMS Transactions to Review
                     </Text>
                   </View>
-                  <FontAwesome name="chevron-right" size={12} color="#b45309" />
+                  <FontAwesome name="chevron-right" size={12} color={actualTheme === 'dark' ? '#fcd34d' : '#b45309'} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1117,7 +1136,7 @@ export default function Accounts() {
                   {editingId ? 'Edit Account' : 'New Account'}
                 </Text>
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowAddModal(false)}>
-                  <FontAwesome name="times" size={24} color="#64748b" />
+                  <FontAwesome name="times" size={24} color={theme.textMuted} />
                 </TouchableOpacity>
               </View>
 
@@ -1127,13 +1146,13 @@ export default function Accounts() {
                   <View className="w-16 h-16 rounded-2xl bg-white shadow justify-center items-center" style={{ elevation: 2 }}>
                     <Image source={getAccountImageSource(accountLogo) as any} className="w-14 h-14" resizeMode="contain" />
                   </View>
-                  <Text className="text-slate-500 text-xs mt-2">Selected bank logo</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs mt-2">Selected bank logo</Text>
                 </View>
               ) : null}
 
               {/* Account Name */}
               <View className="mb-4" style={{ zIndex: 100, elevation: 10 }}>
-                <Text className="text-slate-500 text-sm font-bold mb-2">Account Name</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Account Name</Text>
                 <View className="flex-row items-center bg-slate-50 dark:bg-slate-900 rounded-xl overflow-hidden p-1">
                   {accountLogo && (
                     <View className="w-10 h-10 ml-2 rounded-lg bg-white justify-center items-center overflow-hidden">
@@ -1155,7 +1174,7 @@ export default function Accounts() {
                   />
                   {accountLogo && (
                     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setAccountLogo(null)} className="p-2">
-                      <FontAwesome name="times-circle" size={16} color="#94a3b8" />
+                      <FontAwesome name="times-circle" size={16} color={theme.textSubtle} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1171,7 +1190,7 @@ export default function Accounts() {
                         <TouchableOpacity
                           key={i}
                           onPress={() => selectSuggestion(s)}
-                          className="flex-row items-center p-3 border-b border-slate-50 dark:border-slate-700 last:border-0"
+                          className={`flex-row items-center p-3 ${i === suggestions.length - 1 ? '' : 'border-b border-slate-50 dark:border-slate-700'}`}
                         >
                           <View className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 mr-3 justify-center items-center overflow-hidden">
                             {s.logo ? (
@@ -1181,7 +1200,7 @@ export default function Accounts() {
                                 resizeMode="contain"
                               />
                             ) : (
-                              <FontAwesome name="bank" size={14} color="#94a3b8" />
+                              <FontAwesome name="bank" size={14} color={theme.textSubtle} />
                             )}
                           </View>
                           <View>
@@ -1196,7 +1215,7 @@ export default function Accounts() {
 
                 {/* Image Suggestions Grid (high-res only) */}
                 <View className="mt-3">
-                  <Text className="text-slate-500 text-xs mb-2">Image suggestions</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs mb-2">Image suggestions</Text>
                   {imageLoading ? (
                     <View className="h-24 justify-center items-center">
                       <ActivityIndicator size="small" color="#059669" />
@@ -1224,22 +1243,16 @@ export default function Accounts() {
 
               {/* Account Type */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Account Type</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Account Type</Text>
                 <View className="flex-row flex-wrap gap-2">
                   {accountTypes.map((type) => (
                     <TouchableOpacity
                       key={type.value}
                       onPress={() => setAccountType(type.value)}
-                      className={`px-4 py-3 rounded-xl border-2 ${accountType === type.value
-                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500'
-                        : 'bg-slate-50 dark:bg-slate-900 border-transparent'
-                        }`}
+                      className={`px-4 py-3 rounded-xl border-2 ${accountType === type.value ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                     >
                       <Text
-                        className={`font-semibold ${accountType === type.value
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-slate-600 dark:text-slate-400'
-                          }`}
+                        className={`font-semibold ${accountType === type.value ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400' }`}
                       >
                         {type.label}
                       </Text>
@@ -1250,7 +1263,7 @@ export default function Accounts() {
 
               {/* Initial Balance */}
               <View className="mb-6">
-                <Text className="text-slate-500 text-sm font-bold mb-2">
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">
                   {editingId ? 'Current Balance' : 'Initial Balance'}
                 </Text>
                 <TextInput
@@ -1270,7 +1283,7 @@ export default function Accounts() {
 
               {/* Account Number */}
               <View className="mb-4">
-                <Text className="text-slate-500 text-sm font-bold mb-2">Account Number (optional)</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Account Number (optional)</Text>
                 <TextInput
                   className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
                   placeholder="e.g. 0123456789"
@@ -1283,7 +1296,7 @@ export default function Accounts() {
 
               {/* SMS Number */}
               <View className="mb-6">
-                <Text className="text-slate-500 text-sm font-bold mb-2">SMS Number (optional)</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">SMS Number (optional)</Text>
                 <View className="flex-row items-center">
                   <TextInput
                     className="flex-1 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
@@ -1330,15 +1343,15 @@ export default function Accounts() {
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-slate-900 dark:text-white text-xl font-bold">Select Senders</Text>
               <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowSmsList(false)}>
-                <FontAwesome name="times" size={20} color="#64748b" />
+                <FontAwesome name="times" size={20} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
-            <Text className="text-slate-500 text-sm mb-4">Select the sender ID used by your bank for transaction alerts.</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-sm mb-4">Select the sender ID used by your bank for transaction alerts.</Text>
 
             {/* Search and Filters */}
             <View className="mb-4">
               <View className="flex-row items-center bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 mb-3">
-                <FontAwesome name="search" size={14} color="#94a3b8" />
+                <FontAwesome name="search" size={14} color={theme.textSubtle} />
                 <TextInput
                   placeholder="Search sender..."
                   placeholderTextColor="#94a3b8"
@@ -1348,7 +1361,7 @@ export default function Accounts() {
                 />
                 {smsSearchQuery ? (
                   <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setSmsSearchQuery('')} className="p-1">
-                    <FontAwesome name="times-circle" size={14} color="#94a3b8" />
+                    <FontAwesome name="times-circle" size={14} color={theme.textSubtle} />
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -1437,16 +1450,16 @@ export default function Accounts() {
                 <View className="flex-row justify-between items-center mb-6">
                   <View>
                     <Text className="text-slate-900 dark:text-white text-xl font-bold">SMS Sync Management</Text>
-                    <Text className="text-slate-500 text-sm">{selectedSyncAccount.name}</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">{selectedSyncAccount.name}</Text>
                   </View>
                   <TouchableOpacity onPress={() => setShowSyncModal(false)}>
-                    <FontAwesome name="times" size={24} color="#64748b" />
+                    <FontAwesome name="times" size={24} color={theme.textMuted} />
                   </TouchableOpacity>
                 </View>
 
                 <View className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-4 mb-6">
                   <View className="flex-row justify-between items-center mb-2">
-                    <Text className="text-slate-500 text-xs font-bold uppercase">Current Status</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase">Current Status</Text>
                     <View className={`px-2 py-0.5 rounded-full ${syncStatus.progress === 100 ? 'bg-green-100' : 'bg-blue-100'}`}>
                       <Text className={`text-[10px] font-bold ${syncStatus.progress === 100 ? 'text-green-700' : 'text-blue-700'}`}>
                         {syncStatus.status}
@@ -1466,7 +1479,7 @@ export default function Accounts() {
                     const ago = mins < 1 ? 'just now' : mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`;
                     return (
                       <View className="flex-row items-center mt-2">
-                        <FontAwesome name="clock-o" size={10} color="#94a3b8" />
+                        <FontAwesome name="clock-o" size={10} color={theme.textSubtle} />
                         <Text className="text-slate-500 text-xs ml-1 dark:text-slate-400">
                           Last sync: {r.newDrafts} new draft{r.newDrafts !== 1 ? 's' : ''} · {ago}
                         </Text>
@@ -1476,7 +1489,7 @@ export default function Accounts() {
                 </View>
 
                 <View className="mb-6">
-                  <Text className="text-slate-500 text-sm font-bold mb-3">Sync History</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-3">Sync History</Text>
                   <View className="flex-row gap-2 mb-4">
                     {['30', '60', '90', 'all'].map(d => (
                       <TouchableOpacity

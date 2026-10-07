@@ -946,11 +946,11 @@ export default function LoansDebtsScreen() {
           <View className="flex-row justify-between mt-4">
             <View className="flex-1 bg-white/10 backdrop-blur-lg rounded-2xl p-3 mr-2">
               <Text className="text-white/90 text-xs">{t('loansGiven')}</Text>
-              <Text className="text-white text-xl font-bold">{formatCurrency(getTotalAmount('LENT'))}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-xl font-bold">{formatCurrency(getTotalAmount('LENT'))}</Text>
             </View>
             <View className="flex-1 bg-white/10 backdrop-blur-lg rounded-2xl p-3 ml-2">
               <Text className="text-white/90 text-xs">{t('debtsOwed')}</Text>
-              <Text className="text-white text-xl font-bold">{formatCurrency(getTotalAmount('BORROWED'))}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-xl font-bold">{formatCurrency(getTotalAmount('BORROWED'))}</Text>
             </View>
           </View>
         )}
@@ -959,11 +959,11 @@ export default function LoansDebtsScreen() {
           <View className="flex-row justify-between mt-4">
             <View className="flex-1 bg-white/10 backdrop-blur-lg rounded-2xl p-3 mr-2">
               <Text className="text-white/90 text-xs">{t('totalPrincipal')}</Text>
-              <Text className="text-white text-xl font-bold">{formatCurrency(groupedItems[selectedGroup]?.totalPrincipal || 0)}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-xl font-bold">{formatCurrency(groupedItems[selectedGroup]?.totalPrincipal || 0)}</Text>
             </View>
             <View className="flex-1 bg-white/10 backdrop-blur-lg rounded-2xl p-3 ml-2">
               <Text className="text-white/90 text-xs">{t('totalRemaining')}</Text>
-              <Text className="text-white text-xl font-bold">{formatCurrency(groupedItems[selectedGroup]?.totalRemaining || 0)}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-xl font-bold">{formatCurrency(groupedItems[selectedGroup]?.totalRemaining || 0)}</Text>
             </View>
           </View>
         )}
@@ -975,23 +975,19 @@ export default function LoansDebtsScreen() {
           <View className="flex-row bg-white dark:bg-slate-800 p-1.5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
             <TouchableOpacity
               onPress={() => setActiveTab('LENT')}
-              className={`flex-1 py-3 rounded-xl items-center flex-row justify-center ${activeTab === 'LENT' ? 'bg-green-500' : 'bg-white'
-                }`}
+              className={`flex-1 py-3 rounded-xl items-center flex-row justify-center ${activeTab === 'LENT' ? 'bg-green-500' : 'bg-white' }`}
             >
               <FontAwesome name="arrow-down" size={14} color={activeTab === 'LENT' ? '#fff' : '#000'} />
-              <Text className={`ml-2 text-sm font-bold ${activeTab === 'LENT' ? 'text-white' : 'text-black'
-                }`}>
+              <Text className={`ml-2 text-sm font-bold ${activeTab === 'LENT' ? 'text-white' : 'text-black' }`}>
                 {t('loansGiven')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setActiveTab('BORROWED')}
-              className={`flex-1 py-3 rounded-xl items-center flex-row justify-center ${activeTab === 'BORROWED' ? 'bg-red-500' : ''
-                }`}
+              className={`flex-1 py-3 rounded-xl items-center flex-row justify-center ${activeTab === 'BORROWED' ? 'bg-red-500' : '' }`}
             >
               <FontAwesome name="arrow-up" size={14} color={activeTab === 'BORROWED' ? '#fff' : '#94a3b8'} />
-              <Text className={`ml-2 text-sm font-bold ${activeTab === 'BORROWED' ? 'text-white' : 'text-slate-500'
-                }`}>
+              <Text className={`ml-2 text-sm font-bold ${activeTab === 'BORROWED' ? 'text-white' : 'text-slate-500' }`}>
                 {t('debtsOwed')}
               </Text>
             </TouchableOpacity>
@@ -1035,7 +1031,7 @@ export default function LoansDebtsScreen() {
                         </View>
                         <View>
                           <Text className="text-slate-900 dark:text-white font-bold text-lg">{name}</Text>
-                          <Text className="text-slate-500 text-sm">{group.count} {group.count === 1 ? 'Loan' : 'Loans'}</Text>
+                          <Text className="text-slate-500 dark:text-slate-400 text-sm">{group.count} {group.count === 1 ? 'Loan' : 'Loans'}</Text>
                         </View>
                       </View>
                       <FontAwesome name="chevron-right" size={14} color="#94a3b8" />
@@ -1043,11 +1039,11 @@ export default function LoansDebtsScreen() {
 
                     <View className="mt-2 pt-4 border-t border-slate-100 dark:border-slate-700 flex-row justify-between">
                       <View>
-                        <Text className="text-slate-500 text-xs">{t('totalPrincipal')}</Text>
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs">{t('totalPrincipal')}</Text>
                         <Text className="text-slate-900 dark:text-white font-bold">{formatCurrency(group.totalPrincipal)}</Text>
                       </View>
                       <View className="items-end">
-                        <Text className="text-slate-500 text-xs">{t('totalRemaining')}</Text>
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs">{t('totalRemaining')}</Text>
                         <Text className={`font-bold ${activeTab === 'LENT' ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(group.totalRemaining)}</Text>
                       </View>
                     </View>
@@ -1077,8 +1073,7 @@ export default function LoansDebtsScreen() {
                   {/* Item Details */}
                   <View className="flex-row items-center mb-4">
                     <View
-                      className={`w-14 h-14 rounded-2xl justify-center items-center mr-4 ${activeTab === 'LENT' ? 'bg-green-100' : 'bg-red-100'
-                        }`}
+                      className={`w-14 h-14 rounded-2xl justify-center items-center mr-4 ${activeTab === 'LENT' ? 'bg-green-100' : 'bg-red-100' }`}
                     >
                       <FontAwesome
                         name={activeTab === 'LENT' ? 'arrow-down' : 'arrow-up'}
@@ -1104,7 +1099,7 @@ export default function LoansDebtsScreen() {
                           </View>
                         )}
                       </View>
-                      <Text className="text-slate-500 text-xs">
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs">
                         Due: {new Date(item.due_date).toLocaleDateString()}
                       </Text>
                       <Text className="text-slate-500 text-xs dark:text-slate-400">
@@ -1146,7 +1141,7 @@ export default function LoansDebtsScreen() {
                   <View className="mb-4">
                     <View className="flex-row justify-between mb-2">
                       <View className="flex-1">
-                        <Text className="text-slate-500 text-sm">{t('paymentProgress')}</Text>
+                        <Text className="text-slate-500 dark:text-slate-400 text-sm">{t('paymentProgress')}</Text>
                       </View>
                       {item.reminderEnabled && item.status === 'ACTIVE' && globalRemindersEnabled && (
                         <View className="bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full mr-2 items-end">
@@ -1177,14 +1172,14 @@ export default function LoansDebtsScreen() {
 
                   <View className="flex-row justify-between mb-4">
                     <View>
-                      <Text className="text-slate-500 text-xs mb-1">{t('paid')}</Text>
-                      <Text className="text-slate-900 dark:text-white font-bold text-lg">
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs mb-1">{t('paid')}</Text>
+                      <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-slate-900 dark:text-white font-bold text-lg">
                         {formatCurrency(paidAmount)}
                       </Text>
                     </View>
                     <View className="items-end">
-                      <Text className="text-slate-500 text-xs mb-1">{t('remaining')}</Text>
-                      <Text className={`font-bold text-lg ${activeTab === 'LENT' ? 'text-green-600' : 'text-red-600'}`}>
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs mb-1">{t('remaining')}</Text>
+                      <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className={`font-bold text-lg ${activeTab === 'LENT' ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(item.remaining_balance)}
                       </Text>
                     </View>
@@ -1194,11 +1189,9 @@ export default function LoansDebtsScreen() {
                     <View className="flex-row flex-wrap mt-4 gap-2">
                       <TouchableOpacity
                         onPress={() => initiatePayment(item, 'QUICK')}
-                        className={`flex-1 min-w-[30%] py-3 rounded-xl ${activeTab === 'LENT' ? 'bg-green-50' : 'bg-red-50'
-                          }`}
+                        className={`flex-1 min-w-[30%] py-3 rounded-xl ${activeTab === 'LENT' ? 'bg-green-50' : 'bg-red-50' }`}
                       >
-                        <Text className={`text-center font-bold text-xs ${activeTab === 'LENT' ? 'text-green-600' : 'text-red-600'
-                          }`}>
+                        <Text className={`text-center font-bold text-xs ${activeTab === 'LENT' ? 'text-green-600' : 'text-red-600' }`}>
                           +{formatCurrency(parseFloat(monthlyPayment.toFixed(0)))} (Mo)
                         </Text>
                       </TouchableOpacity>
@@ -1214,8 +1207,7 @@ export default function LoansDebtsScreen() {
 
                       <TouchableOpacity
                         onPress={() => initiatePayment(item, 'FULL')}
-                        className={`flex-1 min-w-[30%] py-3 rounded-xl ${activeTab === 'LENT' ? 'bg-green-500' : 'bg-red-500'
-                          }`}
+                        className={`flex-1 min-w-[30%] py-3 rounded-xl ${activeTab === 'LENT' ? 'bg-green-500' : 'bg-red-500' }`}
                       >
                         <Text className="text-white text-center font-bold text-xs">{t('fullPaid')}</Text>
                       </TouchableOpacity>
@@ -1288,13 +1280,9 @@ export default function LoansDebtsScreen() {
                 <TouchableOpacity
                   key={acc.id}
                   onPress={() => { clearError('accountId'); setPaymentAccountId(acc.id); }}
-                  className={`mr-2 px-4 py-3 rounded-xl border-2 ${paymentAccountId === acc.id
-                    ? 'bg-blue-50 border-blue-500'
-                    : 'bg-slate-50 dark:bg-slate-800 border-transparent'
-                    }`}
+                  className={`mr-2 px-4 py-3 rounded-xl border-2 ${paymentAccountId === acc.id ? 'bg-blue-50 border-blue-500' : 'bg-slate-50 dark:bg-slate-800 border-transparent' }`}
                 >
-                  <Text className={`font-bold ${paymentAccountId === acc.id ? 'text-blue-700' : 'text-slate-600 dark:text-slate-400'
-                    }`}>{acc.name}</Text>
+                  <Text className={`font-bold ${paymentAccountId === acc.id ? 'text-blue-700' : 'text-slate-600 dark:text-slate-400' }`}>{acc.name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -1343,13 +1331,9 @@ export default function LoansDebtsScreen() {
                       <TouchableOpacity
                         key={acc.id}
                         onPress={() => setFormData({ ...formData, accountId: acc.id })}
-                        className={`mr-2 px-4 py-3 rounded-xl border-2 ${formData.accountId === acc.id
-                          ? 'bg-emerald-50 border-emerald-500'
-                          : 'bg-slate-50 dark:bg-slate-800 border-transparent'
-                          }`}
+                        className={`mr-2 px-4 py-3 rounded-xl border-2 ${formData.accountId === acc.id ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 dark:bg-slate-800 border-transparent' }`}
                       >
-                        <Text className={`font-bold ${formData.accountId === acc.id ? 'text-emerald-700' : 'text-slate-600 dark:text-slate-400'
-                          }`}>{acc.name} ({formatCurrency(acc.balance)})</Text>
+                        <Text className={`font-bold ${formData.accountId === acc.id ? 'text-emerald-700' : 'text-slate-600 dark:text-slate-400' }`}>{acc.name} ({formatCurrency(acc.balance)})</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -1562,8 +1546,7 @@ export default function LoansDebtsScreen() {
                   onPress={() => setFormData({ ...formData, reminderEnabled: !formData.reminderEnabled })}
                   className="flex-row items-center mb-3"
                 >
-                  <View className={`w-6 h-6 rounded border-2 mr-3 justify-center items-center ${formData.reminderEnabled ? 'bg-blue-500 border-blue-500' : 'border-slate-300'
-                    }`}>
+                  <View className={`w-6 h-6 rounded border-2 mr-3 justify-center items-center ${formData.reminderEnabled ? 'bg-blue-500 border-blue-500' : 'border-slate-300' }`}>
                     {formData.reminderEnabled && <FontAwesome name="check" size={14} color="#fff" />}
                   </View>
                   <View className="flex-1">
@@ -1581,14 +1564,10 @@ export default function LoansDebtsScreen() {
                         <TouchableOpacity
                           key={days}
                           onPress={() => setFormData({ ...formData, reminderDaysBefore: days })}
-                          className={`flex-1 py-3 rounded-xl border-2 ${formData.reminderDaysBefore === days
-                            ? 'bg-blue-500 border-blue-500'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                            }`}
+                          className={`flex-1 py-3 rounded-xl border-2 ${formData.reminderDaysBefore === days ? 'bg-blue-500 border-blue-500' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' }`}
                         >
                           <Text
-                            className={`text-center font-semibold ${formData.reminderDaysBefore === days ? 'text-white' : 'text-slate-600 dark:text-slate-400'
-                              }`}
+                            className={`text-center font-semibold ${formData.reminderDaysBefore === days ? 'text-white' : 'text-slate-600 dark:text-slate-400' }`}
                           >
                             {days === '0' ? 'Same Day' : `${days}d`}
                           </Text>
@@ -1611,8 +1590,7 @@ export default function LoansDebtsScreen() {
               <TouchableOpacity
                 onPress={editingItem ? handleEditItem : handleAddItem}
                 disabled={!formData.personName || !formData.amount || (!editingItem && !formData.accountId)}
-                className={`h-14 rounded-2xl justify-center items-center ${activeTab === 'LENT' ? 'bg-green-500' : 'bg-red-500'
-                  } ${(!formData.personName || !formData.amount || (!editingItem && !formData.accountId)) ? 'opacity-50' : ''}`}
+                className={`h-14 rounded-2xl justify-center items-center ${activeTab === 'LENT' ? 'bg-green-500' : 'bg-red-500' } ${(!formData.personName || !formData.amount || (!editingItem && !formData.accountId)) ? 'opacity-50' : ''}`}
               >
                 <Text className="text-white text-base font-bold">
                   {editingItem ? 'Update' : 'Add'} {activeTab === 'LENT' ? 'Loan' : 'Debt'}

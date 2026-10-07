@@ -222,7 +222,7 @@ export default function FinancialGoalsScreen() {
                     <Text className="text-slate-900 dark:text-white font-bold text-lg mb-1">
                       {goal.title}
                     </Text>
-                    <Text className="text-slate-500 text-sm">{goal.category}</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">{goal.category}</Text>
                   </View>
                   <View className="flex-row">
                     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit"
@@ -243,7 +243,7 @@ export default function FinancialGoalsScreen() {
                 {/* Progress */}
                 <View className="mb-4">
                   <View className="flex-row justify-between mb-2">
-                    <Text className="text-slate-500 text-sm">Progress</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-sm">Progress</Text>
                     <Text className="text-slate-900 dark:text-white font-bold text-sm">
                       {progress.toFixed(1)}%
                     </Text>
@@ -262,14 +262,14 @@ export default function FinancialGoalsScreen() {
                 {/* Amounts */}
                 <View className="flex-row justify-between mb-4">
                   <View>
-                    <Text className="text-slate-500 text-xs mb-1">Saved</Text>
-                    <Text className="text-slate-900 dark:text-white font-bold text-lg">
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs mb-1">Saved</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-slate-900 dark:text-white font-bold text-lg">
                       {formatCurrency(goal.currentAmount)}
                     </Text>
                   </View>
                   <View className="items-end">
-                    <Text className="text-slate-500 text-xs mb-1">Target</Text>
-                    <Text className="text-slate-900 dark:text-white font-bold text-lg">
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs mb-1">Target</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-slate-900 dark:text-white font-bold text-lg">
                       {formatCurrency(goal.targetAmount)}
                     </Text>
                   </View>
@@ -279,7 +279,7 @@ export default function FinancialGoalsScreen() {
                 <View className="flex-row justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-700">
                   <View className="flex-row items-center">
                     <FontAwesome name="calendar" size={14} color="#94a3b8" />
-                    <Text className="text-slate-500 text-xs ml-2">
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs ml-2">
                       {daysRemaining > 0 ? `${daysRemaining} days left` : 'Deadline passed'}
                     </Text>
                   </View>
@@ -401,8 +401,7 @@ export default function FinancialGoalsScreen() {
                     accessibilityLabel={`${icon} icon`}
                     accessibilityState={{ selected: formData.icon === icon }}
                     onPress={() => setFormData({ ...formData, icon })}
-                    className={`w-14 h-14 justify-center items-center m-1 rounded-xl ${formData.icon === icon ? 'bg-primary-500' : 'bg-slate-100 dark:bg-slate-800'
-                      }`}
+                    className={`w-14 h-14 justify-center items-center m-1 rounded-xl ${formData.icon === icon ? 'bg-primary-500' : 'bg-slate-100 dark:bg-slate-800' }`}
                   >
                     <FontAwesome
                       name={icon as any}
@@ -434,8 +433,7 @@ export default function FinancialGoalsScreen() {
               <TouchableOpacity
                 onPress={editingGoal ? handleEditGoal : handleAddGoal}
                 disabled={!formData.title || !formData.targetAmount}
-                className={`bg-primary-500 h-14 rounded-2xl justify-center items-center ${(!formData.title || !formData.targetAmount) ? 'opacity-50' : ''
-                  }`}
+                className={`bg-primary-500 h-14 rounded-2xl justify-center items-center ${(!formData.title || !formData.targetAmount) ? 'opacity-50' : '' }`}
               >
                 <Text className="text-white text-base font-bold">
                   {editingGoal ? 'Update Goal' : 'Add Goal'}

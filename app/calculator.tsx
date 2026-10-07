@@ -109,11 +109,7 @@ export default function CalculatorScreen() {
         }}
       >
         <View
-          className={`w-full h-full justify-center items-center rounded-3xl
-            ${isOperator ? 'bg-indigo-500' :
-              isEquals ? 'bg-emerald-500' :
-                isFunction ? 'bg-slate-200 dark:bg-slate-700' :
-                  'bg-white dark:bg-slate-800'}`}
+          className={`w-full h-full justify-center items-center rounded-3xl ${isOperator ? 'bg-indigo-500' : isEquals ? 'bg-emerald-500' : isFunction ? 'bg-slate-200 dark:bg-slate-700' : 'bg-white dark:bg-slate-800'}`}
           style={{
             shadowColor: "#000",
             shadowOffset: { width: 0, height: 2 },
@@ -122,10 +118,7 @@ export default function CalculatorScreen() {
             elevation: 2
           }}
         >
-          <Text className={`text-2xl font-semibold 
-            ${(isOperator || isEquals) ? 'text-white' :
-              isFunction ? 'text-indigo-600 dark:text-indigo-400' :
-                'text-slate-800 dark:text-white'}`}>
+          <Text className={`text-2xl font-semibold ${(isOperator || isEquals) ? 'text-white' : isFunction ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-white'}`}>
             {value}
           </Text>
         </View>

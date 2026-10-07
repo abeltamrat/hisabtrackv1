@@ -49,9 +49,7 @@ export default function FormField({
       <TextInput
         {...inputProps}
         // 48px keeps the field comfortably tappable with a coarse pointer.
-        className={`bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white px-4 rounded-xl text-base border ${
-          invalid ? 'border-red-500 dark:border-red-500' : 'border-slate-200 dark:border-slate-700'
-        } ${inputClassName}`}
+        className={`bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white px-4 rounded-xl text-base border ${ invalid ? 'border-red-500 dark:border-red-500' : 'border-slate-200 dark:border-slate-700' } ${inputClassName}`}
         style={[{ minHeight: 48, paddingVertical: 12 }, inputProps.style]}
         placeholderTextColor={inputProps.placeholderTextColor ?? '#94a3b8'}
         accessibilityLabel={inputProps.accessibilityLabel ?? label}

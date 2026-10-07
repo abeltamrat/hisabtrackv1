@@ -575,16 +575,10 @@ export default function ReportsScreen() {
             <TouchableOpacity
               key={range.value}
               onPress={() => setTimeRange(range.value)}
-              className={`${timeRangeButtonClass} ${timeRange === range.value
-                ? 'bg-white'
-                : 'bg-white/20'
-                }`}
+              className={`${timeRangeButtonClass} ${timeRange === range.value ? 'bg-white' : 'bg-white/20' }`}
             >
               <Text
-                className={`text-center font-semibold ${timeRangeTextClass} ${timeRange === range.value
-                  ? 'text-indigo-600'
-                  : 'text-white'
-                  }`}
+                className={`text-center font-semibold ${timeRangeTextClass} ${timeRange === range.value ? 'text-indigo-600' : 'text-white' }`}
               >
                 {range.label}
               </Text>
@@ -605,10 +599,7 @@ export default function ReportsScreen() {
             <TouchableOpacity
               key={tab.value}
               onPress={() => setActiveTab(tab.value)}
-              className={`${tabButtonClass} ${activeTab === tab.value
-                ? 'bg-indigo-500'
-                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
-                }`}
+              className={`${tabButtonClass} ${activeTab === tab.value ? 'bg-indigo-500' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700' }`}
             >
               <FontAwesome
                 name={tab.icon as any}
@@ -616,10 +607,7 @@ export default function ReportsScreen() {
                 color={activeTab === tab.value ? '#fff' : '#64748b'}
               />
               <Text
-                className={`${tabLabelClass} ${activeTab === tab.value
-                  ? 'text-white'
-                  : 'text-slate-600 dark:text-slate-400'
-                  }`}
+                className={`${tabLabelClass} ${activeTab === tab.value ? 'text-white' : 'text-slate-600 dark:text-slate-400' }`}
               >
                 {t(tab.label.toLowerCase())}
               </Text>
@@ -652,13 +640,13 @@ export default function ReportsScreen() {
             <View className="flex-row gap-3 mb-6">
               <View className="flex-1 bg-green-50 dark:bg-green-900/20 p-4 rounded-2xl border-2 border-green-200 dark:border-green-800">
                 <Text className="text-green-600 text-xs font-bold mb-1">{t('income').toUpperCase()}</Text>
-                <Text className="text-green-700 dark:text-green-400 text-2xl font-bold">
+                <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-green-700 dark:text-green-400 text-2xl font-bold">
                   {formatCurrency(summary.income)}
                 </Text>
               </View>
               <View className="flex-1 bg-red-50 dark:bg-red-900/20 p-4 rounded-2xl border-2 border-red-200 dark:border-red-800">
                 <Text className="text-red-600 text-xs font-bold mb-1">{t('expense').toUpperCase()}</Text>
-                <Text className="text-red-700 dark:text-red-400 text-2xl font-bold">
+                <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-red-700 dark:text-red-400 text-2xl font-bold">
                   {formatCurrency(summary.expense)}
                 </Text>
               </View>
@@ -667,8 +655,7 @@ export default function ReportsScreen() {
             <View className="flex-row gap-3 mb-6">
               <View className="flex-1 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border-2 border-blue-200 dark:border-blue-800">
                 <Text className="text-blue-600 text-xs font-bold mb-1">{t('netBalance')}</Text>
-                <Text className={`text-2xl font-bold ${summary.balance >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
+                <Text className={`text-2xl font-bold ${summary.balance >= 0 ? 'text-green-600' : 'text-red-600' }`}>
                   {formatCurrency(Math.abs(summary.balance))}
                 </Text>
               </View>
@@ -739,18 +726,10 @@ export default function ReportsScreen() {
                 <TouchableOpacity
                   key={option.value}
                   onPress={() => setForecastDays(option.value)}
-                  className={`flex-1 ${isVerySmall ? 'py-2.5' : 'py-3'} rounded-2xl border ${
-                    forecastDays === option.value
-                      ? 'bg-indigo-500 border-indigo-500'
-                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                  }`}
+                  className={`flex-1 ${isVerySmall ? 'py-2.5' : 'py-3'} rounded-2xl border ${ forecastDays === option.value ? 'bg-indigo-500 border-indigo-500' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' }`}
                 >
                   <Text
-                    className={`text-center font-bold ${isVerySmall ? 'text-xs' : 'text-sm'} ${
-                      forecastDays === option.value
-                        ? 'text-white'
-                        : 'text-slate-700 dark:text-slate-300'
-                    }`}
+                    className={`text-center font-bold ${isVerySmall ? 'text-xs' : 'text-sm'} ${ forecastDays === option.value ? 'text-white' : 'text-slate-700 dark:text-slate-300' }`}
                   >
                     {option.label}
                   </Text>
@@ -769,11 +748,7 @@ export default function ReportsScreen() {
                 <View className="items-end">
                   <Text className="text-white/90 text-xs">Projected Change</Text>
                   <Text
-                    className={`text-xl font-bold ${
-                      forecastResult.projectedBalance - forecastResult.startingBalance >= 0
-                        ? 'text-emerald-200'
-                        : 'text-rose-200'
-                    }`}
+                    className={`text-xl font-bold ${ forecastResult.projectedBalance - forecastResult.startingBalance >= 0 ? 'text-emerald-200' : 'text-rose-200' }`}
                   >
                     {formatCurrency(forecastResult.projectedBalance - forecastResult.startingBalance)}
                   </Text>
@@ -783,11 +758,11 @@ export default function ReportsScreen() {
               <View className="flex-row gap-3">
                 <View className="flex-1 bg-white/10 rounded-2xl p-4">
                   <Text className="text-white/90 text-xs mb-1">Current Balance</Text>
-                  <Text className="text-white text-2xl font-bold">{formatCurrency(forecastResult.startingBalance)}</Text>
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-2xl font-bold">{formatCurrency(forecastResult.startingBalance)}</Text>
                 </View>
                 <View className="flex-1 bg-white/10 rounded-2xl p-4">
                   <Text className="text-white/90 text-xs mb-1">Projected Balance</Text>
-                  <Text className="text-white text-2xl font-bold">{formatCurrency(forecastResult.projectedBalance)}</Text>
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-2xl font-bold">{formatCurrency(forecastResult.projectedBalance)}</Text>
                 </View>
               </View>
 
@@ -797,7 +772,7 @@ export default function ReportsScreen() {
               >
                 <View>
                   <Text className="text-white/90 text-xs mb-1">Lowest Balance</Text>
-                  <Text className="text-white text-xl font-bold">{formatCurrency(forecastResult.lowestBalance)}</Text>
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-xl font-bold">{formatCurrency(forecastResult.lowestBalance)}</Text>
                 </View>
                 <View className="items-end">
                   <Text className="text-white/90 text-xs mb-1">Lowest Date</Text>
@@ -813,13 +788,13 @@ export default function ReportsScreen() {
             <View className="flex-row gap-3 mb-6">
               <View className="flex-1 bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800">
                 <Text className="text-emerald-600 text-xs font-bold mb-1">Expected Income</Text>
-                <Text className="text-emerald-700 dark:text-emerald-300 text-xl font-bold">
+                <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-emerald-700 dark:text-emerald-300 text-xl font-bold">
                   {formatCurrency(forecastResult.upcomingIncome)}
                 </Text>
               </View>
               <View className="flex-1 bg-orange-50 dark:bg-orange-900/20 p-4 rounded-2xl border border-orange-200 dark:border-orange-800">
                 <Text className="text-orange-600 text-xs font-bold mb-1">Scheduled Outflows</Text>
-                <Text className="text-orange-700 dark:text-orange-300 text-xl font-bold">
+                <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-orange-700 dark:text-orange-300 text-xl font-bold">
                   {formatCurrency(forecastResult.upcomingExpense + forecastResult.upcomingLoanPayments)}
                 </Text>
               </View>
@@ -839,7 +814,7 @@ export default function ReportsScreen() {
                       </Text>
                     </View>
                   </View>
-                  <Text className="text-amber-700 dark:text-amber-300 font-bold text-lg">
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-amber-700 dark:text-amber-300 font-bold text-lg">
                     {formatCurrency(forecastResult.upcomingLoanPayments)}
                   </Text>
                 </View>
@@ -940,7 +915,7 @@ export default function ReportsScreen() {
                         {new Date(event.date).toLocaleDateString()} • {event.type === 'LOAN_DUE' ? 'Loan repayment' : event.category}
                       </Text>
                     </View>
-                    <Text className="text-red-600 font-bold text-lg">{formatCurrency(event.amount)}</Text>
+                    <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-red-600 font-bold text-lg">{formatCurrency(event.amount)}</Text>
                   </View>
                 ))
               ) : (
@@ -971,13 +946,11 @@ export default function ReportsScreen() {
                       </Text>
                     </View>
                     <View className="items-end">
-                      <Text className="text-slate-900 dark:text-white font-bold text-lg">
+                      <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-slate-900 dark:text-white font-bold text-lg">
                         {formatCurrency(projection.projectedBalance)}
                       </Text>
                       <Text
-                        className={`text-xs font-semibold ${
-                          projection.delta >= 0 ? 'text-emerald-600' : 'text-red-600'
-                        }`}
+                        className={`text-xs font-semibold ${ projection.delta >= 0 ? 'text-emerald-600' : 'text-red-600' }`}
                       >
                         {projection.delta >= 0 ? '+' : ''}
                         {formatCurrency(projection.delta)}
@@ -1000,13 +973,13 @@ export default function ReportsScreen() {
               <View className="flex-row gap-3 mb-4">
                 <View className="flex-1 bg-green-50 dark:bg-green-900/10 p-4 rounded-2xl">
                   <Text className="text-green-600 text-xs font-bold mb-1">3-Month Avg Income</Text>
-                  <Text className="text-green-700 dark:text-green-300 text-lg font-bold">
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-green-700 dark:text-green-300 text-lg font-bold">
                     {formatCurrency(historicalForecast.income)}
                   </Text>
                 </View>
                 <View className="flex-1 bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl">
                   <Text className="text-red-600 text-xs font-bold mb-1">3-Month Avg Expense</Text>
-                  <Text className="text-red-700 dark:text-red-300 text-lg font-bold">
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-red-700 dark:text-red-300 text-lg font-bold">
                     {formatCurrency(historicalForecast.expense)}
                   </Text>
                 </View>
@@ -1039,7 +1012,7 @@ export default function ReportsScreen() {
           <View>
             <LinearGradient colors={['#22c55e', '#16a34a']} className="rounded-3xl p-6 mb-6">
               <Text className="text-white/90 text-sm mb-2">{t('totalIncome')}</Text>
-              <Text className="text-white text-4xl font-bold">{formatCurrency(summary.income)}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-4xl font-bold">{formatCurrency(summary.income)}</Text>
             </LinearGradient>
 
             {incomeBreakdown.map((item, index) => (
@@ -1057,10 +1030,10 @@ export default function ReportsScreen() {
                     </View>
                     <View className="flex-1">
                       <Text className="text-slate-900 dark:text-white font-bold">{item.name}</Text>
-                      <Text className="text-slate-500 text-xs">{item.percentage.toFixed(1)}% of total</Text>
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs">{item.percentage.toFixed(1)}% of total</Text>
                     </View>
                   </View>
-                  <Text className="text-green-600 font-bold text-lg">{formatCurrency(item.amount)}</Text>
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-green-600 font-bold text-lg">{formatCurrency(item.amount)}</Text>
                 </View>
                 <View className="bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                   <View
@@ -1078,7 +1051,7 @@ export default function ReportsScreen() {
           <View>
             <LinearGradient colors={['#ef4444', '#dc2626']} className="rounded-3xl p-6 mb-6">
               <Text className="text-white/90 text-sm mb-2">{t('totalExpenses')}</Text>
-              <Text className="text-white text-4xl font-bold">{formatCurrency(summary.expense)}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-white text-4xl font-bold">{formatCurrency(summary.expense)}</Text>
             </LinearGradient>
 
             {categoryBreakdown.map((item, index) => (
@@ -1096,10 +1069,10 @@ export default function ReportsScreen() {
                     </View>
                     <View className="flex-1">
                       <Text className="text-slate-900 dark:text-white font-bold">{item.name}</Text>
-                      <Text className="text-slate-500 text-xs">{item.percentage.toFixed(1)}% of total</Text>
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs">{item.percentage.toFixed(1)}% of total</Text>
                     </View>
                   </View>
-                  <Text className="text-red-600 font-bold text-lg">{formatCurrency(item.amount)}</Text>
+                  <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-red-600 font-bold text-lg">{formatCurrency(item.amount)}</Text>
                 </View>
                 <View className="bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                   <View
@@ -1246,7 +1219,7 @@ export default function ReportsScreen() {
             <Text className={`text-slate-900 dark:text-white ${isVerySmall ? 'text-lg' : 'text-xl'} font-bold mb-2`}>
               {exportStep === 1 ? '1. Select Report Content' : '2. Choose Format'}
             </Text>
-            <Text className={`text-slate-500 mb-6 ${isVerySmall ? 'text-sm' : 'text-base'}`}>
+            <Text className={`text-slate-500 dark:text-slate-400 mb-6 ${isVerySmall ? 'text-sm' : 'text-base'}`}>
               {exportStep === 1 ? 'Which information would you like to include?' : 'How would you like to receive the file?'}
             </Text>
 
@@ -1261,7 +1234,7 @@ export default function ReportsScreen() {
                   </View>
                   <View className="flex-1">
                     <Text className={`text-blue-900 dark:text-blue-300 font-bold ${isVerySmall ? 'text-sm' : 'text-base'}`}>Transaction History</Text>
-                    <Text className="text-slate-500 text-xs text-wrap">A complete ledger of all transactions.</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs text-wrap">A complete ledger of all transactions.</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -1274,7 +1247,7 @@ export default function ReportsScreen() {
                   </View>
                   <View className="flex-1">
                     <Text className={`text-emerald-900 dark:text-emerald-300 font-bold ${isVerySmall ? 'text-sm' : 'text-base'}`}>Financial Summary</Text>
-                    <Text className="text-slate-500 text-xs text-wrap">Category-wise breakdown and efficiency stats.</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs text-wrap">Category-wise breakdown and efficiency stats.</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -1287,7 +1260,7 @@ export default function ReportsScreen() {
                   </View>
                   <View className="flex-1">
                     <Text className={`text-orange-900 dark:text-orange-300 font-bold ${isVerySmall ? 'text-sm' : 'text-base'}`}>Loans & Debts</Text>
-                    <Text className="text-slate-500 text-xs text-wrap">Detailed status of outstanding balances.</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs text-wrap">Detailed status of outstanding balances.</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -1300,7 +1273,7 @@ export default function ReportsScreen() {
                   </View>
                   <View className="flex-1">
                     <Text className={`text-indigo-900 dark:text-indigo-300 font-bold ${isVerySmall ? 'text-sm' : 'text-base'}`}>All Data Export</Text>
-                    <Text className="text-slate-500 text-xs text-wrap">Accounts, transactions, budgets, and loans/debts in separate sheets.</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs text-wrap">Accounts, transactions, budgets, and loans/debts in separate sheets.</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -1316,7 +1289,7 @@ export default function ReportsScreen() {
                     </View>
                     <View className="flex-1">
                       <Text className={`text-slate-900 dark:text-white font-bold ${isVerySmall ? 'text-sm' : 'text-base'}`}>{t('pdfDocument')}</Text>
-                      <Text className="text-slate-500 text-xs text-wrap">{t('pdfDesc')}</Text>
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs text-wrap">{t('pdfDesc')}</Text>
                     </View>
                   </TouchableOpacity>
                 ) : null}
@@ -1330,7 +1303,7 @@ export default function ReportsScreen() {
                   </View>
                   <View className="flex-1">
                     <Text className={`text-slate-900 dark:text-white font-bold ${isVerySmall ? 'text-sm' : 'text-base'}`}>{t('excelSheet')}</Text>
-                    <Text className="text-slate-500 text-xs text-wrap">
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs text-wrap">
                       {selectedReportType === 'all_data'
                         ? 'Includes accounts, transactions, budgets, and loans/debts sheets.'
                         : t('excelDesc')}
@@ -1347,7 +1320,7 @@ export default function ReportsScreen() {
               }}
               className="mt-2 py-4 justify-center items-center"
             >
-              <Text className="text-slate-500 font-bold">{exportStep === 2 ? '← Back' : t('cancel')}</Text>
+              <Text className="text-slate-500 dark:text-slate-400 font-bold">{exportStep === 2 ? '← Back' : t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

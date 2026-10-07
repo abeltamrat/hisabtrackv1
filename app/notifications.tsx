@@ -189,8 +189,7 @@ export default function NotificationsScreen() {
             <TouchableOpacity
               key={notification.id}
               onPress={() => handleNotificationAction(notification)}
-              className={`mb-3 rounded-2xl overflow-hidden ${!notification.read ? 'border-2 border-blue-500' : ''
-                }`}
+              className={`mb-3 rounded-2xl overflow-hidden ${!notification.read ? 'border-2 border-blue-500' : '' }`}
             >
               <LinearGradient
                 colors={

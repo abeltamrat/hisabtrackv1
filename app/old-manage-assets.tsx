@@ -320,7 +320,7 @@ export default function ManageAssets() {
           </View>
 
           {/* Action Buttons */}
-          <View className="flex-row mt-4 space-x-2">
+          <View className="flex-row mt-4 gap-2">
             {isEditing ? (
               <>
                 <TouchableOpacity
@@ -442,7 +442,7 @@ export default function ManageAssets() {
         </View>
 
         {/* Stats Cards */}
-        <View className="flex-row space-x-3">
+        <View className="flex-row gap-3">
           <View className="flex-1 bg-white/20 backdrop-blur-lg rounded-2xl p-4" style={{ elevation: 2 }}>
             <View className="flex-row items-center justify-between">
               <View>
