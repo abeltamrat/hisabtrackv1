@@ -190,6 +190,8 @@ test('same-day opposite SMS are suggested for review without being silently merg
  assert.equal(candidates[0].expenseAccountId,'cbe');
  assert.equal(candidates[0].incomeAccountId,'telebirr');
  assert.equal(candidates[0].confidence,'MEDIUM');
+ assert.equal(candidates[0].score,60);
+ assert.deepEqual(candidates[0].reasons,['Same amount','Same date']);
 });
 test('undo reopens only SMS drafts linked to the deleted transaction',async()=>{
  await DraftTransactionService.clearAll();

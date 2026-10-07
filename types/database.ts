@@ -19,6 +19,8 @@ export interface Account {
   updated_at?: number; // Timestamp of last update
   account_number?: string;
   sms_number?: string;
+  /** Names seen in SMS that identify this owned account. */
+  aliases?: string[];
   logo?: string;
 }
 

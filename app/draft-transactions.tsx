@@ -6,7 +6,7 @@ import { BackgroundService } from '@/services/BackgroundService';
 import { DraftTransaction, DraftTransactionService } from '@/services/DraftTransactionService';
 import { SMSLearningService } from '@/services/SMSLearningService';
 import { AppDispatch, RootState } from '@/store';
-import { fetchAccounts } from '@/store/slices/accountsSlice';
+import { fetchAccounts, updateAccount } from '@/store/slices/accountsSlice';
 import { addTransaction, deleteTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
 import { addLoan } from '@/store/slices/loansSlice';
 import { FontAwesome } from '@expo/vector-icons';
@@ -80,6 +80,7 @@ export default function DraftTransactionsScreen() {
   const [transferSourceAccountId, setTransferSourceAccountId] = useState('');
   const [transferDestinationAccountId, setTransferDestinationAccountId] = useState('');
   const [matchedCounterpartId, setMatchedCounterpartId] = useState('');
+  const [rememberOwnedRecipient, setRememberOwnedRecipient] = useState(false);
   const [makeRecurring, setMakeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('MONTHLY');
   const [reminderEnabled, setReminderEnabled] = useState(true);
@@ -195,6 +196,7 @@ export default function DraftTransactionsScreen() {
       setTransferSourceAccountId(target.transfer_from_account_id || target.account_id);
       setTransferDestinationAccountId(target.transfer_to_account_id || (target.type === 'INCOME' ? target.account_id : ''));
       setMatchedCounterpartId(target.paired_draft_id || '');
+      setRememberOwnedRecipient(false);
       setSplitEnabled(false);
       setSplits([]);
       setNote('');
@@ -334,6 +336,7 @@ export default function DraftTransactionsScreen() {
     setTransferSourceAccountId(draft.transfer_from_account_id || draft.account_id);
     setTransferDestinationAccountId(draft.transfer_to_account_id || (draft.type === 'INCOME' ? draft.account_id : ''));
     setMatchedCounterpartId(draft.paired_draft_id || '');
+    setRememberOwnedRecipient(false);
     setMakeRecurring(false);
     setRecurringFrequency('MONTHLY');
     setReminderEnabled(true);
@@ -398,6 +401,14 @@ export default function DraftTransactionsScreen() {
       const expenseLeg = selectedDraft.type === 'EXPENSE' ? selectedDraft : counterpart?.type === 'EXPENSE' ? counterpart : selectedDraft;
       const transferAmount = expenseLeg.gross_amount
         ?? Math.round((expenseLeg.amount + (expenseLeg.fees ?? 0) + (expenseLeg.tax ?? 0)) * 100) / 100;
+      if (isTransferDraft && rememberOwnedRecipient && editedRecipient.trim()) {
+        const ownedAccountId = selectedDraft.type === 'EXPENSE' ? transferDestinationAccountId : transferSourceAccountId;
+        const ownedAccount = accounts.find(item => item.id === ownedAccountId);
+        const alias = editedRecipient.trim();
+        if (ownedAccount && !ownedAccount.aliases?.some(item => item.toLocaleLowerCase() === alias.toLocaleLowerCase())) {
+          await dispatch(updateAccount({ ...ownedAccount, aliases: [...(ownedAccount.aliases || []), alias] })).unwrap();
+        }
+      }
       const result = await dispatch(addTransaction({
         account_id: isTransferDraft ? transferSourceAccountId : selectedDraft.account_id,
         type: isTransferDraft ? 'TRANSFER' : editedType,
@@ -1346,7 +1357,8 @@ export default function DraftTransactionsScreen() {
                             setTransferDestinationAccountId(candidate.incomeAccountId);
                           }} className={`p-3 rounded-xl mb-2 border ${matchedCounterpartId === counterpartId ? 'bg-indigo-600 border-indigo-600' : 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800'}`}>
                             <Text className={`text-xs font-bold ${matchedCounterpartId === counterpartId ? 'text-white' : 'text-slate-900 dark:text-white'}`}>{counterpartAccount?.name || 'Other account'} · {formatCurrency(counterpart?.amount || 0)}</Text>
-                            <Text className={`text-[10px] mt-1 ${matchedCounterpartId === counterpartId ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>{candidate.confidence === 'HIGH' ? 'Strong match' : 'Possible same-day match'} · {formatDate(counterpart?.date || 0)} {formatTime(counterpart?.date || 0)}</Text>
+                            <Text className={`text-[10px] mt-1 ${matchedCounterpartId === counterpartId ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>{candidate.confidence === 'HIGH' ? 'Strong match' : 'Possible match'} · {candidate.score}% · {formatDate(counterpart?.date || 0)} {formatTime(counterpart?.date || 0)}</Text>
+                            <Text className={`text-[10px] mt-1 ${matchedCounterpartId === counterpartId ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>{candidate.reasons.join(' · ')}</Text>
                           </TouchableOpacity>
                         );
                       })}
@@ -1360,6 +1372,10 @@ export default function DraftTransactionsScreen() {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {accounts.filter(item => item.id !== transferSourceAccountId).map(item => <TouchableOpacity key={item.id} onPress={() => setTransferDestinationAccountId(item.id)} className={`mr-2 px-3 py-2 rounded-xl ${transferDestinationAccountId === item.id ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}><Text className={`text-xs font-semibold ${transferDestinationAccountId === item.id ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>{item.name}</Text></TouchableOpacity>)}
                   </ScrollView>
+                  {!!editedRecipient.trim() && <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: rememberOwnedRecipient }} onPress={() => setRememberOwnedRecipient(!rememberOwnedRecipient)} className="flex-row items-center mt-4">
+                    <FontAwesome name={rememberOwnedRecipient ? 'check-square' : 'square-o'} size={18} color={rememberOwnedRecipient ? '#6366f1' : '#94a3b8'} />
+                    <View className="ml-2 flex-1"><Text className="text-slate-800 dark:text-slate-200 text-xs font-bold">Remember this as my account</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Future SMS using “{editedRecipient.trim()}” can identify the owned account automatically.</Text></View>
+                  </TouchableOpacity>}
                 </View>
               )}
 

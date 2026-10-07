@@ -23,6 +23,8 @@ export interface PairableDraft {
   transfer_to_account_id?: string;
   transfer_from_account_id?: string;
   paired_draft_id?: string;
+  reference_number?: string;
+  transfer_peer_account_number?: string;
 }
 
 export interface TransferPair {
@@ -54,6 +56,8 @@ function amountsMatch(expense: PairableDraft, income: PairableDraft): boolean {
 export interface TransferCandidate extends TransferPair {
   gapMs: number;
   confidence: 'HIGH' | 'MEDIUM';
+  score: number;
+  reasons: string[];
 }
 
 /**
@@ -81,13 +85,27 @@ export function findTransferCandidates(
         && expenseDay.getMonth() === incomeDay.getMonth()
         && expenseDay.getDate() === incomeDay.getDate();
       if (gapMs > windowMs || (!sameCalendarDate && gapMs > TRANSFER_PAIR_WINDOW_MS) || !amountsMatch(expense, income)) return null;
+      const reasons = ['Same amount'];
+      let score = 50;
+      if (gapMs <= TRANSFER_PAIR_WINDOW_MS) { score += 20; reasons.push('Within 15 minutes'); }
+      else { score += 10; reasons.push('Same date'); }
+      if (explicit) { score += 25; reasons.push('Owned account identified'); }
+      if (expense.reference_number && income.reference_number && expense.reference_number === income.reference_number) {
+        score += 15; reasons.push('Same bank reference');
+      }
+      if (expense.transfer_peer_account_number || income.transfer_peer_account_number) {
+        score += 10; reasons.push('Account ending detected');
+      }
+      score = Math.min(100, score);
       return {
         expenseId: expense.id,
         incomeId: income.id,
         expenseAccountId: expense.account_id,
         incomeAccountId: income.account_id,
         gapMs,
-        confidence: explicit || gapMs <= TRANSFER_PAIR_WINDOW_MS ? 'HIGH' as const : 'MEDIUM' as const,
+        confidence: score >= 80 ? 'HIGH' as const : 'MEDIUM' as const,
+        score,
+        reasons,
       };
     })
     .filter((item): item is TransferCandidate => item !== null)

@@ -150,6 +150,7 @@ export class LedgerDatabase implements IDatabase {
   }
   private validateAccount(a: Partial<Account>) {
     if (!a.name?.trim() || !/^[A-Z]{3}$/.test(a.currency || '') || !['BANK', 'MOBILE_MONEY', 'CASH', 'CARD', 'SAVINGS'].includes(a.type || '')) throw new Error('Invalid account');
+    if (a.aliases !== undefined && (a.aliases.length > 50 || a.aliases.some(alias => typeof alias !== 'string' || !alias.trim() || alias.length > 120))) throw new Error('Invalid account aliases');
     money(a.balance!); if (money(a.locked_amount ?? 0) < 0) throw new Error('Invalid locked amount');
   }
   updateAccount(input: Account) {

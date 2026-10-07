@@ -346,25 +346,16 @@ export class SMSSyncService {
             if (fromAcct) transferFromAccountId = fromAcct.id;
           }
 
-          // Dedup: skip INCOME side if the EXPENSE (source) draft was already created
-          if (parsed.type === 'INCOME') {
-            const timeWindow = 6 * 60 * 60 * 1000;
-            const hasExpenseSide =
-              existingDrafts.some(d =>
-                d.is_transfer && d.type === 'EXPENSE' &&
-                Math.abs(d.amount - parsed.amount) < 0.01 &&
-                Math.abs(d.date - parsed.date) < timeWindow
-              ) ||
-              draftsToAdd.some(d =>
-                (d as any).is_transfer && d.type === 'EXPENSE' &&
-                Math.abs(d.amount - parsed.amount) < 0.01 &&
-                Math.abs(d.date - parsed.date) < timeWindow
-              );
-            if (hasExpenseSide) {
-              result.alreadyRecorded++;
-              continue;
-            }
+          const merchantKey = (parsed.merchant || '').trim().toLocaleLowerCase();
+          if (merchantKey && parsed.type === 'EXPENSE' && !transferToAccountId) {
+            transferToAccountId = allAccts.find(a => a.id !== account.id && a.aliases?.some(alias => alias.trim().toLocaleLowerCase() === merchantKey))?.id;
           }
+          if (merchantKey && parsed.type === 'INCOME' && !transferFromAccountId) {
+            transferFromAccountId = allAccts.find(a => a.id !== account.id && a.aliases?.some(alias => alias.trim().toLocaleLowerCase() === merchantKey))?.id;
+          }
+
+          // Keep both directions. The receiving SMS is evidence for transfer
+          // reconciliation and is linked later instead of being discarded.
         }
         // ────────────────────────────────────────────────────────────────────
 
