@@ -57,6 +57,7 @@ export interface TransactionSplit {
   amount: number;
   category: string;
   description?: string;
+  tags?: string[];
 }
 
 export interface StandardTransaction extends TransactionBase {

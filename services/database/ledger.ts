@@ -2,6 +2,7 @@ import type { Account, Budget, IDatabase, Loan, Transaction } from '@/types/data
 import { createSerialQueue } from '@/utils/asyncLock';
 import { accountDelta, money, sumMoney, validateTransaction, purpose } from '@/utils/finance';
 import { generateUUID } from '@/utils/uuid';
+import { normalizeTransactionTags } from '@/utils/tags';
 import LocalChangeEmitter from '../LocalChangeEmitter';
 
 export type Table = 'accounts' | 'transactions' | 'budgets' | 'loans' | 'meta';
@@ -99,7 +100,7 @@ export class LedgerDatabase implements IDatabase {
   }
   private async buildTransaction(input: Omit<Transaction, 'id'>): Promise<Transaction> {
     validateTransaction(input, await this.raw.getAccounts());
-    return { ...input, id: input.operation_id ? `op-${input.operation_id}` : generateUUID(), amount: money(input.amount), gross_amount: input.gross_amount === undefined ? undefined : money(input.gross_amount), fees: money(input.fees || 0), tax: money(input.tax || 0), service_charge: money(input.service_charge || 0), vat: money(input.vat || 0), disaster_recovery_fee: money(input.disaster_recovery_fee || 0), splits: input.splits?.map(split => ({ ...split, amount: money(split.amount) })), purpose: purpose(input) as Transaction['purpose'], updated_at: Date.now() } as Transaction;
+    return { ...input, id: input.operation_id ? `op-${input.operation_id}` : generateUUID(), amount: money(input.amount), gross_amount: input.gross_amount === undefined ? undefined : money(input.gross_amount), fees: money(input.fees || 0), tax: money(input.tax || 0), service_charge: money(input.service_charge || 0), vat: money(input.vat || 0), disaster_recovery_fee: money(input.disaster_recovery_fee || 0), splits: input.splits?.map(split => ({ ...split, amount: money(split.amount), description: split.description?.trim() || undefined, tags: normalizeTransactionTags(split.tags) })), purpose: purpose(input) as Transaction['purpose'], updated_at: Date.now() } as Transaction;
   }
   createTransaction(input: Omit<Transaction, 'id'>) {
     return this.run(async () => {
@@ -123,6 +124,7 @@ export class LedgerDatabase implements IDatabase {
       const tx = { ...old, ...updates, id, updated_at: Date.now() } as Transaction;
       validateTransaction(tx, await this.raw.getAccounts());
       tx.amount = money(tx.amount);
+      tx.splits = tx.splits?.map(split => ({ ...split, amount: money(split.amount), description: split.description?.trim() || undefined, tags: normalizeTransactionTags(split.tags) }));
       await this.commit([{ table: 'transactions', id, value: tx }], await this.balances(old, tx));
       return tx;
     });

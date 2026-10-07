@@ -4,6 +4,7 @@ import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-nativ
 
 import type { TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
+import { formatTagInput, parseTagInput } from '@/utils/tags';
 
 type Category = { id: string; name: string };
 
@@ -66,6 +67,14 @@ export default function TransactionSplitEditor({
             onChangeText={value => update(split.id, { description: value })}
             placeholder="Description (optional)"
             placeholderTextColor="#94a3b8"
+            className="bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white mb-2"
+          />
+          <TextInput
+            value={formatTagInput(split.tags)}
+            onChangeText={value => update(split.id, { tags: parseTagInput(value) })}
+            placeholder="Tags for this part (comma separated)"
+            placeholderTextColor="#94a3b8"
+            autoCapitalize="none"
             className="bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white"
           />
         </View>

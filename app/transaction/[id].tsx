@@ -218,7 +218,7 @@ export default function TransactionDetail() {
                 <Text className="text-slate-700 dark:text-slate-300 text-xs font-bold uppercase mb-2">Category splits</Text>
                 {transaction.splits.map(split => (
                   <View key={split.id} className="flex-row justify-between items-start py-2 border-b border-slate-200 dark:border-slate-700">
-                    <View className="flex-1 mr-3"><Text className="text-slate-900 dark:text-white text-sm font-semibold">{split.category}</Text>{split.description ? <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{split.description}</Text> : null}</View>
+                    <View className="flex-1 mr-3"><Text className="text-slate-900 dark:text-white text-sm font-semibold">{split.category}</Text>{split.description ? <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{split.description}</Text> : null}{split.tags?.length ? <Text className="text-indigo-600 dark:text-indigo-300 text-xs mt-1">{split.tags.map(tag => `#${tag}`).join(' ')}</Text> : null}</View>
                     <Text className="text-slate-900 dark:text-white text-sm font-bold">{formatCurrency(split.amount)}</Text>
                   </View>
                 ))}

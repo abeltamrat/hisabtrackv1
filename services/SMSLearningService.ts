@@ -10,7 +10,7 @@ export interface SMSRule {
   hitCount?: number;
   confidence?: number;
   transactionType?: 'INCOME' | 'EXPENSE';
-  splitRatios?: Array<{ category: string; ratio: number; description?: string }>;
+  splitRatios?: Array<{ category: string; ratio: number; description?: string; tags?: string[] }>;
   transferFromAccountId?: string;
   transferToAccountId?: string;
 }
@@ -40,7 +40,7 @@ export class SMSLearningService {
     correctedCategory: string;
     isCorrection?: boolean;
     transactionType?: 'INCOME' | 'EXPENSE';
-    splits?: Array<{ category: string; amount: number; description?: string }>;
+    splits?: Array<{ category: string; amount: number; description?: string; tags?: string[] }>;
     transferFromAccountId?: string;
     transferToAccountId?: string;
   }): Promise<void> {
@@ -56,7 +56,7 @@ export class SMSLearningService {
     correctedCategory: string;
     isCorrection?: boolean;
     transactionType?: 'INCOME' | 'EXPENSE';
-    splits?: Array<{ category: string; amount: number; description?: string }>;
+    splits?: Array<{ category: string; amount: number; description?: string; tags?: string[] }>;
     transferFromAccountId?: string;
     transferToAccountId?: string;
   }): Promise<void> {
@@ -69,7 +69,7 @@ export class SMSLearningService {
     const splitTotal = input.splits?.reduce((sum, split) => sum + split.amount, 0) ?? 0;
     const learnedExtras = (existing?: SMSRule) => ({
       splitRatios: input.splits && input.splits.length >= 2 && splitTotal > 0
-        ? input.splits.map(split => ({ category: split.category, description: split.description, ratio: split.amount / splitTotal }))
+        ? input.splits.map(split => ({ category: split.category, description: split.description, tags: split.tags, ratio: split.amount / splitTotal }))
         : isCorrection ? undefined : existing?.splitRatios,
       transferFromAccountId: input.transferFromAccountId ?? existing?.transferFromAccountId,
       transferToAccountId: input.transferToAccountId ?? existing?.transferToAccountId,

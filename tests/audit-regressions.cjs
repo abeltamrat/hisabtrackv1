@@ -100,23 +100,25 @@ test('recipient payment and bank charges remain separate operating expenses',()=
 });
 test('split purchases allocate reports without changing the cash movement',()=>{
  const tx={...transaction('a',2000),id:'split-purchase',gross_amount:2003.60,splits:[
-  {id:'food',category:'Groceries',amount:1300,description:'Food'},
+  {id:'food',category:'Groceries',amount:1300,description:'Family groceries',tags:['household','weekly']},
   {id:'clothes',category:'Clothing',amount:500},
   {id:'delivery',category:'Transport',amount:200},
  ]};
  finance.validateTransaction(tx);
  const rows=finance.operatingTransactions([tx]);
  assert.deepEqual(rows.map(row=>[row.category,row.amount]),[['Groceries',1300],['Clothing',500],['Transport',200],['Bank Fees',3.60]]);
+ assert.equal(rows[0].description,'Family groceries');assert.deepEqual(rows[0].tags,['household','weekly']);
  assert.equal(finance.sumMoney(rows.map(row=>row.amount)),2003.60);
  assert.equal(finance.cashDelta(tx),-2003.60);
  assert.throws(()=>finance.validateTransaction({...tx,splits:tx.splits.slice(0,2)}),/Split amounts/);
 });
 test('ledger persists split allocations while debiting the account once',async()=>{
  const {db}=make();const a=await db.createAccount(account('Cash',2500));
- const saved=await db.createTransaction({...transaction(a.id,2000),splits:[{id:'g',category:'Groceries',amount:1300},{id:'c',category:'Clothing',amount:500},{id:'d',category:'Delivery',amount:200}]});
+ const saved=await db.createTransaction({...transaction(a.id,2000),splits:[{id:'g',category:'Groceries',amount:1300,description:'Weekly food',tags:[' Home ','weekly','home']},{id:'c',category:'Clothing',amount:500},{id:'d',category:'Delivery',amount:200}]});
  assert.equal((await db.getAccounts())[0].balance,500);
  assert.equal(saved.splits.length,3);
  assert.equal(finance.sumMoney(saved.splits.map(item=>item.amount)),2000);
+ assert.equal(saved.splits[0].description,'Weekly food');assert.deepEqual(saved.splits[0].tags,['Home','weekly']);
 });
 
 test('CBE transfer SMS keeps recipient amount, named recipient, receipt, and itemized charges',()=>{

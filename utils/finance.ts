@@ -45,6 +45,7 @@ export function operatingTransactions(transactions: Transaction[]): Transaction[
             disaster_recovery_fee: undefined,
             category: split.category,
             description: split.description || t.description,
+            tags: split.tags ?? t.tags,
             splits: undefined,
           }))
         : [{ ...t, gross_amount: undefined, service_charge: undefined, vat: undefined, disaster_recovery_fee: undefined, fees: undefined, tax: undefined }];
@@ -80,7 +81,7 @@ export function validateTransaction(t: Partial<Transaction>, accounts?: Account[
   for (const fee of [t.fees ?? 0, t.tax ?? 0]) if (minor(fee) < 0) throw new Error('Fees cannot be negative');
   for (const fee of [t.service_charge ?? 0, t.vat ?? 0, t.disaster_recovery_fee ?? 0]) if (minor(fee) < 0) throw new Error('Fees cannot be negative');
   if (t.splits !== undefined) {
-    if (t.type === 'TRANSFER' || t.splits.length < 2 || t.splits.some(split => !split.id || !split.category.trim() || minor(split.amount) <= 0)) throw new Error('Invalid transaction splits');
+    if (t.type === 'TRANSFER' || t.splits.length < 2 || t.splits.some(split => !split.id || !split.category.trim() || minor(split.amount) <= 0 || (split.description !== undefined && typeof split.description !== 'string') || (split.tags !== undefined && (!Array.isArray(split.tags) || split.tags.length > 12 || split.tags.some(tag => typeof tag !== 'string' || !tag.trim() || tag.length > 40))))) throw new Error('Invalid transaction splits');
     if (sumMoney(t.splits.map(split => split.amount)) !== money(t.amount!)) throw new Error('Split amounts must equal the transaction amount');
   }
   if (t.gross_amount !== undefined && minor(t.gross_amount) < minor(t.amount!)) throw new Error('Total debit cannot be less than transaction amount');

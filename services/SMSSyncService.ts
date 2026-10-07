@@ -415,7 +415,7 @@ export class SMSSyncService {
             ? rule.splitRatios.map((split, index, all) => {
                 const prior = all.slice(0, index).reduce((sum, item) => sum + Math.round(parsed.amount * item.ratio * 100) / 100, 0);
                 const amount = index === all.length - 1 ? Math.round((parsed.amount - prior) * 100) / 100 : Math.round(parsed.amount * split.ratio * 100) / 100;
-                return { id: `learned-${parsed.smsId}-${index}`, category: split.category, description: split.description, amount };
+                return { id: `learned-${parsed.smsId}-${index}`, category: split.category, description: split.description, tags: split.tags, amount };
               })
             : undefined,
           is_loan_disbursement: parsed.isLoanDisbursement || undefined,
