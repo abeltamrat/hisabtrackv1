@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import { NotificationService } from '@/services/NotificationService';
+import { NativeSmsReceiver } from '@/services/NativeSmsReceiver';
 
 // Background (suspended-app) SMS sync is owned by BackgroundService's
 // BACKGROUND_SYNC_TASK, which respects the Settings reminder toggles.
@@ -23,12 +24,26 @@ export const SMSAutoSync: React.FC = () => {
   const hasSmsAccounts = useSelector((state: RootState) =>
     state.accounts.items.some(a => !!a.sms_number)
   );
+  const smsSendersKey = useSelector((state: RootState) =>
+    state.accounts.items.flatMap(account =>
+      (account.sms_number || '').split(',').map(sender => sender.trim()).filter(Boolean)
+    ).join('|')
+  );
+  const smsSenders = smsSendersKey ? smsSendersKey.split('|') : [];
   const ledgerCurrency = useSelector((state: RootState) => state.accounts.items[0]?.currency || 'ETB');
 
   const hasSmsRef = useRef(hasSmsAccounts);
   const currencyRef = useRef(ledgerCurrency);
   useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
   useEffect(() => { currencyRef.current = ledgerCurrency; }, [ledgerCurrency]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    // Emptying this list on logout/session reset prevents one user's configured
+    // bank senders or receipt signals from carrying into the next local session.
+    void NativeSmsReceiver.configureSenders(accountsLoaded ? smsSenders : [])
+      .catch(() => undefined);
+  }, [accountsLoaded, smsSendersKey]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -58,6 +73,18 @@ export const SMSAutoSync: React.FC = () => {
       }
     };
 
+    // Keep a minimal sender allowlist in the native receiver. Android can then
+    // capture the arrival signal even when the React Native process is stopped.
+    // Message bodies remain in the system SMS provider and are parsed by the
+    // existing service, preserving its account matching and deduplication rules.
+    void NativeSmsReceiver.consumePendingSignals()
+      .then(pending => { if (pending > 0) void performSync(); })
+      .catch(() => undefined);
+    const unsubscribeFromSms = NativeSmsReceiver.subscribe(() => {
+      void NativeSmsReceiver.consumePendingSignals().catch(() => 0);
+      void performSync();
+    });
+
     // Initial sync after 3 s, then every 5 minutes while app is in foreground
     const timer = setTimeout(performSync, 3000);
     const interval = setInterval(performSync, 5 * 60 * 1000);
@@ -70,8 +97,9 @@ export const SMSAutoSync: React.FC = () => {
       clearTimeout(timer);
       clearInterval(interval);
       subscription.remove();
+      unsubscribeFromSms();
     };
-  }, [accountsLoaded]);
+  }, [accountsLoaded, smsSendersKey]);
 
   return null;
 };

@@ -915,6 +915,25 @@ test('the SMS permission screen requests the real permission', () => {
   assert.match(screen, /sent to the AI provider you choose/);
 });
 
+test('Android receives configured bank SMS while the app process is stopped', () => {
+  const appConfig = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'));
+  const plugin = fs.readFileSync(path.join(root, 'plugins/withSmsReceiver.js'), 'utf8');
+  const syncService = fs.readFileSync(path.join(root, 'services/SMSSyncService.ts'), 'utf8');
+  const autoSync = fs.readFileSync(path.join(root, 'components/SMSAutoSync.tsx'), 'utf8');
+
+  assert.ok(appConfig.expo.plugins.includes('./plugins/withSmsReceiver'));
+  assert.match(plugin, /android\.provider\.Telephony\.SMS_RECEIVED/);
+  assert.match(plugin, /android\.permission\.BROADCAST_SMS/);
+  assert.match(plugin, /MAX_PENDING = 100/);
+  assert.doesNotMatch(plugin, /put\("body"/,
+    'the native handoff must not duplicate financial SMS bodies into preferences');
+  assert.match(syncService, /PERMISSIONS\.READ_SMS/);
+  assert.match(syncService, /PERMISSIONS\.RECEIVE_SMS/);
+  assert.match(autoSync, /NativeSmsReceiver\.subscribe/);
+  assert.match(autoSync, /configureSenders\(accountsLoaded \? smsSenders : \[\]\)/,
+    'logout must clear the native sender allowlist');
+});
+
 // ── Keyboard handling inside modals ───────────────────────────────────────
 function modalsWithInputs() {
   const found = [];

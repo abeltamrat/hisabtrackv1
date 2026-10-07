@@ -55,15 +55,12 @@ export class SMSSyncService {
     try {
       const { PermissionsAndroid } = require('react-native');
       if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(
+        const granted = await PermissionsAndroid.requestMultiple([
           PermissionsAndroid.PERMISSIONS.READ_SMS,
-          {
-            title: 'SMS Permission',
-            message: 'HisabTrack needs access to your SMS to automatically track bank transactions',
-            buttonPositive: 'OK',
-          }
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
+          PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+        ]);
+        return granted[PermissionsAndroid.PERMISSIONS.READ_SMS] === PermissionsAndroid.RESULTS.GRANTED
+          && granted[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] === PermissionsAndroid.RESULTS.GRANTED;
       }
       return false;
     } catch (error) {
@@ -76,7 +73,11 @@ export class SMSSyncService {
     if (Platform.OS !== 'android') return false;
     try {
       const { PermissionsAndroid } = require('react-native');
-      return await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS);
+      const [canRead, canReceive] = await Promise.all([
+        PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS),
+        PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS),
+      ]);
+      return canRead && canReceive;
     } catch (error) {
       console.warn('Error checking READ_SMS permission:', error);
       return false;
