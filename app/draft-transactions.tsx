@@ -20,6 +20,9 @@ import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import { useDispatch, useSelector } from 'react-redux';
 import { parseTagInput } from '@/utils/tags';
+import { RecurringTransactionService } from '@/services/RecurringTransactionService';
+import type { RecurringFrequency, TransactionType } from '@/types/database';
+import { findTransferCandidates } from '@/utils/transferPairing';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -70,6 +73,15 @@ export default function DraftTransactionsScreen() {
   const [editedRecipient, setEditedRecipient] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [editedCategory, setEditedCategory] = useState('');
+  const [editedType, setEditedType] = useState<TransactionType>('EXPENSE');
+  const [transferSourceAccountId, setTransferSourceAccountId] = useState('');
+  const [transferDestinationAccountId, setTransferDestinationAccountId] = useState('');
+  const [matchedCounterpartId, setMatchedCounterpartId] = useState('');
+  const [makeRecurring, setMakeRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('MONTHLY');
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderDaysBefore, setReminderDaysBefore] = useState('1');
+  const [reminderTime, setReminderTime] = useState('09:00');
   const [note, setNote] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -174,6 +186,10 @@ export default function DraftTransactionsScreen() {
       setEditedRecipient(target.sender_receiver || '');
       setEditedDescription(target.description);
       setEditedCategory(target.category);
+      setEditedType(target.is_transfer ? 'TRANSFER' : target.type);
+      setTransferSourceAccountId(target.transfer_from_account_id || target.account_id);
+      setTransferDestinationAccountId(target.transfer_to_account_id || (target.type === 'INCOME' ? target.account_id : ''));
+      setMatchedCounterpartId(target.paired_draft_id || '');
       setNote('');
       setTagsInput('');
       setShowConfirmModal(true);
@@ -307,6 +323,15 @@ export default function DraftTransactionsScreen() {
     setEditedRecipient(draft.sender_receiver || '');
     setEditedDescription(draft.description);
     setEditedCategory(draft.category);
+    setEditedType(draft.is_transfer ? 'TRANSFER' : draft.type);
+    setTransferSourceAccountId(draft.transfer_from_account_id || draft.account_id);
+    setTransferDestinationAccountId(draft.transfer_to_account_id || (draft.type === 'INCOME' ? draft.account_id : ''));
+    setMatchedCounterpartId(draft.paired_draft_id || '');
+    setMakeRecurring(false);
+    setRecurringFrequency('MONTHLY');
+    setReminderEnabled(true);
+    setReminderDaysBefore('1');
+    setReminderTime('09:00');
     setNote('');
     setTagsInput('');
     setRecordAsLoan(!!draft.is_loan_disbursement);
@@ -324,12 +349,13 @@ export default function DraftTransactionsScreen() {
       // 1. Learn / reinforce rules
       const hasCorrections =
         editedDescription !== selectedDraft.description ||
-        editedCategory !== selectedDraft.category;
+        editedCategory !== selectedDraft.category ||
+        editedType !== selectedDraft.type;
       const learnedSender = selectedDraft.sms_sender || account?.sms_number?.split(',')[0] || '';
 
       // Transfers carry the forced "Transfer" category — learning them would
       // poison merchant rules that regular drafts from the same sender rely on.
-      if (learnedSender && !selectedDraft.is_transfer && (selectedDraft.sender_receiver || selectedDraft.reference_number)) {
+      if (learnedSender && editedType !== 'TRANSFER' && (selectedDraft.sender_receiver || selectedDraft.reference_number)) {
         await SMSLearningService.learn({
           accountId: selectedDraft.account_id,
           sender: learnedSender,
@@ -350,32 +376,36 @@ export default function DraftTransactionsScreen() {
 
       // Outgoing leg knows its destination; incoming leg knows its source —
       // either one records as a single TRANSFER from source to destination.
-      const isTransferDraft = selectedDraft.is_transfer && selectedDraft.transfer_to_account_id;
-      const isIncomingTransferDraft = !isTransferDraft && selectedDraft.is_transfer && selectedDraft.transfer_from_account_id;
+      const isTransferDraft = editedType === 'TRANSFER';
+      if (isTransferDraft && (!transferSourceAccountId || !transferDestinationAccountId || transferSourceAccountId === transferDestinationAccountId)) {
+        Alert.alert('Choose transfer accounts', 'Select two different owned accounts for this transfer.');
+        return;
+      }
+      const counterpart = matchedCounterpartId ? drafts.find(d => d.id === matchedCounterpartId) : undefined;
+      const expenseLeg = selectedDraft.type === 'EXPENSE' ? selectedDraft : counterpart?.type === 'EXPENSE' ? counterpart : selectedDraft;
+      const transferAmount = expenseLeg.gross_amount
+        ?? Math.round((expenseLeg.amount + (expenseLeg.fees ?? 0) + (expenseLeg.tax ?? 0)) * 100) / 100;
       const result = await dispatch(addTransaction({
-        account_id: isIncomingTransferDraft ? selectedDraft.transfer_from_account_id! : selectedDraft.account_id,
-        type: (isTransferDraft || isIncomingTransferDraft) ? 'TRANSFER' : selectedDraft.type,
-        ...(isTransferDraft ? { to_account_id: selectedDraft.transfer_to_account_id } : {}),
-        ...(isIncomingTransferDraft ? { to_account_id: selectedDraft.account_id } : {}),
+        account_id: isTransferDraft ? transferSourceAccountId : selectedDraft.account_id,
+        type: isTransferDraft ? 'TRANSFER' : editedType,
+        ...(isTransferDraft ? { to_account_id: transferDestinationAccountId } : {}),
         // The incoming leg carries the net received; TRANSFER stores the gross
         // source debit and the DB nets fees/tax off the destination credit.
-        amount: isIncomingTransferDraft
-          ? selectedDraft.amount + (selectedDraft.fees ?? 0) + (selectedDraft.tax ?? 0)
-          : selectedDraft.amount,
-        category: editedCategory,
+        amount: isTransferDraft ? transferAmount : selectedDraft.amount,
+        category: isTransferDraft ? 'Transfer' : editedCategory,
         description: finalDescription,
         tags: parsedTags,
         date: selectedDraft.date,
         sender_receiver: editedRecipient.trim() || undefined,
         reference_number: selectedDraft.reference_number,
         sms_id: selectedDraft.sms_id,
-        fees: selectedDraft.fees,
-        tax: selectedDraft.tax,
-        gross_amount: selectedDraft.gross_amount,
-        service_charge: selectedDraft.service_charge,
-        vat: selectedDraft.vat,
-        disaster_recovery_fee: selectedDraft.disaster_recovery_fee,
-        receipt_url: selectedDraft.receipt_url,
+        fees: expenseLeg.fees,
+        tax: expenseLeg.tax,
+        gross_amount: isTransferDraft ? undefined : selectedDraft.gross_amount,
+        service_charge: expenseLeg.service_charge,
+        vat: expenseLeg.vat,
+        disaster_recovery_fee: expenseLeg.disaster_recovery_fee,
+        receipt_url: expenseLeg.receipt_url || selectedDraft.receipt_url,
       }));
 
       if (addTransaction.rejected.match(result)) {
@@ -390,15 +420,44 @@ export default function DraftTransactionsScreen() {
         await DraftTransactionService.markAsRecorded(selectedDraft.id, transactionId);
         // The opposite leg of a paired self-transfer is covered by the same
         // TRANSFER transaction — close it too so it can't be double-recorded.
-        if (selectedDraft.paired_draft_id) {
-          await DraftTransactionService.markAsRecorded(selectedDraft.paired_draft_id, transactionId);
+        const counterpartId = matchedCounterpartId || selectedDraft.paired_draft_id;
+        if (counterpartId) {
+          await DraftTransactionService.markAsRecorded(counterpartId, transactionId);
+        }
+      }
+
+      let recurringError = '';
+      if (makeRecurring) {
+        try {
+          const match = /^(\d{1,2}):(\d{2})$/.exec(reminderTime.trim());
+          const hour = match ? Number(match[1]) : -1;
+          const minute = match ? Number(match[2]) : -1;
+          if (reminderEnabled && (hour < 0 || hour > 23 || minute < 0 || minute > 59)) throw new Error('Reminder time must use HH:MM');
+          await RecurringTransactionService.create({
+            name: finalDescription || editedRecipient || 'SMS transaction',
+            amount: isTransferDraft ? expenseLeg.amount : selectedDraft.amount,
+            type: isTransferDraft ? 'TRANSFER' : editedType,
+            category: isTransferDraft ? 'Transfer' : editedCategory,
+            accountId: isTransferDraft ? transferSourceAccountId : selectedDraft.account_id,
+            toAccountId: isTransferDraft ? transferDestinationAccountId : undefined,
+            description: finalDescription,
+            tags: parsedTags,
+            frequency: recurringFrequency,
+            startDate: selectedDraft.date,
+            reminderEnabled,
+            reminderDaysBefore: Number(reminderDaysBefore) || 0,
+            reminderHour: Math.max(0, hour),
+            reminderMinute: Math.max(0, minute),
+          });
+        } catch (error: any) {
+          recurringError = error?.message || 'Recurring rule could not be created.';
         }
       }
 
       // Loan creation tracks the liability/receivable only; it does not mutate
       // the account balance, which was already updated by the cash transaction.
       let loanCreated = false;
-      if (recordAsLoan && !selectedDraft.is_transfer) {
+      if (recordAsLoan && editedType !== 'TRANSFER') {
         const loanPrincipal = selectedDraft.type === 'EXPENSE'
           ? Math.max(0, Math.round((selectedDraft.amount - (selectedDraft.fees ?? 0) - (selectedDraft.tax ?? 0)) * 100) / 100)
           : selectedDraft.amount;
@@ -427,7 +486,9 @@ export default function DraftTransactionsScreen() {
           ? loanCreated
             ? `Transaction recorded and ${selectedDraft.type === 'INCOME' ? 'borrowed loan' : 'loan given'} added to Loans.`
             : 'Transaction recorded, but the loan record could not be created. You can add it manually from Loans.'
-          : 'Transaction recorded!'
+          : recurringError
+            ? `Transaction recorded. Recurring setup needs attention: ${recurringError}`
+            : makeRecurring ? 'Transaction and recurring rule recorded!' : 'Transaction recorded!'
       );
     } catch (error) {
       console.error('Error recording transaction:', error);
@@ -599,7 +660,8 @@ export default function DraftTransactionsScreen() {
     }
   };
   const unrecordedCount = drafts.filter(d => d.status === 'PENDING').length;
-  const confirmCategoryType = selectedDraft?.type === 'INCOME' ? 'income' : 'expense';
+  const transferCandidates = selectedDraft ? findTransferCandidates(selectedDraft, drafts) : [];
+  const confirmCategoryType = editedType === 'INCOME' ? 'income' : 'expense';
   const confirmCategories = categories.filter((category) => category.type === confirmCategoryType);
   const confirmRootCategories = confirmCategories.filter((category) => !category.parentId);
   const getConfirmChildCategories = (parentId: string) =>
@@ -1214,8 +1276,8 @@ export default function DraftTransactionsScreen() {
               <View className="flex-row gap-3 mb-6">
                 <View className="flex-1 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl">
                   <Text className="text-slate-500 dark:text-slate-400 text-xs mb-1 uppercase font-bold">Type</Text>
-                  <Text className={`font-bold text-lg ${selectedDraft?.type === 'INCOME' ? 'text-green-600' : 'text-red-500'}`}>
-                    {selectedDraft?.type}
+                  <Text className={`font-bold text-lg ${editedType === 'INCOME' ? 'text-green-600' : editedType === 'TRANSFER' ? 'text-indigo-600' : 'text-red-500'}`}>
+                    {editedType}
                   </Text>
                 </View>
                 <View className="flex-1 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl">
@@ -1225,6 +1287,52 @@ export default function DraftTransactionsScreen() {
                   </Text>
                 </View>
               </View>
+
+              <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 mb-5">
+                <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-2 uppercase">Record as</Text>
+                <View className="flex-row gap-2">
+                  {(['EXPENSE', 'INCOME', 'TRANSFER'] as TransactionType[]).map(item => (
+                    <TouchableOpacity key={item} onPress={() => { setEditedType(item); setRecordAsLoan(false); }} className={`flex-1 py-2.5 rounded-xl items-center ${editedType === item ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}>
+                      <Text className={`text-[10px] font-bold ${editedType === item ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{item}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {editedType === 'TRANSFER' && (
+                <View className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-4 mb-5">
+                  <Text className="text-indigo-900 dark:text-indigo-200 font-bold mb-1">Bank-to-bank transfer</Text>
+                  <Text className="text-indigo-700 dark:text-indigo-300 text-xs mb-3">Choose the owned source and destination accounts. A matched opposite SMS will be closed with this transaction.</Text>
+                  {transferCandidates.length > 0 && (
+                    <View className="mb-3">
+                      <Text className="text-indigo-700 dark:text-indigo-300 text-[10px] font-bold uppercase mb-2">Possible counterpart SMS</Text>
+                      {transferCandidates.slice(0, 3).map(candidate => {
+                        const counterpartId = candidate.expenseId === selectedDraft?.id ? candidate.incomeId : candidate.expenseId;
+                        const counterpart = drafts.find(item => item.id === counterpartId);
+                        const counterpartAccount = accounts.find(item => item.id === counterpart?.account_id);
+                        return (
+                          <TouchableOpacity key={counterpartId} onPress={() => {
+                            setMatchedCounterpartId(counterpartId);
+                            setTransferSourceAccountId(candidate.expenseAccountId);
+                            setTransferDestinationAccountId(candidate.incomeAccountId);
+                          }} className={`p-3 rounded-xl mb-2 border ${matchedCounterpartId === counterpartId ? 'bg-indigo-600 border-indigo-600' : 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800'}`}>
+                            <Text className={`text-xs font-bold ${matchedCounterpartId === counterpartId ? 'text-white' : 'text-slate-900 dark:text-white'}`}>{counterpartAccount?.name || 'Other account'} · {formatCurrency(counterpart?.amount || 0)}</Text>
+                            <Text className={`text-[10px] mt-1 ${matchedCounterpartId === counterpartId ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>{candidate.confidence === 'HIGH' ? 'Strong match' : 'Possible same-day match'} · {formatDate(counterpart?.date || 0)} {formatTime(counterpart?.date || 0)}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                  <Text className="text-slate-600 dark:text-slate-300 text-[10px] font-bold mb-1">From account</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3">
+                    {accounts.map(item => <TouchableOpacity key={item.id} onPress={() => setTransferSourceAccountId(item.id)} className={`mr-2 px-3 py-2 rounded-xl ${transferSourceAccountId === item.id ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}><Text className={`text-xs font-semibold ${transferSourceAccountId === item.id ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>{item.name}</Text></TouchableOpacity>)}
+                  </ScrollView>
+                  <Text className="text-slate-600 dark:text-slate-300 text-[10px] font-bold mb-1">To account</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {accounts.filter(item => item.id !== transferSourceAccountId).map(item => <TouchableOpacity key={item.id} onPress={() => setTransferDestinationAccountId(item.id)} className={`mr-2 px-3 py-2 rounded-xl ${transferDestinationAccountId === item.id ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}><Text className={`text-xs font-semibold ${transferDestinationAccountId === item.id ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>{item.name}</Text></TouchableOpacity>)}
+                  </ScrollView>
+                </View>
+              )}
 
               {selectedDraft?.is_loan_disbursement && (
                 <View className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 mb-5 flex-row items-start">
@@ -1238,7 +1346,7 @@ export default function DraftTransactionsScreen() {
                 </View>
               )}
 
-              {!selectedDraft?.is_transfer && (
+              {editedType !== 'TRANSFER' && (
                 <View className={`rounded-2xl p-4 mb-5 border-2 ${recordAsLoan ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 dark:border-amber-700' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
                   <TouchableOpacity
                     onPress={() => setRecordAsLoan(!recordAsLoan)}
@@ -1313,7 +1421,7 @@ export default function DraftTransactionsScreen() {
                 </Text>
               </View>
 
-              <View className="mb-6">
+              {editedType !== 'TRANSFER' && <View className="mb-6">
                 <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Category</Text>
                 {selectedDraft?.categoryHint && (
                   <View className="flex-row items-center mb-3 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
@@ -1325,7 +1433,7 @@ export default function DraftTransactionsScreen() {
                 )}
                 <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4">
                   <Text className="text-[11px] text-slate-500 uppercase font-bold mb-3 dark:text-slate-400">
-                    {selectedDraft?.type === 'INCOME' ? 'Income categories' : 'Expense categories'}
+                    {editedType === 'INCOME' ? 'Income categories' : 'Expense categories'}
                   </Text>
                   <ScrollView showsVerticalScrollIndicator={false} className="max-h-64" nestedScrollEnabled>
                     {confirmRootCategories.map((category) => (
@@ -1381,7 +1489,7 @@ export default function DraftTransactionsScreen() {
                     ))}
                   </ScrollView>
                 </View>
-              </View>
+              </View>}
 
               {/* Tags Input */}
               <View className="mb-6">
@@ -1445,6 +1553,32 @@ export default function DraftTransactionsScreen() {
                   multiline
                   textAlignVertical="top"
                 />
+              </View>
+
+              <View className="rounded-2xl p-4 mb-6 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: makeRecurring }} onPress={() => setMakeRecurring(!makeRecurring)} className="flex-row items-center">
+                  <View className={`w-7 h-7 rounded-lg justify-center items-center mr-3 ${makeRecurring ? 'bg-indigo-600' : 'bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600'}`}>
+                    {makeRecurring && <FontAwesome name="check" size={13} color="#fff" />}
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-slate-900 dark:text-white font-bold">Make this recurring</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">The next occurrence is scheduled after this SMS transaction.</Text>
+                  </View>
+                  <FontAwesome name="repeat" size={17} color="#6366f1" />
+                </TouchableOpacity>
+                {makeRecurring && <View className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <View className="flex-row flex-wrap gap-2 mb-4">
+                    {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as RecurringFrequency[]).map(item => <TouchableOpacity key={item} onPress={() => setRecurringFrequency(item)} className={`px-3 py-2 rounded-xl ${recurringFrequency === item ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}><Text className={`text-[10px] font-bold ${recurringFrequency === item ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{item}</Text></TouchableOpacity>)}
+                  </View>
+                  <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: reminderEnabled }} onPress={() => setReminderEnabled(!reminderEnabled)} className="flex-row items-center mb-3">
+                    <FontAwesome name={reminderEnabled ? 'check-square' : 'square-o'} size={18} color={reminderEnabled ? '#6366f1' : '#94a3b8'} />
+                    <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold ml-2">Reminder enabled</Text>
+                  </TouchableOpacity>
+                  {reminderEnabled && <View className="flex-row gap-2">
+                    <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Days before</Text><TextInput value={reminderDaysBefore} onChangeText={setReminderDaysBefore} keyboardType="number-pad" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                    <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Time (HH:MM)</Text><TextInput value={reminderTime} onChangeText={setReminderTime} keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
+                  </View>}
+                </View>}
               </View>
 
               {/* Technical Details */}

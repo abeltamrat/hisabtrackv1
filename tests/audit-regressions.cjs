@@ -32,7 +32,7 @@ const { LedgerDatabase } = load('./services/database/ledger.ts');
 const { ForecastService } = load('./services/ForecastService.ts');
 const { BudgetService } = load('./services/BudgetService.ts');
 const { BackupService } = load('./services/BackupService.ts');
-const { findSelfTransferPairs } = load('./utils/transferPairing.ts');
+const { findSelfTransferPairs, findTransferCandidates } = load('./utils/transferPairing.ts');
 const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
 class Adapter {
   rows = { accounts: new Map(), transactions: new Map(), budgets: new Map(), loans: new Map() };
@@ -157,6 +157,18 @@ test('unrelated equal-value SMS are not paired',()=>{
  const drafts=[{id:'e',account_id:'a',type:'EXPENSE',status:'PENDING',amount:500,date:100000},{id:'i',account_id:'b',type:'INCOME',status:'PENDING',amount:500,date:100001}];
  assert.equal(findSelfTransferPairs(drafts).length,0);
  drafts[0].transfer_to_account_id='b';assert.equal(findSelfTransferPairs(drafts).length,1);
+});
+test('same-day opposite SMS are suggested for review without being silently merged',()=>{
+ const drafts=[
+  {id:'sent',account_id:'cbe',type:'EXPENSE',status:'PENDING',amount:16200,gross_amount:16203.60,fees:3.15,tax:0.45,date:100000},
+  {id:'received',account_id:'telebirr',type:'INCOME',status:'PENDING',amount:16200,date:100000+3600000},
+ ];
+ assert.equal(findSelfTransferPairs(drafts).length,0);
+ const candidates=findTransferCandidates(drafts[0],drafts);
+ assert.equal(candidates.length,1);
+ assert.equal(candidates[0].expenseAccountId,'cbe');
+ assert.equal(candidates[0].incomeAccountId,'telebirr');
+ assert.equal(candidates[0].confidence,'MEDIUM');
 });
 test('backups reject invalid records and strip all configured provider keys',()=>{
  assert.equal(BackupService.validateBackup({version:'garbage',timestamp:1,accounts:[{}],transactions:[{amount:-999}],budgets:[],loans:[]}),false);

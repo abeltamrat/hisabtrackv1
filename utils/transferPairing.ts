@@ -15,6 +15,7 @@ export interface PairableDraft {
   type: 'INCOME' | 'EXPENSE';
   status: string;
   amount: number;
+  gross_amount?: number;
   date: number;
   fees?: number;
   tax?: number;
@@ -42,12 +43,55 @@ const AMOUNT_EPSILON = 0.01;
  * the income against either the gross or the net (gross minus fees/tax).
  */
 function amountsMatch(expense: PairableDraft, income: PairableDraft): boolean {
-  const gross = expense.amount;
-  const net = expense.amount - (expense.fees ?? 0) - (expense.tax ?? 0);
+  const gross = expense.gross_amount ?? expense.amount;
+  const net = expense.amount;
   return (
     Math.abs(income.amount - gross) < AMOUNT_EPSILON ||
     Math.abs(income.amount - net) < AMOUNT_EPSILON
   );
+}
+
+export interface TransferCandidate extends TransferPair {
+  gapMs: number;
+  confidence: 'HIGH' | 'MEDIUM';
+}
+
+/**
+ * Suggest opposite SMS legs for human review. Same-day amount matches are
+ * useful evidence, but never strong enough to merge records automatically.
+ */
+export function findTransferCandidates(
+  draft: PairableDraft,
+  drafts: PairableDraft[],
+  windowMs = 24 * 60 * 60 * 1000
+): TransferCandidate[] {
+  if (draft.status !== 'PENDING') return [];
+  return drafts
+    .filter(other => other.id !== draft.id && other.status === 'PENDING'
+      && other.account_id !== draft.account_id && other.type !== draft.type)
+    .map(other => {
+      const expense = draft.type === 'EXPENSE' ? draft : other;
+      const income = draft.type === 'INCOME' ? draft : other;
+      const gapMs = Math.abs(expense.date - income.date);
+      const explicit = expense.transfer_to_account_id === income.account_id
+        || income.transfer_from_account_id === expense.account_id;
+      const expenseDay = new Date(expense.date);
+      const incomeDay = new Date(income.date);
+      const sameCalendarDate = expenseDay.getFullYear() === incomeDay.getFullYear()
+        && expenseDay.getMonth() === incomeDay.getMonth()
+        && expenseDay.getDate() === incomeDay.getDate();
+      if (gapMs > windowMs || (!sameCalendarDate && gapMs > TRANSFER_PAIR_WINDOW_MS) || !amountsMatch(expense, income)) return null;
+      return {
+        expenseId: expense.id,
+        incomeId: income.id,
+        expenseAccountId: expense.account_id,
+        incomeAccountId: income.account_id,
+        gapMs,
+        confidence: explicit || gapMs <= TRANSFER_PAIR_WINDOW_MS ? 'HIGH' as const : 'MEDIUM' as const,
+      };
+    })
+    .filter((item): item is TransferCandidate => item !== null)
+    .sort((a, b) => a.gapMs - b.gapMs);
 }
 
 /**

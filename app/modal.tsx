@@ -21,6 +21,8 @@ import { formatTagInput, parseTagInput } from '@/utils/tags';
 import FloatingCalculator from '@/components/FloatingCalculator';
 import { useDispatch, useSelector } from 'react-redux';
 import { themeTokens } from '@/constants/theme';
+import { RecurringTransactionService } from '@/services/RecurringTransactionService';
+import type { RecurringFrequency, TransactionType } from '@/types/database';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -83,12 +85,18 @@ export default function AddTransactionScreen() {
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [amount, setAmount] = useState('');
   const { errors, validate, clearError } = useFormErrors<'amount' | 'account' | 'category'>();
-  const [type, setType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+  const [type, setType] = useState<TransactionType>('EXPENSE');
+  const [toAccountId, setToAccountId] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [note, setNote] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [transactionDate, setTransactionDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [makeRecurring, setMakeRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<RecurringFrequency>('MONTHLY');
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderDaysBefore, setReminderDaysBefore] = useState('1');
+  const [reminderTime, setReminderTime] = useState('09:00');
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [kbdHeight, setKbdHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -141,6 +149,7 @@ export default function AddTransactionScreen() {
       setSelectedAccountId(editingTransaction.account_id);
       setAmount(editingTransaction.amount.toString());
       setType(editingTransaction.type);
+      setToAccountId(editingTransaction.to_account_id || '');
       setSelectedCategory(editingTransaction.category);
       setNote(editingTransaction.description !== editingTransaction.category ? editingTransaction.description : '');
       setTagsInput(formatTagInput(editingTransaction.tags));
@@ -179,8 +188,12 @@ export default function AddTransactionScreen() {
       amount: (!amount || isNaN(numericAmount) || numericAmount <= 0)
         && 'Enter an amount greater than zero.',
       account: !selectedAccountId && 'Choose the account this belongs to.',
-      category: !selectedCategory && 'Choose a category.',
+      category: type !== 'TRANSFER' && !selectedCategory && 'Choose a category.',
     })) return;
+    if (type === 'TRANSFER' && (!toAccountId || toAccountId === selectedAccountId)) {
+      Alert.alert('Choose destination', 'Select a different account to receive the transfer.');
+      return;
+    }
 
     // Soft guard: warn when a new expense exceeds the account's available
     // (unlocked) balance. Never hard-block — records mirror real money moves.
@@ -209,10 +222,11 @@ export default function AddTransactionScreen() {
       account_id: selectedAccountId,
       amount: numericAmount,
       type,
-      category: selectedCategory,
-      description: note || selectedCategory,
+      category: type === 'TRANSFER' ? 'Transfer' : selectedCategory,
+      description: note || (type === 'TRANSFER' ? 'Bank transfer' : selectedCategory),
       tags: parseTagInput(tagsInput),
       date: transactionDate.getTime(),
+      ...(type === 'TRANSFER' ? { to_account_id: toAccountId } : {}),
     };
 
     if (type === 'EXPENSE') {
@@ -256,10 +270,40 @@ export default function AddTransactionScreen() {
         return;
       }
     }
+    if (!isEditing && makeRecurring) {
+      const match = /^(\d{1,2}):(\d{2})$/.exec(reminderTime.trim());
+      const hour = match ? Number(match[1]) : -1;
+      const minute = match ? Number(match[2]) : -1;
+      if (reminderEnabled && (hour < 0 || hour > 23 || minute < 0 || minute > 59)) {
+        Alert.alert('Transaction saved', 'The transaction was recorded, but the recurring rule was not created because the reminder time must use HH:MM.');
+        return;
+      }
+      try {
+        await RecurringTransactionService.create({
+          name: note.trim() || (type === 'TRANSFER' ? 'Bank transfer' : selectedCategory),
+          amount: numericAmount,
+          type,
+          category: type === 'TRANSFER' ? 'Transfer' : selectedCategory,
+          accountId: selectedAccountId,
+          toAccountId: type === 'TRANSFER' ? toAccountId : undefined,
+          description: note,
+          tags: parseTagInput(tagsInput),
+          frequency,
+          startDate: transactionDate.getTime(),
+          reminderEnabled,
+          reminderDaysBefore: Number(reminderDaysBefore) || 0,
+          reminderHour: Math.max(0, hour),
+          reminderMinute: Math.max(0, minute),
+        });
+      } catch (error: any) {
+        Alert.alert('Transaction saved', error?.message || 'The recurring rule could not be created.');
+        return;
+      }
+    }
     router.back();
   };
 
-  const filteredCategories = categories.filter(c => c.type === type.toLowerCase());
+  const filteredCategories = categories.filter(c => c.type === (type === 'TRANSFER' ? 'expense' : type.toLowerCase()));
 
   const allSelectableCategories = filteredCategories;
 
@@ -415,6 +459,16 @@ export default function AddTransactionScreen() {
                 <Text className={`ml-1.5 text-xs font-bold ${type === 'INCOME' ? 'text-green-600' : 'text-slate-500'} dark:text-slate-400`}>Income</Text>
               </View>
             </TouchableOpacity>
+            <TouchableOpacity
+              className={`flex-1 py-2.5 rounded-lg items-center ${type === 'TRANSFER' ? 'bg-white dark:bg-slate-700' : ''}`}
+              style={type === 'TRANSFER' ? { elevation: 2 } : {}}
+              onPress={() => setType('TRANSFER')}
+            >
+              <View className="flex-row items-center">
+                <FontAwesome name="exchange" size={13} color={type === 'TRANSFER' ? '#6366f1' : '#94a3b8'} />
+                <Text className={`ml-1.5 text-xs font-bold ${type === 'TRANSFER' ? 'text-indigo-600' : 'text-slate-500'} dark:text-slate-400`}>Transfer</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -455,6 +509,24 @@ export default function AddTransactionScreen() {
           </ScrollView>
         </View>
 
+        {type === 'TRANSFER' && (
+          <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+            <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Destination account</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
+              {accounts.filter((item: any) => item.id !== selectedAccountId).map((item: any) => (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => setToAccountId(item.id)}
+                  className={`mx-1 p-3 rounded-xl border-2 min-w-[110px] items-center ${toAccountId === item.id ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent'}`}
+                >
+                  <FontAwesome name="bank" size={15} color={toAccountId === item.id ? '#6366f1' : '#94a3b8'} />
+                  <Text className="text-slate-900 dark:text-white text-[11px] font-bold mt-1" numberOfLines={1}>{item.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Date Picker */}
         <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
           <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Date</Text>
@@ -493,7 +565,7 @@ export default function AddTransactionScreen() {
         </View>
 
         {/* Category Selection */}
-        <View className={`bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border ${errors.category ? 'border-red-500' : 'border-slate-100 dark:border-slate-700'}`} style={{ elevation: 3 }}>
+        {type !== 'TRANSFER' && <View className={`bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border ${errors.category ? 'border-red-500' : 'border-slate-100 dark:border-slate-700'}`} style={{ elevation: 3 }}>
           {errors.category ? (
             <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs font-semibold mb-2">{errors.category}</Text>
           ) : null}
@@ -530,7 +602,50 @@ export default function AddTransactionScreen() {
           <ScrollView showsVerticalScrollIndicator={false} className="max-h-52" nestedScrollEnabled={true}>
             {renderCategoryTree(undefined, 0)}
           </ScrollView>
-        </View>
+        </View>}
+
+        {!isEditing && (
+          <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+            <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: makeRecurring }} onPress={() => setMakeRecurring(!makeRecurring)} className="flex-row items-center">
+              <View className={`w-6 h-6 rounded-lg justify-center items-center mr-3 ${makeRecurring ? 'bg-indigo-600' : 'border border-slate-300 dark:border-slate-600'}`}>
+                {makeRecurring && <FontAwesome name="check" size={12} color="#fff" />}
+              </View>
+              <View className="flex-1">
+                <Text className="text-slate-900 dark:text-white text-sm font-bold">Make this recurring</Text>
+                <Text className="text-slate-500 dark:text-slate-400 text-[10px]">Create the next occurrence and an optional reminder.</Text>
+              </View>
+              <FontAwesome name="repeat" size={16} color="#6366f1" />
+            </TouchableOpacity>
+            {makeRecurring && (
+              <View className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+                <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-bold mb-2 uppercase">Frequency</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as RecurringFrequency[]).map(item => (
+                    <TouchableOpacity key={item} onPress={() => setFrequency(item)} className={`px-3 py-2 rounded-xl ${frequency === item ? 'bg-indigo-600' : 'bg-slate-100 dark:bg-slate-900'}`}>
+                      <Text className={`text-[10px] font-bold ${frequency === item ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{item}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: reminderEnabled }} onPress={() => setReminderEnabled(!reminderEnabled)} className="flex-row items-center mt-4">
+                  <FontAwesome name={reminderEnabled ? 'check-square' : 'square-o'} size={18} color={reminderEnabled ? '#6366f1' : '#94a3b8'} />
+                  <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold ml-2">Remind me before it is due</Text>
+                </TouchableOpacity>
+                {reminderEnabled && (
+                  <View className="flex-row mt-3 gap-2">
+                    <View className="flex-1">
+                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Days before</Text>
+                      <TextInput value={reminderDaysBefore} onChangeText={setReminderDaysBefore} keyboardType="number-pad" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Time (HH:MM)</Text>
+                      <TextInput value={reminderTime} onChangeText={setReminderTime} keyboardType="numbers-and-punctuation" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" />
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Tags Input */}
         <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
