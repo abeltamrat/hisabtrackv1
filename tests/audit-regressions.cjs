@@ -216,10 +216,11 @@ test('recurring suggestions require three consistent similar transactions',()=>{
 });
 test('SMS learning preserves split ratios and owned transfer routing',async()=>{
  await SMSLearningService.clearAllRules();
- await SMSLearningService.learn({accountId:'bank',sender:'CBE',rawMerchant:'My Wallet',correctedDescription:'Transfer',correctedCategory:'Transfer',transactionType:'EXPENSE',transferFromAccountId:'bank',transferToAccountId:'wallet',splits:[{category:'Food',amount:75},{category:'Transport',amount:25}]});
+ await SMSLearningService.learn({accountId:'bank',sender:'CBE',rawMerchant:'My Wallet',correctedDescription:'Transfer',correctedCategory:'Transfer',transactionType:'EXPENSE',transferFromAccountId:'bank',transferToAccountId:'wallet',splits:[{category:'Food',amount:75,description:'Lunch',tags:['work']},{category:'Transport',amount:25,description:'Taxi',tags:['travel']}]});
  const rule=await SMSLearningService.getRule({accountId:'bank',sender:'CBE',rawMerchant:'My Wallet'});
  assert.equal(rule.transferFromAccountId,'bank');assert.equal(rule.transferToAccountId,'wallet');
  assert.deepEqual(rule.splitRatios.map(item=>[item.category,item.ratio]),[['Food',0.75],['Transport',0.25]]);
+ assert.equal(rule.splitRatios[0].description,'Lunch');assert.deepEqual(rule.splitRatios[0].tags,['work']);
 });
 test('backups reject invalid records and strip all configured provider keys',()=>{
  assert.equal(BackupService.validateBackup({version:'garbage',timestamp:1,accounts:[{}],transactions:[{amount:-999}],budgets:[],loans:[]}),false);
