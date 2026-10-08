@@ -59,6 +59,9 @@ interface TransactionBase {
   fund_entry_id?: string;
   /** Owner side: derived from the custodian's entry and rebuilt by FundLedgerService. */
   fund_mirror?: boolean;
+  /** Community workflow ownership. These rows are corrected from the Equb/Iddir screen. */
+  community_group_id?: string;
+  community_event_id?: string;
 }
 
 export interface TransactionSplit {
@@ -91,6 +94,7 @@ export interface Budget {
   start_date: number;
   end_date: number;
   updated_at?: number;
+  calendar_system?: 'GREGORIAN' | 'ETHIOPIAN';
 }
 
 export interface Loan {
@@ -342,4 +346,5 @@ export interface RecurringTransaction {
   notificationId?: string;
   notificationIds?: string[];
   splits?: TransactionSplit[];
+  calendar_system?: 'GREGORIAN' | 'ETHIOPIAN';
 }

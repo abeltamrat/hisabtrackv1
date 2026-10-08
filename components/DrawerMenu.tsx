@@ -127,6 +127,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     { id: 'loans', title: 'Loans & Debts', icon: 'line-chart', route: '/loans', color: '#ef4444' },
     ...(FUNDS_ENABLED ? [{ id: 'funds', title: 'Funds & Petty Cash', icon: 'briefcase', route: '/funds', color: '#0d9488' }] : []),
     { id: 'recurring', title: 'Recurring Payments', icon: 'refresh', route: '/recurring', color: '#14b8a6' },
+    { id: 'community', title: 'Equb & Iddir', icon: 'users', route: '/community', color: '#0d9488' },
   ];
 
   const toolsItems: MenuItem[] = [

@@ -198,6 +198,8 @@ function RootLayoutNav() {
         router.push('/smart-review' as any);
       } else if (data?.actionType === 'view_funds') {
         router.push((typeof data.fundId === 'string' ? `/fund/${data.fundId}` : '/funds') as any);
+      } else if (data?.actionType === 'view_community') {
+        router.push('/community' as any);
       }
     });
 
@@ -343,6 +345,7 @@ function ThemedStack() {
         <Stack.Screen name="budget-modal" options={{ presentation: 'modal' }} />
         <Stack.Screen name="accounts" options={{ headerShown: false }} />
         <Stack.Screen name="recurring" options={{ headerShown: false }} />
+        <Stack.Screen name="community" options={{ headerShown: false }} />
         <Stack.Screen name="budget" options={{ headerShown: false }} />
         <Stack.Screen name="loans" options={{ headerShown: false }} />
         <Stack.Screen name="calculator" options={{ headerShown: false }} />

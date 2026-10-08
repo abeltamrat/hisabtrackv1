@@ -1,5 +1,6 @@
 import { money, operatingTransactions, sumMoney } from '@/utils/finance';
 import { Budget, BudgetPeriod, BudgetRolloverMode, Transaction } from '@/types/database';
+import { ethiopianMonthBounds } from '@/utils/ethiopianCalendar';
 
 export interface BudgetMetrics {
   budget: Budget;
@@ -196,7 +197,7 @@ export class BudgetService {
     );
   }
 
-  static getCurrentPeriodRange(period: BudgetPeriod, now = Date.now()) {
+  static getCurrentPeriodRange(period: BudgetPeriod, now = Date.now(), calendar: 'GREGORIAN' | 'ETHIOPIAN' = 'GREGORIAN') {
     const date = new Date(now);
 
     if (period === 'WEEKLY') {
@@ -215,6 +216,7 @@ export class BudgetService {
       };
     }
 
+    if (calendar === 'ETHIOPIAN') return ethiopianMonthBounds(now);
     const start = new Date(date.getFullYear(), date.getMonth(), 1);
     start.setHours(0, 0, 0, 0);
     const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
@@ -226,7 +228,7 @@ export class BudgetService {
   }
 
   /** The period immediately after the one ending at `end`, kept contiguous. */
-  static getNextPeriodRange(period: BudgetPeriod, end: number) {
+  static getNextPeriodRange(period: BudgetPeriod, end: number, calendar: 'GREGORIAN' | 'ETHIOPIAN' = 'GREGORIAN') {
     // `findPreviousBudget` links a chain by requiring exactly 1ms between a
     // period's end and the next one's start, so the next period must begin on
     // that millisecond or the rollover chain silently breaks.
@@ -236,6 +238,7 @@ export class BudgetService {
       end.setDate(end.getDate() + 7);
       return { start, end: end.getTime() - 1 };
     }
+    if (calendar === 'ETHIOPIAN') return ethiopianMonthBounds(start);
     const date = new Date(start);
     const last = new Date(date.getFullYear(), date.getMonth() + 1, 0);
     last.setHours(23, 59, 59, 999);
@@ -256,7 +259,7 @@ export class BudgetService {
   static planRollForward(budgets: Budget[], now = Date.now(), maxPeriods = 24): Budget[] {
     const latestByChain = new Map<string, Budget>();
     for (const budget of budgets) {
-      const key = `${budget.category}|${budget.period}`;
+      const key = `${budget.category}|${budget.period}|${budget.calendar_system || 'GREGORIAN'}`;
       const current = latestByChain.get(key);
       if (!current || budget.end_date > current.end_date) latestByChain.set(key, budget);
     }
@@ -269,13 +272,14 @@ export class BudgetService {
       let cursor = latest;
       let created = 0;
       while (cursor.end_date < now && created < maxPeriods) {
-        const range = this.getNextPeriodRange(cursor.period, cursor.end_date);
+        const range = this.getNextPeriodRange(cursor.period, cursor.end_date, cursor.calendar_system || 'GREGORIAN');
         const next: Budget = {
           // Every device derives the same key for the same category and period.
           // This makes concurrent roll-forward an upsert instead of two rows.
           id: `rollover-${latest.period}-${range.start}-${encodeURIComponent(latest.category)}`,
           category: latest.category,
           period: latest.period,
+          calendar_system: latest.calendar_system,
           // The user's intended limit, not a limit already adjusted by rollover.
           limit_amount: this.getBaseLimit(latest),
           base_limit_amount: this.getBaseLimit(latest),
@@ -292,13 +296,14 @@ export class BudgetService {
       // carrying a year-old surplus forward would be misleading. Start clean at
       // the current period instead.
       if (cursor.end_date < now) {
-        const range = this.getCurrentPeriodRange(latest.period, now);
+        const range = this.getCurrentPeriodRange(latest.period, now, latest.calendar_system || 'GREGORIAN');
         while (planned.length && planned[planned.length - 1].category === latest.category
           && planned[planned.length - 1].period === latest.period) planned.pop();
         planned.push({
           id: `rollover-${latest.period}-${range.start}-${encodeURIComponent(latest.category)}`,
           category: latest.category,
           period: latest.period,
+          calendar_system: latest.calendar_system,
           limit_amount: this.getBaseLimit(latest),
           base_limit_amount: this.getBaseLimit(latest),
           rollover_mode: 'NONE',

@@ -3,6 +3,8 @@ import { sessionLocalStorage } from '@/services/SessionStorage';
 import { Account, Budget, Loan, Transaction } from '@/types/database';
 import { saveJSON } from '@/utils/fileHelper';
 import * as FileSystem from 'expo-file-system/legacy';
+import type { CommunityGroup } from '@/types/community';
+import { validateCommunityGroupRecord } from '@/utils/communityFinance';
 
 export interface BackupData {
   version: string;
@@ -17,6 +19,7 @@ export interface BackupData {
   settings?: any;
   smsLearningRules?: any;
   recipientProfiles?: any[];
+  communityGroups?: CommunityGroup[];
 }
 
 export class BackupService {
@@ -34,7 +37,8 @@ export class BackupService {
     recurringTransactions?: any[],
     settings?: any,
     smsLearningRules?: any,
-    recipientProfiles?: any[]
+    recipientProfiles?: any[],
+    communityGroups?: CommunityGroup[]
   ): BackupData {
     return {
       version: this.BACKUP_VERSION,
@@ -48,6 +52,7 @@ export class BackupService {
       settings: this.safeSettings(settings),
       smsLearningRules,
       recipientProfiles,
+      communityGroups,
     };
   }
 
@@ -111,6 +116,10 @@ export class BackupService {
       console.warn('[BackupService] Failed to fetch recipient profiles for backup:', e);
     }
 
+    let communityGroups: CommunityGroup[] = [];
+    try { communityGroups = await (await import('@/services/CommunityGroupService')).CommunityGroupService.getAll(); }
+    catch (e) { console.warn('[BackupService] Failed to fetch Equb/Iddir groups:', e); }
+
     const backup = this.createBackup(
       accounts,
       transactions,
@@ -120,7 +129,8 @@ export class BackupService {
       recurringTransactions,
       settings,
       smsLearningRules,
-      recipientProfiles
+      recipientProfiles,
+      communityGroups
     );
     const rawGoals = await (await import('./SessionStorage')).default.getItem('financial_goals');
     backup.goals = rawGoals ? JSON.parse(rawGoals) : [];
@@ -133,7 +143,7 @@ export class BackupService {
    */
   static safeSettings(settings: any) {
     if (!settings || typeof settings !== 'object') return undefined;
-    const allowed = ['currency', 'language', 'fontSize', 'preferLocalLogos', 'balancesHidden', 'backgroundReminders', 'assistantOverlay'];
+    const allowed = ['currency', 'language', 'fontSize', 'preferLocalLogos', 'balancesHidden', 'calendarSystem', 'backgroundReminders', 'assistantOverlay'];
     const preferences = Object.fromEntries(allowed.filter(key => Object.prototype.hasOwnProperty.call(settings, key)).map(key => [key, settings[key]]));
     return { ...preferences, cloudSyncEnabled: false, aiSharingEnabled: false, puterJsEnabled: false };
   }
@@ -155,9 +165,9 @@ export class BackupService {
       }
       if (new Set(data.accounts.map((a: Account) => a.currency)).size > 1) return false;
       for (const t of data.transactions) { validateTransaction(t, data.accounts); if (typeof t.category !== 'string' || typeof t.description !== 'string') return false; }
-      for (const b of data.budgets) if (!['MONTHLY', 'WEEKLY'].includes(b.period) || typeof b.category !== 'string' || money(b.limit_amount) < 0 || !Number.isFinite(b.start_date) || !Number.isFinite(b.end_date) || b.end_date < b.start_date) return false;
+      for (const b of data.budgets) if (!['MONTHLY', 'WEEKLY'].includes(b.period) || (b.calendar_system !== undefined && !['GREGORIAN', 'ETHIOPIAN'].includes(b.calendar_system)) || typeof b.category !== 'string' || money(b.limit_amount) < 0 || !Number.isFinite(b.start_date) || !Number.isFinite(b.end_date) || b.end_date < b.start_date) return false;
       for (const l of data.loans) if (!['BORROWED', 'LENT'].includes(l.type) || !['ACTIVE', 'PAID', 'DEFAULTED'].includes(l.status) || money(l.principal_amount) <= 0 || money(l.remaining_balance) < 0 || !Number.isFinite(l.interest_rate) || l.interest_rate < 0 || !Number.isFinite(l.start_date) || !Number.isFinite(l.due_date) || l.due_date < l.start_date) return false;
-      for (const key of ['categories', 'recurringTransactions', 'goals']) {
+      for (const key of ['categories', 'recurringTransactions', 'goals', 'communityGroups']) {
         if (data[key] !== undefined && (!Array.isArray(data[key]) || data[key].length > 100000)) return false;
         const ids = new Set();
         for (const item of data[key] || []) {
@@ -180,7 +190,10 @@ export class BackupService {
         }
       }
       for (const goal of data.goals || []) if (typeof goal.title !== 'string' || !goal.title.trim() || money(goal.targetAmount) <= 0 || money(goal.currentAmount) < 0 || !Number.isFinite(Date.parse(goal.deadline))) return false;
-      for (const r of data.recurringTransactions || []) if (!['INCOME', 'EXPENSE', 'TRANSFER'].includes(r.type) || !Number.isFinite(r.startDate) || !Number.isInteger(r.completedRepetitions) || r.completedRepetitions < 0 || (r.endDate !== undefined && (!Number.isFinite(r.endDate) || r.endDate < r.startDate)) || (money(r.fees ?? 0) < 0 || money(r.tax ?? 0) < 0 || money((r.fees ?? 0) + (r.tax ?? 0)) > money(r.amount) || (r.type !== 'TRANSFER' && (money(r.fees ?? 0) || money(r.tax ?? 0)))) || (r.type === 'TRANSFER' && (r.accountId === r.toAccountId || !data.accounts.some((a: Account) => a.id === r.toAccountId))) || (r.splits && (r.type === 'TRANSFER' || r.splits.length < 2 || r.splits.some((split: any) => !split.category?.trim() || money(split.amount) <= 0 || (split.description !== undefined && typeof split.description !== 'string') || (split.tags !== undefined && (!Array.isArray(split.tags) || split.tags.length > 12 || split.tags.some((tag: unknown) => typeof tag !== 'string' || !tag.trim() || tag.length > 40)))) || money(r.splits.reduce((sum: number, split: any) => sum + split.amount, 0)) !== money(r.amount))) || !r.id || !['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(r.frequency) || money(r.amount) <= 0 || !Number.isFinite(r.nextDate) || !data.accounts.some((a: Account) => a.id === r.accountId)) return false;
+      for (const r of data.recurringTransactions || []) if (!['INCOME', 'EXPENSE', 'TRANSFER'].includes(r.type) || (r.calendar_system !== undefined && !['GREGORIAN', 'ETHIOPIAN'].includes(r.calendar_system)) || !Number.isFinite(r.startDate) || !Number.isInteger(r.completedRepetitions) || r.completedRepetitions < 0 || (r.endDate !== undefined && (!Number.isFinite(r.endDate) || r.endDate < r.startDate)) || (money(r.fees ?? 0) < 0 || money(r.tax ?? 0) < 0 || money((r.fees ?? 0) + (r.tax ?? 0)) > money(r.amount) || (r.type !== 'TRANSFER' && (money(r.fees ?? 0) || money(r.tax ?? 0)))) || (r.type === 'TRANSFER' && (r.accountId === r.toAccountId || !data.accounts.some((a: Account) => a.id === r.toAccountId))) || (r.splits && (r.type === 'TRANSFER' || r.splits.length < 2 || r.splits.some((split: any) => !split.category?.trim() || money(split.amount) <= 0 || (split.description !== undefined && typeof split.description !== 'string') || (split.tags !== undefined && (!Array.isArray(split.tags) || split.tags.length > 12 || split.tags.some((tag: unknown) => typeof tag !== 'string' || !tag.trim() || tag.length > 40)))) || money(r.splits.reduce((sum: number, split: any) => sum + split.amount, 0)) !== money(r.amount))) || !r.id || !['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(r.frequency) || money(r.amount) <= 0 || !Number.isFinite(r.nextDate) || !data.accounts.some((a: Account) => a.id === r.accountId)) return false;
+      for (const group of data.communityGroups || []) {
+        if (!validateCommunityGroupRecord(group) || !data.accounts.some((account: Account) => account.id === group.accountId)) return false;
+      }
       return true;
     } catch { return false; }
   }
@@ -296,6 +309,7 @@ export class BackupService {
       settings: newBackup.settings || existingData.settings,
       smsLearningRules: newBackup.smsLearningRules || existingData.smsLearningRules,
       recipientProfiles: newBackup.recipientProfiles || existingData.recipientProfiles,
+      communityGroups: mergeById(existingData.communityGroups || [], newBackup.communityGroups || []),
     };
   }
 

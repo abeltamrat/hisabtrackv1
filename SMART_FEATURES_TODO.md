@@ -180,30 +180,30 @@ Phase 3 delivery record (2026-10-08): implementation commit `d18adb4`; 161 regre
 
 ### 15. Equb and Iddir — high local value, high effort
 
-- [ ] Model group, contribution schedule, member/turn information, payout date, contributions, and outstanding obligations.
-- [ ] Define accounting before implementing UI: Equb contributions can move cash into a tracked claim/savings asset; Iddir contributions generally represent an expense unless recoverability is explicitly recorded.
-- [ ] Reconcile Equb payout against the claim and remaining contributions; do not count the entire payout as income or assume it is fully earned savings.
-- [ ] Add contribution reminders, payout-turn tracking, partial payments, missed contributions, and early-payout remaining obligations.
-- [ ] Match contribution/payout SMS with reviewable links; preserve audit history, backup, and correction/Undo behavior.
-- [ ] Verify payout before/after all contributions, group default, fees, and reconciliation across account balances and claims.
+- [x] Model group, contribution schedule, member/turn information, payout date, contributions, and outstanding obligations.
+- [x] Define accounting before implementing UI: Equb contributions can move cash into a tracked claim/savings asset; Iddir contributions generally represent an expense unless recoverability is explicitly recorded.
+- [x] Reconcile Equb payout against the claim and remaining contributions; do not count the entire payout as income or assume it is fully earned savings.
+- [x] Add contribution reminders, payout-turn tracking, partial payments, missed contributions, and early-payout remaining obligations.
+- [x] Match contribution/payout SMS with reviewable links; preserve audit history, backup, and correction/Undo behavior.
+- [x] Verify payout before/after all contributions, group default, fees, and reconciliation across account balances and claims.
 
 Done when: the full group cycle reconciles cash, claims, and obligations, with clear distinction between Equb savings and Iddir spending.
 
 ### 16. Ethiopian calendar — medium/high local value, high effort
 
-- [ ] Add an optional Ethiopian display and budget calendar alongside Gregorian dates.
-- [ ] Keep canonical timestamps and existing ledger records intact; convert at presentation/period boundaries.
-- [ ] Support all 13 months, Pagume, leap years, date pickers, recurrence anchors, and exports identifying the selected calendar.
-- [ ] Verify conversions, timezone boundaries, short months, and budget/recurring periods with explicit calendar rules.
+- [x] Add an optional Ethiopian display and budget calendar alongside Gregorian dates.
+- [x] Keep canonical timestamps and existing ledger records intact; convert at presentation/period boundaries.
+- [x] Support all 13 months, Pagume, leap years, date pickers, recurrence anchors, and exports identifying the selected calendar.
+- [x] Verify conversions, timezone boundaries, short months, and budget/recurring periods with explicit calendar rules.
 
 Done when: dates and budgets work in the chosen calendar without shifting transaction timestamps or breaking existing schedules.
 
 ## Delivery checklist for each phase
 
-- [ ] Finish the phase's ledger/behavior regression cases and TypeScript checks.
-- [ ] Verify new screens and notifications in light/dark themes and every supported language.
-- [ ] Verify isolation, backup/restore, and legacy records for added data fields.
-- [ ] Validate the production Android bundle and determine whether changes require OTA, a native APK, or backend deployment.
+- [x] Finish the phase's ledger/behavior regression cases and TypeScript checks.
+- [x] Verify new screens and notifications in light/dark themes and every supported language.
+- [x] Verify isolation, backup/restore, and legacy records for added data fields.
+- [x] Validate the production Android bundle and determine whether changes require OTA, a native APK, or backend deployment.
 - [ ] Commit/push and record the release/update ID after the feature is implemented and validated.
 - [ ] Run physical Android checks for background delivery, permission denial, offline operation, and notification actions; record actual results rather than marking these complete from code inspection.
 

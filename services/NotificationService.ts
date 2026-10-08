@@ -64,6 +64,7 @@ export class NotificationService {
     if (data?.actionType === 'view_budget') return 'pie-chart';
     if (data?.actionType === 'view_loans') return 'bank';
     if (data?.actionType === 'view_recurring') return 'calendar';
+    if (data?.actionType === 'view_community') return 'users';
     if (data?.actionType === 'view_reports') return 'line-chart';
     if (data?.actionType === 'view_drafts') return 'inbox';
     return 'bell';
@@ -74,6 +75,7 @@ export class NotificationService {
     if (data?.actionType === 'view_budget') return '#f59e0b';
     if (data?.actionType === 'view_loans') return '#ef4444';
     if (data?.actionType === 'view_recurring') return '#6366f1';
+    if (data?.actionType === 'view_community') return '#0d9488';
     if (data?.actionType === 'view_reports') return '#3b82f6';
     if (data?.actionType === 'view_drafts') return '#f59e0b';
     return '#6366f1';

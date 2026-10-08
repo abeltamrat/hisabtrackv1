@@ -23,6 +23,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { themeTokens } from '@/constants/theme';
 import { RecurringTransactionService } from '@/services/RecurringTransactionService';
 import type { RecurringFrequency, TransactionType } from '@/types/database';
+import { formatCalendarDate } from '@/utils/ethiopianCalendar';
 import type { TransactionSplit } from '@/types/database';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import { money, sumMoney } from '@/utils/finance';
@@ -73,7 +74,7 @@ export default function AddTransactionScreen() {
   const { t } = useI18n();
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
-  const { formatCurrency, currency } = useAppSettings();
+  const { formatCurrency, currency, calendarSystem } = useAppSettings();
   const accounts = useSelector((state: any) => state.accounts.items);
   const transactions = useSelector((state: any) => state.transactions.items);
   const budgets = useSelector((state: any) => state.budgets.items);
@@ -340,6 +341,7 @@ export default function AddTransactionScreen() {
           nextDate: recurringNextDate ? new Date(`${recurringNextDate}T12:00:00`).getTime() : undefined,
           endDate: recurringEndDate ? new Date(`${recurringEndDate}T23:59:59`).getTime() : undefined,
           totalRepetitions: recurringOccurrences ? Number(recurringOccurrences) : undefined,
+          calendar_system: calendarSystem === 'ETHIOPIAN' ? 'ETHIOPIAN' : 'GREGORIAN',
         });
         createdRecurringId = recurringRule.id;
       } catch (error: any) {
@@ -621,7 +623,7 @@ export default function AddTransactionScreen() {
           >
             <FontAwesome name="calendar" size={15} color="#6366f1" />
             <Text className="text-slate-900 dark:text-white text-sm font-medium ml-2.5">
-              {transactionDate.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+              {formatCalendarDate(transactionDate, calendarSystem, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
             </Text>
           </TouchableOpacity>
           {showDatePicker && Platform.OS === 'ios' && (

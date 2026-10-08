@@ -6,6 +6,8 @@ import * as XLSX from 'xlsx';
 
 import { saveWorkbook } from '@/utils/fileHelper';
 import { Account, Budget, Loan, Transaction } from '@/types/database';
+import { formatCalendarDate, type CalendarSystem } from '@/utils/ethiopianCalendar';
+import { loadStoredAppSettings } from '@/contexts/AppSettingsContext';
 
 export type ReportType = 'transactions' | 'summary' | 'loans' | 'all_data';
 
@@ -26,12 +28,15 @@ export interface ExportOptions {
   type: ReportType;
   format: 'pdf' | 'excel';
   timeRange: string;
+  calendarSystem?: CalendarSystem;
 }
 
 type SheetRow = Record<string, string | number | boolean | null>;
 
 export class ExportService {
   static async exportReport(options: ExportOptions) {
+    const storedSettings = await loadStoredAppSettings();
+    options = { ...options, calendarSystem: options.calendarSystem || storedSettings.calendarSystem || 'GREGORIAN' };
     const income = sumMoney(options.data.map(operatingIncome)), expense = sumMoney(options.data.map(operatingExpense));
     options = { ...options, summary: { income, expense, balance: sumMoney([income, -expense]), savingsRate: income > 0 ? (income - expense) / income * 100 : 0 } };
     const fileName = `HisabTrack_${options.type}_${new Date().toISOString().split('T')[0]}`;
@@ -115,7 +120,7 @@ export class ExportService {
                 </div>
                 <div class="report-info">
                   <h1 class="report-title">${this.escapeHtml(options.title)}</h1>
-                  <p class="report-subtitle">Generated on ${new Date().toLocaleDateString()} - ${this.escapeHtml(this.formatPeriodLabel(options.timeRange))} View</p>
+                  <p class="report-subtitle">Generated on ${this.escapeHtml(this.formatDate(Date.now(), options))} - ${this.escapeHtml(this.formatPeriodLabel(options.timeRange))} View · ${options.calendarSystem} calendar</p>
                 </div>
               </div>
               ${contentHtml}
@@ -265,7 +270,7 @@ export class ExportService {
         <tbody>
           ${options.data.map((item) => `
             <tr>
-              <td>${new Date(item.date).toLocaleDateString()}</td>
+              <td>${this.escapeHtml(this.formatDate(item.date, options))}</td>
               <td><div style="font-weight: 600;">${this.escapeHtml(item.description || 'No Description')}</div></td>
               <td>${this.escapeHtml(item.category || 'General')}</td>
               <td>${this.escapeHtml((item.tags || []).map((tag) => `#${tag}`).join(', '))}</td>
@@ -387,9 +392,9 @@ export class ExportService {
 
     if (options.type === 'all_data') {
       this.appendSheet(workbook, this.buildAccountRows(options.accounts || []), 'Accounts');
-      this.appendSheet(workbook, this.buildTransactionRows(options.data, accountNameMap), 'Transactions');
-      this.appendSheet(workbook, this.buildBudgetRows(options.budgets || []), 'Budgets');
-      this.appendSheet(workbook, this.buildLoanRows(options.loans || []), 'Loans & Debts');
+      this.appendSheet(workbook, this.buildTransactionRows(options.data, accountNameMap, options), 'Transactions');
+      this.appendSheet(workbook, this.buildBudgetRows(options.budgets || [], options), 'Budgets');
+      this.appendSheet(workbook, this.buildLoanRows(options.loans || [], options), 'Loans & Debts');
       return workbook;
     }
 
@@ -404,11 +409,11 @@ export class ExportService {
     }
 
     if (options.type === 'loans') {
-      this.appendSheet(workbook, this.buildLoanRows(options.loans || []), 'Loans & Debts');
+      this.appendSheet(workbook, this.buildLoanRows(options.loans || [], options), 'Loans & Debts');
       return workbook;
     }
 
-    this.appendSheet(workbook, this.buildTransactionRows(options.data, accountNameMap), 'Transactions');
+    this.appendSheet(workbook, this.buildTransactionRows(options.data, accountNameMap, options), 'Transactions');
     return workbook;
   }
 
@@ -418,14 +423,14 @@ export class ExportService {
     XLSX.utils.book_append_sheet(workbook, worksheet, name);
   }
 
-  private static buildTransactionRows(data: Transaction[], accountNameMap: Map<string, string>): SheetRow[] {
+  private static buildTransactionRows(data: Transaction[], accountNameMap: Map<string, string>, options: ExportOptions): SheetRow[] {
     return data.map((item) => {
       const date = new Date(item.date);
       const accountName = this.resolveAccountName(item.account_id, accountNameMap);
       const toAccountName = item.to_account_id ? this.resolveAccountName(item.to_account_id, accountNameMap) : '';
 
       return {
-        Date: date.toLocaleDateString(),
+        Date: this.formatDate(date.getTime(), options),
         Time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         Account: accountName,
         'Account ID': item.account_id,
@@ -458,6 +463,7 @@ export class ExportService {
     return [
       { Metric: 'Title', Value: options.title },
       { Metric: 'Time Range', Value: this.formatPeriodLabel(options.timeRange) },
+      { Metric: 'Calendar', Value: options.calendarSystem || 'GREGORIAN' },
       { Metric: 'Total Income', Value: options.summary?.income ?? 0 },
       { Metric: 'Total Expenses', Value: options.summary?.expense ?? 0 },
       { Metric: 'Net Balance', Value: options.summary?.balance ?? 0 },
@@ -485,15 +491,15 @@ export class ExportService {
       }));
   }
 
-  private static buildLoanRows(loans: Loan[]): SheetRow[] {
+  private static buildLoanRows(loans: Loan[], options: ExportOptions): SheetRow[] {
     return loans.map((loan) => ({
       Name: loan.lender_borrower_name,
       Type: loan.type,
       Status: loan.status,
       Principal: loan.principal_amount,
       Interest: loan.interest_rate,
-      'Start Date': new Date(loan.start_date).toLocaleDateString(),
-      'Due Date': new Date(loan.due_date).toLocaleDateString(),
+      'Start Date': this.formatDate(loan.start_date, options),
+      'Due Date': this.formatDate(loan.due_date, options),
       'Remaining Balance': loan.remaining_balance,
     }));
   }
@@ -512,13 +518,14 @@ export class ExportService {
     }));
   }
 
-  private static buildBudgetRows(budgets: Budget[]): SheetRow[] {
+  private static buildBudgetRows(budgets: Budget[], options: ExportOptions): SheetRow[] {
     return budgets.map((budget) => ({
       Category: budget.category,
       Period: budget.period,
       'Limit Amount': budget.limit_amount,
-      'Start Date': new Date(budget.start_date).toLocaleDateString(),
-      'End Date': new Date(budget.end_date).toLocaleDateString(),
+      'Start Date': this.formatDate(budget.start_date, { ...options, calendarSystem: budget.calendar_system || options.calendarSystem }),
+      'End Date': this.formatDate(budget.end_date, { ...options, calendarSystem: budget.calendar_system || options.calendarSystem }),
+      Calendar: budget.calendar_system || options.calendarSystem || 'GREGORIAN',
     }));
   }
 
@@ -541,6 +548,10 @@ export class ExportService {
       default:
         return timeRange;
     }
+  }
+
+  private static formatDate(timestamp: number, options: Pick<ExportOptions, 'calendarSystem'>) {
+    return formatCalendarDate(timestamp, options.calendarSystem || 'GREGORIAN');
   }
 
   private static formatAmount(amount: number) {

@@ -70,6 +70,9 @@ export default function DraftTransactionsScreen() {
   const draftIdParam = typeof params.draftId === 'string' ? params.draftId : undefined;
   const evidenceIdsParam = typeof params.evidenceIds === 'string' ? params.evidenceIds : undefined;
   const shouldRecalibrate = params.recalibrate === '1';
+  const communityGroupId = typeof params.communityGroupId === 'string' ? params.communityGroupId : undefined;
+  const communityScheduleId = typeof params.communityScheduleId === 'string' ? params.communityScheduleId : undefined;
+  const communityKind = params.communityKind === 'PAYOUT' ? 'PAYOUT' : params.communityKind === 'CONTRIBUTION' ? 'CONTRIBUTION' : undefined;
   const recalibrationStarted = useRef(false);
 
   const { formatCurrency } = useAppSettings();
@@ -622,6 +625,9 @@ export default function DraftTransactionsScreen() {
           counterpart_draft_id: counterpartId || undefined,
         };
         await DraftTransactionService.markAsRecorded(selectedDraft.id, transactionId, confirmation);
+        if (communityGroupId && communityKind) {
+          await (await import('@/services/CommunityGroupService')).CommunityGroupService.linkRecordedSms(communityGroupId, communityScheduleId, selectedDraft.id, communityKind);
+        }
         // The opposite leg of a paired self-transfer is covered by the same
         // TRANSFER transaction — close it too so it can't be double-recorded.
         if (counterpartId) {

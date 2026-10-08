@@ -24,6 +24,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { RecurringFrequency, RecurringTransaction } from '@/types/database';
 import { themeTokens } from '@/constants/theme';
+import { advanceEthiopianDate, formatCalendarDate, parseEthiopianDate } from '@/utils/ethiopianCalendar';
 
 type ViewMode = 'LIST' | 'CALENDAR';
 
@@ -68,7 +69,7 @@ const SpinnerPickerSheet = ({
 };
 
 // --- Helper Components for Cross-Platform Pickers ---
-const PlatformDatePicker = ({ value, onChange }: { value: Date, onChange: (date: Date) => void, placeholder?: string }) => {
+const PlatformDatePicker = ({ value, onChange, calendarSystem = 'GREGORIAN' }: { value: Date, onChange: (date: Date) => void, placeholder?: string, calendarSystem?: 'GREGORIAN' | 'ETHIOPIAN' | 'BOTH' }) => {
   const [show, setShow] = useState(false);
   if (Platform.OS === 'web') {
     return (
@@ -100,7 +101,7 @@ const PlatformDatePicker = ({ value, onChange }: { value: Date, onChange: (date:
           setShow(true);
         }
       }} className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl flex-row items-center justify-between border border-slate-200 dark:border-slate-700">
-        <Text className="text-slate-900 dark:text-white text-base">{value.toLocaleDateString()}</Text>
+        <Text className="text-slate-900 dark:text-white text-base">{formatCalendarDate(value, calendarSystem)}</Text>
         <FontAwesome name="calendar" size={16} color="#64748b" />
       </TouchableOpacity>
       {Platform.OS === 'ios' && (
@@ -168,7 +169,8 @@ export default function RecurringTransactionsScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const { items: accounts } = useSelector((state: RootState) => state.accounts);
   const { categories } = useTransactions();
-  const { formatCurrency } = useAppSettings();
+  const { formatCurrency, calendarSystem } = useAppSettings();
+  const advanceRule = React.useCallback((rule: Pick<RecurringTransaction, 'frequency' | 'startDate' | 'calendar_system'>, current: number) => rule.calendar_system === 'ETHIOPIAN' ? advanceEthiopianDate(rule.frequency, current, rule.startDate) : advanceDate(rule.frequency, current, rule.startDate), []);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
@@ -258,7 +260,7 @@ export default function RecurringTransactionsScreen() {
         if (t.type === 'INCOME') grouped[monthKey].totalIncome += t.amount;
         else if (t.type === 'EXPENSE') grouped[monthKey].totalExpense += t.amount;
 
-        current = new Date(advanceDate(t.frequency, current.getTime(), t.startDate));
+        current = new Date(advanceRule(t, current.getTime()));
         count++;
       }
     });
@@ -268,7 +270,7 @@ export default function RecurringTransactionsScreen() {
     });
 
     return grouped;
-  }, [recurringTransactions, viewMode]);
+  }, [recurringTransactions, viewMode, advanceRule]);
 
   // All available months (unfiltered)
   const allAvailableMonths = useMemo(() => {
@@ -388,6 +390,7 @@ export default function RecurringTransactionsScreen() {
       reminderEnabled,
       reminderDaysBefore: parseInt(reminderDaysBefore) || 1,
       reminderTime: reminderEnabled ? reminderTime.getTime() : undefined,
+      calendar_system: editingId ? (recurringTransactions.find(t => t.id === editingId)?.calendar_system || (calendarSystem === 'ETHIOPIAN' ? 'ETHIOPIAN' : 'GREGORIAN')) : (calendarSystem === 'ETHIOPIAN' ? 'ETHIOPIAN' : 'GREGORIAN'),
     };
 
     const scheduleNotification = async (data: RecurringTransaction) => {
@@ -530,7 +533,7 @@ export default function RecurringTransactionsScreen() {
 
       const updated = await Promise.all(recurringTransactions.map(async rt => {
         if (rt.id === recurring.id) {
-          const nextDate = advanceDate(recurring.frequency, rt.nextDate, rt.startDate);
+          const nextDate = advanceRule(rt, rt.nextDate);
           const completedRepetitions = rt.completedRepetitions + 1;
           const updatedRt = { ...rt, nextDate, completedRepetitions, isActive: (!rt.totalRepetitions || completedRepetitions < rt.totalRepetitions) && (!rt.endDate || nextDate <= rt.endDate) };
 
@@ -657,7 +660,7 @@ export default function RecurringTransactionsScreen() {
               </View>
             </View>
             {monthlySummary.nextDate > 0 && (
-              <Text className="text-slate-500 dark:text-slate-400 text-xs mt-4">Next scheduled item: {new Date(monthlySummary.nextDate).toLocaleDateString()}</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-xs mt-4">Next scheduled item: {formatCalendarDate(monthlySummary.nextDate, calendarSystem)}</Text>
             )}
           </View>
         )}
@@ -711,7 +714,7 @@ export default function RecurringTransactionsScreen() {
                     <View className="flex-row items-center mb-3">
                       <FontAwesome name="calendar" size={14} color="#64748b" />
                       <Text className="text-slate-500 dark:text-slate-400 text-sm ml-2">
-                        Next: {new Date(recurring.nextDate).toLocaleDateString()}
+                        Next: {formatCalendarDate(recurring.nextDate, calendarSystem)}
                       </Text>
                     </View>
 
@@ -1015,7 +1018,9 @@ export default function RecurringTransactionsScreen() {
                   value={startDate}
                   onChange={setStartDate}
                   placeholder="Select Start Date"
+                  calendarSystem={calendarSystem}
                 />
+                {calendarSystem !== 'GREGORIAN' && <TextInput key={startDate.getTime()} defaultValue={formatCalendarDate(startDate, 'ETHIOPIAN').replace(' E.C.', '')} onEndEditing={(event) => { const parsed = parseEthiopianDate(event.nativeEvent.text); if (parsed) setStartDate(parsed); }} placeholder="Ethiopian YYYY-MM-DD" placeholderTextColor="#94a3b8" className="mt-2 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3" />}
               </View>
 
               {/* End Date Option */}
@@ -1034,6 +1039,7 @@ export default function RecurringTransactionsScreen() {
                     value={endDate}
                     onChange={setEndDate}
                     placeholder="Select End Date"
+                    calendarSystem={calendarSystem}
                   />
                 )}
               </View>

@@ -1,4 +1,5 @@
 import { advanceDate, money, sumMoney } from '@/utils/finance';
+import { advanceEthiopianDate } from '@/utils/ethiopianCalendar';
 import { Account, Loan, RecurringFrequency, RecurringTransaction, Transaction } from '@/types/database';
 import IncomeInferenceService, { type InferredIncome } from '@/services/IncomeInferenceService';
 
@@ -290,7 +291,7 @@ export class ForecastService {
           break;
         }
 
-        currentDate = advanceDate(recurring.frequency, currentDate, recurring.startDate);
+        currentDate = recurring.calendar_system === 'ETHIOPIAN' ? advanceEthiopianDate(recurring.frequency, currentDate, recurring.startDate) : advanceDate(recurring.frequency, currentDate, recurring.startDate);
         generatedCount += 1;
       }
 
@@ -317,7 +318,7 @@ export class ForecastService {
           tax: recurring.tax,
         });
 
-        currentDate = advanceDate(recurring.frequency, currentDate, recurring.startDate);
+        currentDate = recurring.calendar_system === 'ETHIOPIAN' ? advanceEthiopianDate(recurring.frequency, currentDate, recurring.startDate) : advanceDate(recurring.frequency, currentDate, recurring.startDate);
         generatedCount += 1;
       }
     }

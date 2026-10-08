@@ -23,7 +23,7 @@ export default function AddBudgetScreen() {
   const isEdit = !!id;
 
   const dispatch = useDispatch<AppDispatch>();
-  const { formatCurrency, currency } = useAppSettings();
+  const { formatCurrency, currency, calendarSystem } = useAppSettings();
   const { categories } = useTransactions();
 
   const currencySymbol = useMemo(() => {
@@ -38,6 +38,10 @@ export default function AddBudgetScreen() {
   const [period, setPeriod] = useState<'MONTHLY' | 'WEEKLY'>(
     initialPeriod === 'WEEKLY' ? 'WEEKLY' : 'MONTHLY'
   );
+  const [budgetCalendar, setBudgetCalendar] = useState<'ETHIOPIAN' | 'GREGORIAN'>(
+    existingBudget?.calendar_system || (calendarSystem === 'ETHIOPIAN' ? 'ETHIOPIAN' : 'GREGORIAN')
+  );
+  useEffect(() => { if (existingBudget?.calendar_system) setBudgetCalendar(existingBudget.calendar_system); }, [existingBudget?.calendar_system]);
   const [rolloverMode, setRolloverMode] = useState<'NONE' | 'CARRY_UNUSED' | 'REDUCE_NEXT'>(
     initialRolloverMode === 'CARRY_UNUSED' || initialRolloverMode === 'REDUCE_NEXT'
       ? initialRolloverMode
@@ -77,7 +81,7 @@ export default function AddBudgetScreen() {
         && 'Choose an expense category for this budget.',
     })) return;
 
-    const periodRange = BudgetService.getCurrentPeriodRange(period);
+    const periodRange = BudgetService.getCurrentPeriodRange(period, Date.now(), budgetCalendar);
     const selected = expenseCategories.find(category => category.name === selectedCategory);
     const parent = selected?.parentId ? expenseCategories.find(category => category.id === selected.parentId) : undefined;
     const scopes = buildCategoryScopes(expenseCategories);
@@ -106,6 +110,7 @@ export default function AddBudgetScreen() {
       period,
       start_date: periodRange.start,
       end_date: periodRange.end,
+      calendar_system: budgetCalendar,
     };
 
     if (isEdit) {
@@ -266,6 +271,7 @@ export default function AddBudgetScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          {period === 'MONTHLY' && <View className="mt-4"><Text className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-2">Month calendar</Text><View className="flex-row gap-2">{(['GREGORIAN', 'ETHIOPIAN'] as const).map(value => <TouchableOpacity key={value} accessibilityRole="button" accessibilityState={{ selected: budgetCalendar === value }} onPress={() => setBudgetCalendar(value)} className={`flex-1 rounded-xl py-3 items-center border ${budgetCalendar === value ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}><Text className={`font-bold text-xs ${budgetCalendar === value ? 'text-purple-700 dark:text-purple-300' : 'text-slate-700 dark:text-slate-300'}`}>{value === 'GREGORIAN' ? 'Gregorian months' : 'Ethiopian months'}</Text></TouchableOpacity>)}</View></View>}
         </View>
 
         <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-8 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>

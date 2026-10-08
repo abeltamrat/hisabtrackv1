@@ -508,6 +508,8 @@ export default function SettingsScreen() {
     setCurrency,
     setLanguage,
     setFontSize,
+    calendarSystem,
+    setCalendarSystem,
     preferLocalLogos,
     setPreferLocalLogos,
     geminiApiKey,
@@ -1200,6 +1202,14 @@ export default function SettingsScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+            </View>
+
+            <View>
+              <Text className={`text-slate-700 dark:text-slate-300 font-bold mb-2 ${fieldLabelClass}`}>{t('calendarSystem')}</Text>
+              <View className="flex-row flex-wrap">
+                {(['GREGORIAN', 'ETHIOPIAN', 'BOTH'] as const).map(system => <TouchableOpacity key={system} onPress={() => setCalendarSystem(system)} className={`${selectorPillClass} ${calendarSystem === system ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent'}`}><Text className={`font-bold ${selectorTextClass} ${calendarSystem === system ? 'text-teal-600 dark:text-teal-400' : 'text-slate-700 dark:text-slate-300'}`}>{t(`calendar${system}`)}</Text></TouchableOpacity>)}
+              </View>
+              <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">{t('calendarCanonicalNote')}</Text>
             </View>
 
             {/* Font Size */}

@@ -20,7 +20,7 @@ export interface AppNotification {
   timestamp: number;
   read: boolean;
   isAI?: boolean; // Flag to distinguish AI-driven notifications
-  actionType?: 'view_transactions' | 'view_budget' | 'view_reports' | 'view_loans' | 'view_recurring' | 'view_drafts' | 'view_funds' | 'view_smart_review';
+  actionType?: 'view_transactions' | 'view_budget' | 'view_reports' | 'view_loans' | 'view_recurring' | 'view_drafts' | 'view_funds' | 'view_smart_review' | 'view_community';
   /** Opens this fund when actionType is view_funds. */
   fundId?: string;
 }

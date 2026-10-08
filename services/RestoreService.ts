@@ -44,6 +44,11 @@ export class RestoreService {
       const profiles = await identities.getAll(); check();
       await identities.saveAll(merge(profiles, backup.recipientProfiles));
     }
+    if (backup.communityGroups) {
+      const service = (await import('./CommunityGroupService')).CommunityGroupService;
+      const current = await service.getAll(); check();
+      await service.replaceAll(merge(current, backup.communityGroups));
+    }
     if (backup.settings) {
       const current = await loadStoredAppSettings(); check();
       const settings = { ...current, ...BackupService.safeSettings(backup.settings) };

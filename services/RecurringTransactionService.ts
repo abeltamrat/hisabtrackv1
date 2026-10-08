@@ -5,6 +5,7 @@ import { advanceDate, money } from '@/utils/finance';
 import { generateUUID } from '@/utils/uuid';
 import { createSerialQueue } from '@/utils/asyncLock';
 import { Platform } from 'react-native';
+import { advanceEthiopianDate } from '@/utils/ethiopianCalendar';
 
 const STORAGE_KEY = Platform.OS === 'web' ? 'recurring_transactions' : '@hisabtrack_recurring_transactions';
 
@@ -38,7 +39,13 @@ export interface CreateRecurringInput {
   endDate?: number;
   totalRepetitions?: number;
   splits?: TransactionSplit[];
+  calendar_system?: 'GREGORIAN' | 'ETHIOPIAN';
 }
+
+const nextOccurrence = (rule: Pick<RecurringTransaction, 'frequency' | 'startDate' | 'calendar_system'>, current: number) =>
+  rule.calendar_system === 'ETHIOPIAN'
+    ? advanceEthiopianDate(rule.frequency, current, rule.startDate)
+    : advanceDate(rule.frequency, current, rule.startDate);
 
 export class RecurringTransactionService {
   private static async replaceReminders(rule: RecurringTransaction): Promise<RecurringTransaction> {
@@ -72,7 +79,7 @@ export class RecurringTransactionService {
       throw new Error('Transfer fees and tax must be valid and cannot exceed the debit');
     }
     if (input.type !== 'TRANSFER' && (fees || tax)) throw new Error('Fees and tax estimates only apply to transfers');
-    const nextDate = input.nextDate ?? advanceDate(input.frequency, input.startDate, input.startDate);
+    const nextDate = input.nextDate ?? (input.calendar_system === 'ETHIOPIAN' ? advanceEthiopianDate(input.frequency, input.startDate, input.startDate) : advanceDate(input.frequency, input.startDate, input.startDate));
     if (!Number.isFinite(nextDate) || nextDate <= input.startDate) throw new Error('Next due date must be after the recorded transaction');
     if (input.endDate !== undefined && (!Number.isFinite(input.endDate) || input.endDate < nextDate)) throw new Error('End date must be on or after the next due date');
     if (input.totalRepetitions !== undefined && (!Number.isInteger(input.totalRepetitions) || input.totalRepetitions < 1)) throw new Error('Occurrences must be a positive whole number');
@@ -105,6 +112,7 @@ export class RecurringTransactionService {
       reminderDaysBeforeList: reminderDays,
       reminderTime: input.reminderEnabled ? reminderTime.getTime() : undefined,
       splits: input.splits,
+      calendar_system: input.calendar_system,
     };
     const all = await this.getAll();
     await write(JSON.stringify([...all, item]));
@@ -151,7 +159,7 @@ export class RecurringTransactionService {
   static async skipOccurrence(id: string): Promise<RecurringTransaction> {
     const rule = (await this.getAll()).find(item => item.id === id);
     if (!rule) throw new Error('Recurring rule not found');
-    const nextDate = advanceDate(rule.frequency, rule.nextDate, rule.startDate);
+    const nextDate = nextOccurrence(rule, rule.nextDate);
     const completedRepetitions = rule.completedRepetitions + 1;
     const updated = await this.update(id, {
       nextDate,
@@ -179,7 +187,7 @@ export class RecurringTransactionService {
       const index = all.findIndex(item => item.id === id);
       if (index < 0 || all[index].nextDate !== expectedDate) return undefined;
       const rule = all[index];
-      const nextDate = advanceDate(rule.frequency, rule.nextDate, rule.startDate);
+      const nextDate = nextOccurrence(rule, rule.nextDate);
       const completedRepetitions = rule.completedRepetitions + 1;
       const updated: RecurringTransaction = {
         ...rule,

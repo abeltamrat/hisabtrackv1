@@ -4,6 +4,7 @@ import { Alert } from '@/utils/alert';
 import { sessionLocalStorage, getSessionScope } from '@/services/SessionStorage';
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import { normalizeCalendarSystem, type CalendarSystem } from '@/utils/ethiopianCalendar';
 
 export type AppCurrencyCode = string; // ISO 4217
 export type AppLanguage = string; // i18n language code
@@ -52,6 +53,7 @@ export interface AppSettings {
   fontSize: AppFontSize;
   preferLocalLogos: boolean;
   balancesHidden: boolean;
+  calendarSystem: CalendarSystem;
   geminiApiKey?: string;
   groqApiKey?: string;
   openRouterApiKey?: string;
@@ -68,6 +70,7 @@ interface AppSettingsContextType extends AppSettings {
   setFontSize: (s: AppFontSize) => void;
   setPreferLocalLogos: (v: boolean) => void;
   setBalancesHidden: (v: boolean) => void;
+  setCalendarSystem: (v: CalendarSystem) => void;
   setGeminiApiKey: (k: string) => void;
   setGroqApiKey: (k: string) => void;
   setOpenRouterApiKey: (k: string) => void;
@@ -121,6 +124,7 @@ const DEFAULTS: AppSettings = {
   fontSize: 'Medium',
   preferLocalLogos: false,
   balancesHidden: false,
+  calendarSystem: 'GREGORIAN',
   geminiApiKey: '',
   groqApiKey: '',
   openRouterApiKey: '',
@@ -149,7 +153,7 @@ export async function loadStoredAppSettings(): Promise<AppSettings> {
           },
         }
         : DEFAULTS;
-      return { ...merged, fontSize: normalizeAppFontSize((merged as AppSettings).fontSize) };
+      return { ...merged, fontSize: normalizeAppFontSize((merged as AppSettings).fontSize), calendarSystem: normalizeCalendarSystem((merged as AppSettings).calendarSystem) };
     } else {
       const { SecureStorageService } = await import('@/services/SecureStorageService');
       const raw = await SecureStorageService.getUserData();
@@ -168,7 +172,7 @@ export async function loadStoredAppSettings(): Promise<AppSettings> {
           },
         }
         : DEFAULTS;
-      return { ...merged, fontSize: normalizeAppFontSize((merged as AppSettings).fontSize) };
+      return { ...merged, fontSize: normalizeAppFontSize((merged as AppSettings).fontSize), calendarSystem: normalizeCalendarSystem((merged as AppSettings).calendarSystem) };
     }
   } catch {
     return DEFAULTS;
@@ -235,6 +239,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const setFontSize = (fontSize: AppFontSize) => setSettings(prev => ({ ...prev, fontSize: normalizeAppFontSize(fontSize) }));
   const setPreferLocalLogos = (preferLocalLogos: boolean) => setSettings(prev => ({ ...prev, preferLocalLogos }));
   const setBalancesHidden = (balancesHidden: boolean) => setSettings(prev => ({ ...prev, balancesHidden }));
+  const setCalendarSystem = (calendarSystem: CalendarSystem) => setSettings(prev => ({ ...prev, calendarSystem }));
   const setGeminiApiKey = (geminiApiKey: string) => setSettings(prev => ({ ...prev, geminiApiKey }));
   const setGroqApiKey = (groqApiKey: string) => setSettings(prev => ({ ...prev, groqApiKey }));
   const setOpenRouterApiKey = (openRouterApiKey: string) => setSettings(prev => ({ ...prev, openRouterApiKey }));
@@ -361,6 +366,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     setFontSize,
     setPreferLocalLogos,
     setBalancesHidden,
+    setCalendarSystem,
     setGeminiApiKey,
     setGroqApiKey,
     setOpenRouterApiKey,

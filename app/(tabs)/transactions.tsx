@@ -19,6 +19,7 @@ import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/d
 
 import { useDispatch, useSelector } from 'react-redux';
 import { themeTokens } from '@/constants/theme';
+import { formatCalendarDate } from '@/utils/ethiopianCalendar';
 
 const BUNDLED_LOGO_MAP = new Map(BUNDLED_LOGOS.map(b => [b.url, b]));
 
@@ -83,7 +84,7 @@ export default function TransactionsScreen() {
   const accounts = useSelector((state: RootState) => state.accounts.items);
   const { categories } = useTransactions();
   const { t } = useI18n();
-  const { formatCurrency, fontSize } = useAppSettings();
+  const { formatCurrency, fontSize, calendarSystem } = useAppSettings();
   const { actualTheme } = useTheme();
   const isDark = actualTheme === 'dark';
   const theme = themeTokens(isDark);
@@ -215,7 +216,7 @@ export default function TransactionsScreen() {
       } else if (date.toDateString() === yesterday.toDateString()) {
         dateKey = 'Yesterday';
       } else {
-        dateKey = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        dateKey = formatCalendarDate(date, calendarSystem, { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
       if (!groups[dateKey]) {
@@ -225,7 +226,7 @@ export default function TransactionsScreen() {
     });
 
     return Object.entries(groups).map(([date, items]) => ({ title: date, data: items }));
-  }, [filteredTransactions]);
+  }, [filteredTransactions, calendarSystem]);
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -290,6 +291,7 @@ export default function TransactionsScreen() {
         title: 'Transaction Statement',
         type: 'transactions',
         format,
+        calendarSystem,
         timeRange: dateFrom || dateTo
           ? `${dateFrom ? dateFrom.toLocaleDateString() : '–'} to ${dateTo ? dateTo.toLocaleDateString() : '–'}`
           : 'All Time',
@@ -303,8 +305,7 @@ export default function TransactionsScreen() {
   };
 
   const formatTableDate = (ts: number) => {
-    const d = new Date(ts);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return formatCalendarDate(ts, calendarSystem, { month: 'short', day: 'numeric' });
   };
 
   return (
