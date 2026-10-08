@@ -41,9 +41,10 @@ export default function Accounts() {
   const { actualTheme } = useTheme();
   const theme = themeTokens(actualTheme === 'dark');
   const [accountName, setAccountName] = useState('');
-  const { errors, validate, clearError, resetErrors } = useFormErrors<'name' | 'balance'>();
+  const { errors, validate, clearError, resetErrors } = useFormErrors<'name' | 'balance' | 'reserve'>();
   const [accountType, setAccountType] = useState<AccountType>('CASH');
   const [initialBalance, setInitialBalance] = useState('');
+  const [reserveAmount, setReserveAmount] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [smsNumber, setSmsNumber] = useState('');
   const [fetchedSmsNumbers, setFetchedSmsNumbers] = useState<Array<{ sender: string; preview: string }>>([]);
@@ -415,6 +416,7 @@ export default function Accounts() {
     resetErrors();
     setAccountName('');
     setInitialBalance('');
+    setReserveAmount('');
     setAccountType('CASH');
     setEditingId(null);
     setAccountNumber('');
@@ -491,6 +493,7 @@ export default function Accounts() {
     setAccountName(account.name);
     setAccountType(account.type);
     setInitialBalance(account.balance.toString());
+    setReserveAmount(String(account.reserve_amount || ''));
     setAccountNumber(account.account_number || '');
     setSmsNumber(account.sms_number || '');
     setAccountLogo(account.logo || null);
@@ -532,11 +535,13 @@ export default function Accounts() {
 
   const handleSaveAccount = async () => {
     const balance = initialBalance.trim() === '' ? 0 : parseFloat(initialBalance);
+    const reserve = reserveAmount.trim() === '' ? 0 : parseFloat(reserveAmount);
     // Both problems surface at once, next to the field they belong to, instead
     // of one blocking dialog at a time that named no field.
     if (!validate({
       name: !accountName.trim() && 'Enter a name for this account.',
       balance: initialBalance.trim() !== '' && isNaN(balance) && 'Enter a number, for example 1500.00.',
+      reserve: (!Number.isFinite(reserve) || reserve < 0) && 'Reserve must be zero or more.',
     })) return;
 
     // Auto-fetch logo if not selected
@@ -600,6 +605,7 @@ export default function Accounts() {
             name: newName,
             type: accountType,
             balance: balance,
+            reserve_amount: reserve,
             account_number: accountNumber || undefined,
             sms_number: smsNumber || undefined,
             logo: finalLogo || undefined,
@@ -621,6 +627,7 @@ export default function Accounts() {
           currency: accounts[0]?.currency || currency,
           is_locked: false,
           locked_amount: 0,
+          reserve_amount: reserve,
           account_number: accountNumber || undefined,
           sms_number: smsNumber || undefined,
           logo: finalLogo || undefined,
@@ -1279,6 +1286,21 @@ export default function Accounts() {
                 {errors.balance ? (
                   <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.balance}</Text>
                 ) : null}
+              </View>
+
+              <View className="mb-6">
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Forecast reserve (optional)</Text>
+                <TextInput
+                  className={`bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base border ${errors.reserve ? 'border-red-500' : 'border-transparent'}`}
+                  placeholder="e.g. 500.00"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="decimal-pad"
+                  value={reserveAmount}
+                  onChangeText={(value) => { clearError('reserve'); setReserveAmount(value); }}
+                  accessibilityLabel="Forecast reserve"
+                />
+                <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1.5">HisabTrack warns when planned payments may take this account below the reserve.</Text>
+                {errors.reserve ? <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.reserve}</Text> : null}
               </View>
 
               {/* Account Number */}

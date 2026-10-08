@@ -1,11 +1,12 @@
 import { sessionLocalStorage } from '@/services/SessionStorage';
-import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
+import { Account, Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
 import AsyncStorage from '@/services/SessionStorage';
 import { Platform } from 'react-native';
 
 import BudgetService from '@/services/BudgetService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
+import ForecastService from '@/services/ForecastService';
 
 export interface AppNotification {
   id: string;
@@ -200,7 +201,7 @@ export class AppNotificationService {
       }
       
       // 3. Generate Insights
-      await this.generateSmartNotifications(transactions, loans, recurring, budgets, accounts[0]?.currency || 'ETB');
+      await this.generateSmartNotifications(transactions, loans, recurring, budgets, accounts[0]?.currency || 'ETB', accounts);
       
     } catch (error) {
       console.error('Error in checkAll:', error);
@@ -215,7 +216,8 @@ export class AppNotificationService {
     loans: Loan[] = [], 
     recurring: RecurringTransaction[] = [],
     budgets: Budget[] = [],
-    currency = 'ETB'
+    currency = 'ETB',
+    accounts: Account[] = []
   ): Promise<void> {
     if (transactions.length === 0 && loans.length === 0 && recurring.length === 0) return;
 
@@ -224,9 +226,29 @@ export class AppNotificationService {
     const today = new Date();
     const thisMonth = today.getMonth();
     const thisYear = today.getFullYear();
-    const daysInMonth = new Date(thisYear, thisMonth + 1, 0).getDate();
     const dayOfMonth = today.getDate();
     const formatMoney = (amount: number) => `${currency} ${amount.toFixed(2)}`;
+
+    if (accounts.length > 0) {
+      const forecast = ForecastService.generateForecast({ accounts, recurring, loans, days: 30 });
+      for (const warning of forecast.lowBalanceWarnings) {
+        const causes = warning.causingEvents
+          .filter(event => event.type !== 'INCOME')
+          .map(event => event.title)
+          .slice(0, 2);
+        const dateKey = new Date(warning.crossingDate).toISOString().slice(0, 10);
+        notifications.push({
+          sourceKey: `low-balance:${warning.accountId}:${dateKey}:${warning.reserveAmount}`,
+          title: `Low-balance forecast: ${warning.accountName}`,
+          message: `${warning.accountName} may fall below ${formatMoney(warning.reserveAmount)} on ${new Date(warning.crossingDate).toLocaleDateString()}${causes.length ? ` after ${causes.join(' and ')}` : ''}.`,
+          type: 'warning',
+          icon: 'line-chart',
+          color: '#dc2626',
+          isAI: false,
+          actionType: 'view_reports',
+        });
+      }
+    }
 
     // -- Transaction Metrics --
     const thisMonthTransactions = transactions.filter(t => {
@@ -345,18 +367,13 @@ export class AppNotificationService {
     });
 
     // 5. 📉 Budget Forecasting
-    // Calculate daily average spend per category
-    const catSpending: Record<string, number> = {};
-    thisMonthTransactions.filter(t => t.type === 'EXPENSE').forEach(t => {
-       const cat = t.category || 'Uncategorized';
-       catSpending[cat] = sumMoney([catSpending[cat] || 0, t.amount]);
-    });
-
     budgets
       .filter((budget) => budget.start_date <= now && budget.end_date >= now)
       .forEach(budget => {
-       const spent = catSpending[budget.category] || 0;
-       const limit = BudgetService.calculateBudgetMetrics(budget, budgets, transactions).effectiveLimit;
+       const metrics = BudgetService.calculateBudgetMetrics(budget, budgets, transactions);
+       const pace = BudgetService.calculatePace(metrics, now);
+       const spent = metrics.spent;
+       const limit = metrics.effectiveLimit;
        if (limit <= 0) {
          return;
        }
@@ -366,7 +383,7 @@ export class AppNotificationService {
        if (percent > 0.9 && percent <= 1.0) {
           notifications.push({
              title: `⚠️ Budget Alert: ${budget.category}`,
-             message: `You've used ${(percent * 100).toFixed(0)}% of your ${budget.category} budget with ${daysInMonth - dayOfMonth} days left.`,
+             message: `You've used ${(percent * 100).toFixed(0)}% of your ${budget.category} budget with ${pace.remainingDays} days left in this period.`,
              type: 'warning',
              icon: 'pie-chart',
              color: '#f59e0b',
@@ -375,12 +392,13 @@ export class AppNotificationService {
           });
        }
        // Forecast
-       const dailyAvg = spent / dayOfMonth;
-       const projected = dailyAvg * daysInMonth;
-       if (dayOfMonth > 10 && projected > limit && percent < 1.0) { // Only forecast after 10 days
+       if (pace.hasEnoughHistory && pace.projectedSpend > limit && percent < 1.0) {
+          const exhaustion = pace.exhaustionDate
+            ? ` It may run out on ${new Date(pace.exhaustionDate).toLocaleDateString()}.`
+            : '';
           notifications.push({
              title: `📈 Budget Forecast: ${budget.category}`,
-             message: `At this rate, you'll exceed your budget by ${formatMoney(projected - limit)}.`,
+             message: `At this rate, you'll exceed your budget by ${formatMoney(pace.projectedSpend - limit)}.${exhaustion}`,
              type: 'tip',
              icon: 'line-chart',
              color: '#6366f1',

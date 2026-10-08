@@ -33,7 +33,7 @@ export interface DraftTransaction {
   transfer_to_account_id?: string;
   transfer_from_account_id?: string;
   transfer_peer_account_number?: string;
-  suggested_splits?: Array<{ id: string; category: string; amount: number; description?: string }>;
+  suggested_splits?: Array<{ id: string; category: string; amount: number; description?: string; tags?: string[] }>;
   is_loan_disbursement?: boolean;
   /** Id of the opposite-leg draft when this is one side of a paired self-transfer. */
   paired_draft_id?: string;

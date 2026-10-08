@@ -27,6 +27,7 @@ import type { TransactionSplit } from '@/types/database';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import { money, sumMoney } from '@/utils/finance';
 import { useI18n } from '@/contexts/I18nContext';
+import { rankTagSuggestions } from '@/utils/tagSuggestions';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -119,17 +120,14 @@ export default function AddTransactionScreen() {
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  const uniqueTags = useMemo(() => {
-    const tagsSet = new Set<string>();
-    transactions.forEach((t: any) => {
-      if (t.tags && Array.isArray(t.tags)) {
-        t.tags.forEach((tag: any) => {
-          if (tag && typeof tag === 'string') tagsSet.add(tag.trim().toLowerCase());
-        });
-      }
-    });
-    return Array.from(tagsSet).sort();
-  }, [transactions]);
+  const uniqueTags = useMemo(() => rankTagSuggestions(transactions, {
+    category: selectedCategory,
+    timestamp: transactionDate.getTime(),
+  }), [selectedCategory, transactionDate, transactions]);
+  const tagsForCategory = (category: string) => rankTagSuggestions(transactions, {
+    category,
+    timestamp: transactionDate.getTime(),
+  });
 
   const handleToggleTag = (tagToToggle: string) => {
     const currentTags = parseTagInput(tagsInput) || [];
@@ -658,7 +656,7 @@ export default function AddTransactionScreen() {
               <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
               <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">The account is charged once; reports use each allocation.</Text></View>
             </TouchableOpacity>
-            {splitEnabled && <View className="mt-3"><TransactionSplitEditor total={parseFloat(amount) || 0} splits={splits} categories={filteredCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} /></View>}
+            {splitEnabled && <View className="mt-3"><TransactionSplitEditor total={parseFloat(amount) || 0} splits={splits} categories={filteredCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} /></View>}
           </View>
         )}
 

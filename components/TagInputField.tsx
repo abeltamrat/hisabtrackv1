@@ -41,7 +41,9 @@ export default function TagInputField({
       if (selectedKeys.has(key) || unique.has(key)) continue;
       unique.set(key, trimmed);
     }
-    return [...unique.values()].sort((a, b) => a.localeCompare(b));
+    // Preserve the caller's relevance order. New users still receive the
+    // caller's alphabetical fallback.
+    return [...unique.values()];
   }, [selectedKeys, suggestions]);
 
   const needle = draft.trim().toLowerCase();

@@ -28,6 +28,8 @@ import type { TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 import { detectRecurringPattern } from '@/utils/recurringDetection';
 import { useI18n } from '@/contexts/I18nContext';
+import { rankTagSuggestions } from '@/utils/tagSuggestions';
+import ReconciliationService, { type BalanceGapAnalysis } from '@/services/ReconciliationService';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -115,19 +117,16 @@ export default function DraftTransactionsScreen() {
   const [groupingMode, setGroupingMode] = useState<'none' | 'date' | 'month' | 'year' | 'type'>('date');
   const [showOptions, setShowOptions] = useState(false);
 
-  const uniqueTags = useMemo(() => {
-    const tagsSet = new Set<string>();
-    transactions.forEach(t => {
-      if (t.tags && Array.isArray(t.tags)) {
-        t.tags.forEach(tag => {
-          if (tag && typeof tag === 'string') {
-            tagsSet.add(tag.trim().toLowerCase());
-          }
-        });
-      }
-    });
-    return Array.from(tagsSet).sort();
-  }, [transactions]);
+  const uniqueTags = useMemo(() => rankTagSuggestions(transactions, {
+    category: editedCategory,
+    recipient: editedRecipient,
+    timestamp: selectedDraft?.date,
+  }), [editedCategory, editedRecipient, selectedDraft?.date, transactions]);
+  const tagsForCategory = (category: string) => rankTagSuggestions(transactions, {
+    category,
+    recipient: editedRecipient,
+    timestamp: selectedDraft?.date,
+  });
   const recurringSuggestion = useMemo(() => selectedDraft ? detectRecurringPattern({
     type: editedType,
     amount: selectedDraft.amount,
@@ -330,6 +329,43 @@ export default function DraftTransactionsScreen() {
   };
 
   const handleRefresh = () => handleSync(false);
+
+  const handleBalanceAdjustment = (draft: DraftTransaction, analysis: BalanceGapAnalysis) => {
+    const adjustmentType = analysis.gap > 0 ? 'INCOME' : 'EXPENSE';
+    const amount = Math.abs(analysis.gap);
+    Alert.alert(
+      'Review balance adjustment',
+      `Record a ${formatCurrency(amount)} ${adjustmentType.toLowerCase()} adjustment on ${new Date(draft.date).toLocaleDateString()}? This only explains the balance gap; it does not guess a recipient or spending category.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Record adjustment',
+          onPress: async () => {
+            const result = await dispatch(addTransaction({
+              account_id: draft.account_id,
+              amount,
+              type: adjustmentType,
+              category: 'Balance Adjustment',
+              purpose: 'ADJUSTMENT',
+              description: `Balance adjustment supported by bank SMS dated ${new Date(draft.date).toLocaleString()}`,
+              date: draft.date,
+              reference_number: draft.reference_number,
+              receipt_url: draft.receipt_url,
+              operation_id: `balance-gap:${draft.id}:${analysis.bankBalance}`,
+            }));
+            if (addTransaction.rejected.match(result)) {
+              Alert.alert('Could not record adjustment', result.error.message || 'Please try again.');
+              return;
+            }
+            Alert.alert('Balance adjusted', 'The adjustment was recorded separately and can be undone.', [
+              { text: 'Done' },
+              { text: 'Undo', onPress: () => { void dispatch(deleteTransaction(result.payload.id)); } },
+            ]);
+          },
+        },
+      ]
+    );
+  };
 
   const handleToggleTag = (tagToToggle: string) => {
     const currentTags = parseTagInput(tagsInput) || [];
@@ -1036,15 +1072,10 @@ export default function DraftTransactionsScreen() {
             );
 
             const draftAccount = accounts.find((a: any) => a.id === draft.account_id);
-            const postBalance = draftAccount
-              ? draft.status === 'RECORDED'
-                ? draftAccount.balance
-                : draftAccount.balance + (draft.type === 'INCOME' ? draft.amount : -draft.amount)
+            const balanceAnalysis = draftAccount
+              ? ReconciliationService.analyzeDraft(draftAccount, draft, transactions)
               : null;
-            const hasDiscrepancy =
-              postBalance !== null &&
-              draft.suggested_balance !== undefined &&
-              Math.abs(postBalance - draft.suggested_balance) > 0.01;
+            const hasDiscrepancy = !!balanceAnalysis?.hasDiscrepancy;
 
             return (
               <TouchableOpacity
@@ -1168,11 +1199,16 @@ export default function DraftTransactionsScreen() {
                 )}
 
                 {hasDiscrepancy && (
-                  <View className="flex-row items-center bg-red-50 dark:bg-red-950/20 p-2.5 rounded-xl mb-3 border border-red-100 dark:border-red-900/30">
-                    <FontAwesome name="exclamation-triangle" size={12} color="#ef4444" />
-                    <Text className="text-red-600 dark:text-red-400 text-[10px] ml-2 font-semibold flex-1">
-                      Balance Discrepancy: Bank states {formatCurrency(draft.suggested_balance || 0)}, but expected balance is {formatCurrency(postBalance || 0)}.
-                    </Text>
+                  <View className="bg-red-50 dark:bg-red-950/20 p-2.5 rounded-xl mb-3 border border-red-100 dark:border-red-900/30">
+                    <View className="flex-row items-center">
+                      <FontAwesome name="exclamation-triangle" size={12} color="#ef4444" />
+                      <Text className="text-red-600 dark:text-red-400 text-[10px] ml-2 font-semibold flex-1">
+                        Balance gap {formatCurrency(Math.abs(balanceAnalysis?.gap || 0))}: bank states {formatCurrency(balanceAnalysis?.bankBalance || 0)}, while the historical ledger reconstructs {formatCurrency(balanceAnalysis?.expectedBalance || 0)}. {balanceAnalysis?.explanation}
+                      </Text>
+                    </View>
+                    {balanceAnalysis && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Review balance adjustment" onPress={() => handleBalanceAdjustment(draft, balanceAnalysis)} className="self-start mt-2 px-3 py-2 rounded-lg bg-red-600">
+                      <Text className="text-white text-[10px] font-bold">Review adjustment</Text>
+                    </TouchableOpacity>}
                   </View>
                 )}
 
@@ -1593,7 +1629,7 @@ export default function DraftTransactionsScreen() {
                     <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
                     <View className="ml-3 flex-1"><Text className="text-slate-900 dark:text-white font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Keep one bank debit while allocating the purchase in reports.</Text></View>
                   </TouchableOpacity>
-                  {splitEnabled && <TransactionSplitEditor total={selectedDraft?.amount || 0} splits={splits} categories={confirmCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} />}
+                  {splitEnabled && <TransactionSplitEditor total={selectedDraft?.amount || 0} splits={splits} categories={confirmCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} />}
                 </View>
               )}
 

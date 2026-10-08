@@ -1,4 +1,4 @@
-import { operatingTransactions, sumMoney } from '@/utils/finance';
+import { money, operatingTransactions, sumMoney } from '@/utils/finance';
 import { Budget, BudgetPeriod, BudgetRolloverMode, Transaction } from '@/types/database';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,11 +15,102 @@ export interface BudgetMetrics {
   previousBudget?: Budget;
 }
 
+export interface BudgetPace {
+  elapsedDays: number;
+  totalDays: number;
+  remainingDays: number;
+  dailySpend: number;
+  projectedSpend: number;
+  exhaustionDate: number | null;
+  hasEnoughHistory: boolean;
+}
+
+export interface BudgetSuggestion {
+  category: string;
+  period: BudgetPeriod;
+  suggestedLimit: number;
+  periodSpending: number[];
+}
+
 interface BudgetMetricOptions {
   excludeTransactionId?: string;
 }
 
 export class BudgetService {
+  static calculatePace(metrics: BudgetMetrics, now = Date.now()): BudgetPace {
+    const start = new Date(metrics.budget.start_date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(metrics.budget.end_date);
+    end.setHours(23, 59, 59, 999);
+    const cursor = Math.min(Math.max(now, start.getTime()), end.getTime());
+    const calendarDay = (value: number) => {
+      const date = new Date(value);
+      return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
+    };
+    const elapsedDays = Math.max(1, calendarDay(cursor) - calendarDay(start.getTime()) + 1);
+    const totalDays = Math.max(1, calendarDay(end.getTime()) - calendarDay(start.getTime()) + 1);
+    const dailySpend = metrics.spent > 0 ? metrics.spent / elapsedDays : 0;
+    const projectedSpend = money(dailySpend * totalDays);
+    const daysToLimit = dailySpend > 0 ? Math.ceil(metrics.effectiveLimit / dailySpend) : Infinity;
+    let exhaustionDate: number | null = null;
+    if (Number.isFinite(daysToLimit) && daysToLimit <= totalDays) {
+      const exhausted = new Date(start);
+      exhausted.setDate(exhausted.getDate() + Math.max(0, daysToLimit - 1));
+      exhaustionDate = Math.min(end.getTime(), exhausted.getTime());
+    }
+    return {
+      elapsedDays,
+      totalDays,
+      remainingDays: Math.max(0, totalDays - elapsedDays),
+      dailySpend: money(dailySpend),
+      projectedSpend,
+      exhaustionDate,
+      hasEnoughHistory: elapsedDays >= 3 && metrics.spent > 0,
+    };
+  }
+
+  static suggestLimits(
+    transactions: Transaction[],
+    categories: string[],
+    period: BudgetPeriod = 'MONTHLY',
+    now = Date.now(),
+  ): BudgetSuggestion[] {
+    const current = this.getCurrentPeriodRange(period, now);
+    const ranges: Array<{ start: number; end: number }> = [];
+    let cursor = current.start;
+    for (let index = 0; index < 3; index += 1) {
+      if (period === 'WEEKLY') {
+        const end = cursor - 1;
+        ranges.unshift({ start: end - WEEK_MS + 1, end });
+        cursor = end - WEEK_MS + 1;
+      } else {
+        const date = new Date(cursor);
+        const start = new Date(date.getFullYear(), date.getMonth() - 1, 1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(date.getFullYear(), date.getMonth(), 0);
+        end.setHours(23, 59, 59, 999);
+        ranges.unshift({ start: start.getTime(), end: end.getTime() });
+        cursor = start.getTime();
+      }
+    }
+
+    const expenses = operatingTransactions(transactions).filter(transaction => transaction.type === 'EXPENSE');
+    if (!expenses.length || Math.min(...expenses.map(transaction => transaction.date)) > ranges[0].start) return [];
+
+    return categories.map(category => {
+      const periodSpending = ranges.map(range => sumMoney(expenses
+        .filter(transaction => transaction.category === category && transaction.date >= range.start && transaction.date <= range.end)
+        .map(transaction => transaction.amount)));
+      const sorted = [...periodSpending].sort((left, right) => left - right);
+      return {
+        category,
+        period,
+        suggestedLimit: money(sorted[1]),
+        periodSpending,
+      };
+    }).filter(suggestion => suggestion.suggestedLimit > 0)
+      .sort((left, right) => right.suggestedLimit - left.suggestedLimit || left.category.localeCompare(right.category));
+  }
   static getRolloverMode(budget: Budget): BudgetRolloverMode {
     return budget.rollover_mode ?? 'NONE';
   }

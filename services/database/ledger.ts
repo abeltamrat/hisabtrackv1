@@ -141,7 +141,7 @@ export class LedgerDatabase implements IDatabase {
       this.validateAccount(input);
       const existing = await this.raw.getAccounts();
       if (existing.some(a => a.currency !== input.currency)) throw new Error('Use the existing ledger currency; currency conversion is not supported');
-      const account: Account = { ...input, balance: money(input.balance), id: generateUUID(), created_at: Date.now(), updated_at: Date.now() };
+      const account: Account = { ...input, balance: money(input.balance), locked_amount: money(input.locked_amount || 0), reserve_amount: money(input.reserve_amount || 0), id: generateUUID(), created_at: Date.now(), updated_at: Date.now() };
       const rows: Row[] = [{ table: 'accounts', id: account.id, value: account }];
       if (account.balance !== 0) {
         const id = generateUUID();
@@ -154,6 +154,7 @@ export class LedgerDatabase implements IDatabase {
     if (!a.name?.trim() || !/^[A-Z]{3}$/.test(a.currency || '') || !['BANK', 'MOBILE_MONEY', 'CASH', 'CARD', 'SAVINGS'].includes(a.type || '')) throw new Error('Invalid account');
     if (a.aliases !== undefined && (a.aliases.length > 50 || a.aliases.some(alias => typeof alias !== 'string' || !alias.trim() || alias.length > 120))) throw new Error('Invalid account aliases');
     money(a.balance!); if (money(a.locked_amount ?? 0) < 0) throw new Error('Invalid locked amount');
+    if (money(a.reserve_amount ?? 0) < 0) throw new Error('Invalid reserve amount');
   }
   updateAccount(input: Account) {
     return this.run(async () => {
@@ -161,7 +162,7 @@ export class LedgerDatabase implements IDatabase {
       const old = (await this.raw.getAccounts()).find(a => a.id === input.id);
       if (!old) throw new Error('Account not found');
       if (old.currency !== input.currency) throw new Error('Existing account currency cannot be relabeled');
-      const account = { ...input, balance: money(input.balance), updated_at: Date.now() };
+      const account = { ...input, balance: money(input.balance), locked_amount: money(input.locked_amount || 0), reserve_amount: money(input.reserve_amount || 0), updated_at: Date.now() };
       const rows: Row[] = [{ table: 'accounts', id: input.id, value: account }];
       const diff = money(account.balance - old.balance);
       if (diff) {

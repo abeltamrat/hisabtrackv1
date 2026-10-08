@@ -15,6 +15,8 @@ export interface Account {
   currency: string;
   is_locked: boolean;
   locked_amount: number;
+  /** User-selected cash cushion used by forecasts and safe-to-spend. */
+  reserve_amount?: number;
   created_at: number; // Timestamp
   updated_at?: number; // Timestamp of last update
   account_number?: string;

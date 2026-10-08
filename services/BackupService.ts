@@ -140,7 +140,7 @@ export class BackupService {
       for (const a of data.accounts) {
         if (typeof a.name !== 'string' || !a.name.trim() || !/^[A-Z]{3}$/.test(a.currency) || !['BANK', 'MOBILE_MONEY', 'CASH', 'CARD', 'SAVINGS'].includes(a.type)) return false;
         if (a.aliases !== undefined && (!Array.isArray(a.aliases) || a.aliases.length > 50 || a.aliases.some((alias: unknown) => typeof alias !== 'string' || !alias.trim() || alias.length > 120))) return false;
-        money(a.balance); if (money(a.locked_amount || 0) < 0) return false;
+        money(a.balance); if (money(a.locked_amount || 0) < 0 || money(a.reserve_amount || 0) < 0) return false;
       }
       if (new Set(data.accounts.map((a: Account) => a.currency)).size > 1) return false;
       for (const t of data.transactions) { validateTransaction(t, data.accounts); if (typeof t.category !== 'string' || typeof t.description !== 'string') return false; }

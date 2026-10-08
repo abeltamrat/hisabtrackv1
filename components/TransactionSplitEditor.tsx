@@ -10,7 +10,7 @@ import { money, sumMoney } from '@/utils/finance';
 type Category = TreeCategory;
 
 export default function TransactionSplitEditor({
-  total, splits, categories, onChange, formatCurrency, tagSuggestions = [],
+  total, splits, categories, onChange, formatCurrency, tagSuggestions = [], tagSuggestionsForCategory,
 }: {
   total: number;
   splits: TransactionSplit[];
@@ -18,6 +18,7 @@ export default function TransactionSplitEditor({
   onChange: (splits: TransactionSplit[]) => void;
   formatCurrency: (value: number) => string;
   tagSuggestions?: string[];
+  tagSuggestionsForCategory?: (category: string) => string[];
 }) {
   const allocated = sumMoney(splits.map(item => Number(item.amount) || 0));
   const remaining = money(total - allocated);
@@ -90,7 +91,9 @@ export default function TransactionSplitEditor({
           />
           <TagInputField
             tags={split.tags}
-            suggestions={suggestionPool}
+            suggestions={tagSuggestionsForCategory
+              ? [...(split.tags || []), ...tagSuggestionsForCategory(split.category), ...suggestionPool]
+              : suggestionPool}
             onChange={value => update(split.id, { tags: value })}
             placeholder="Tag this part"
             savedLabel="Saved tags"

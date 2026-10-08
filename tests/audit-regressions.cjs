@@ -31,6 +31,9 @@ const finance = load('./utils/finance.ts');
 const { LedgerDatabase } = load('./services/database/ledger.ts');
 const { ForecastService } = load('./services/ForecastService.ts');
 const { BudgetService } = load('./services/BudgetService.ts');
+const { SafeToSpendService } = load('./services/SafeToSpendService.ts');
+const { ReconciliationService } = load('./services/ReconciliationService.ts');
+const { rankTagSuggestions } = load('./utils/tagSuggestions.ts');
 const { BackupService } = load('./services/BackupService.ts');
 const { findSelfTransferPairs, findTransferCandidates } = load('./utils/transferPairing.ts');
 const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
@@ -97,6 +100,54 @@ test('recipient payment and bank charges remain separate operating expenses',()=
  assert.equal(rows[1].category,'Bank Fees');
  assert.equal(finance.sumMoney(rows.map(row=>row.amount)),16203.60);
  assert.equal(finance.cashDelta(tx),-16203.60);
+});
+test('historical SMS reconciliation rewinds later ledger activity and uses gross debit',()=>{
+ const now=Date.now();
+ const a={...account('CBE',700),id:'a',created_at:1};
+ const later={...transaction('a',100,'EXPENSE'),id:'later',date:now};
+ const draft={id:'draft',sms_id:'sms-1',account_id:'a',type:'EXPENSE',amount:200,gross_amount:203.6,category:'Transfer',description:'Payment',date:now-1000,suggested_balance:596.4,raw_sms:'x',status:'PENDING',is_recorded:false,created_at:now};
+ const result=ReconciliationService.analyzeDraft(a,draft,[later]);
+ assert.equal(result.expectedBalance,596.4);assert.equal(result.gap,0);assert.equal(result.transactionsAfter,1);
+});
+test('per-account forecast detects reserve crossing and safe-to-spend preserves the cushion',()=>{
+ const now=new Date(2026,9,8,9).getTime();
+ const a={...account('CBE',1000),id:'a',created_at:1,reserve_amount:300};
+ const recurring={id:'rent',name:'Rent',amount:750,type:'EXPENSE',category:'Rent',frequency:'MONTHLY',startDate:now,nextDate:now,isActive:true,completedRepetitions:0,accountId:'a'};
+ const forecast=ForecastService.generateForecast({accounts:[a],recurring:[recurring],loans:[],days:7,startDate:now});
+ assert.equal(forecast.snapshots[0].accountBalances.a,250);
+ assert.equal(forecast.lowBalanceWarnings[0].accountId,'a');
+ const safe=SafeToSpendService.calculate([a],forecast);
+ assert.equal(safe.total,0);assert.equal(safe.accounts[0].lowestProjectedBalance,250);
+});
+test('safe-to-spend deducts loan obligations that have no payment account',()=>{
+ const now=new Date(2026,9,8,9).getTime();
+ const a={...account('Cash',1000),id:'a',created_at:1};
+ const loan={id:'loan',type:'BORROWED',principal_amount:400,interest_rate:0,start_date:now-1000,due_date:now,status:'ACTIVE',remaining_balance:400,lender_borrower_name:'Lender'};
+ const forecast=ForecastService.generateForecast({accounts:[a],recurring:[],loans:[loan],days:7,startDate:now});
+ const safe=SafeToSpendService.calculate([a],forecast);
+ assert.equal(safe.unassignedCommitments,400);assert.equal(safe.total,600);
+});
+test('budget pace uses its actual period and suggestions use a three-period median',()=>{
+ const start=new Date(2026,9,1).getTime(),end=new Date(2026,9,31,23,59,59,999).getTime();
+ const budget={id:'b',category:'Food',limit_amount:3100,period:'MONTHLY',start_date:start,end_date:end};
+ const metrics=BudgetService.calculateBudgetMetrics(budget,[budget],[{...transaction('a',1000),id:'oct',date:new Date(2026,9,7).getTime()}]);
+ const pace=BudgetService.calculatePace(metrics,new Date(2026,9,10,12).getTime());
+ assert.equal(pace.totalDays,31);assert.equal(pace.elapsedDays,10);assert.equal(pace.projectedSpend,3100);
+ const txs=[
+  {...transaction('a',50),id:'tracking-anchor',category:'Other',date:new Date(2026,6,31).getTime()},
+  ...[7,8,9].map((month,index)=>({...transaction('a',[100,300,200][index]),id:`m${month}`,category:'Food',date:new Date(2026,month,15).getTime()})),
+ ];
+ const suggestions=BudgetService.suggestLimits(txs,['Food'],'MONTHLY',new Date(2026,10,2).getTime());
+ assert.equal(suggestions[0].suggestedLimit,200);
+});
+test('tag ranking uses split category context and counts a repeated tag once per transaction',()=>{
+ const now=Date.now();
+ const rows=[
+  {...transaction('a',10),id:'one',date:now,category:'Food',tags:['home'],splits:[{id:'s1',amount:5,category:'Transport',tags:['work']},{id:'s2',amount:5,category:'Transport',tags:['work']}]},
+  {...transaction('a',10),id:'two',date:now-1000,category:'Transport',tags:['work']},
+  {...transaction('a',10),id:'three',date:now-2000,category:'Food',tags:['home']},
+ ];
+ assert.equal(rankTagSuggestions(rows,{category:'Transport'})[0],'work');
 });
 test('split purchases allocate reports without changing the cash movement',()=>{
  const tx={...transaction('a',2000),id:'split-purchase',gross_amount:2003.60,splits:[

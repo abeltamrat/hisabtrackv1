@@ -98,6 +98,14 @@ export default function BudgetScreen() {
     [budgets, categoryByName, ledgerNow]
   );
 
+  const budgetSuggestions = useMemo(() => {
+    const activeNames = new Set(activeBudgets.map(budget => budget.category));
+    const expenseNames = categories
+      .filter(category => category.type === 'expense' && !activeNames.has(category.name))
+      .map(category => category.name);
+    return BudgetService.suggestLimits(transactions, expenseNames, 'MONTHLY', ledgerNow).slice(0, 3);
+  }, [activeBudgets, categories, ledgerNow, transactions]);
+
   const budgetData = useMemo(
     () =>
       BudgetService.calculateBudgetCollectionMetrics(activeBudgets, budgets, transactions).map((metrics) => ({
@@ -207,6 +215,25 @@ export default function BudgetScreen() {
       </LinearGradient>
 
       <ScrollView className="flex-1 px-6 -mt-6" showsVerticalScrollIndicator={false}>
+        {budgetSuggestions.length > 0 && !selectedGroup && (
+          <View className="bg-indigo-50 dark:bg-indigo-950/30 rounded-3xl p-5 mb-5 border border-indigo-200 dark:border-indigo-800">
+            <Text className="text-indigo-900 dark:text-indigo-100 font-bold text-base">Suggested from 3 complete months</Text>
+            <Text className="text-indigo-700 dark:text-indigo-300 text-xs mt-1 mb-3">Each amount is the median of your recorded spending. Review it before saving.</Text>
+            {budgetSuggestions.map(suggestion => (
+              <TouchableOpacity
+                key={suggestion.category}
+                onPress={() => router.push({ pathname: '/budget-modal', params: { amount: suggestion.suggestedLimit.toString(), category: suggestion.category, period: suggestion.period } })}
+                className="flex-row items-center justify-between py-3 border-t border-indigo-200 dark:border-indigo-800"
+              >
+                <View className="flex-1 pr-4">
+                  <Text className="text-indigo-900 dark:text-indigo-100 font-semibold">{suggestion.category}</Text>
+                  <Text className="text-indigo-600 dark:text-indigo-400 text-[10px]">History: {suggestion.periodSpending.map(value => formatCurrency(value)).join(' · ')}</Text>
+                </View>
+                <Text className="text-indigo-700 dark:text-indigo-300 font-bold">{formatCurrency(suggestion.suggestedLimit)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         {/* Category Budgets */}
         <View className="mb-6">
           {!selectedGroup ? (

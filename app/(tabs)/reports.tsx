@@ -11,6 +11,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import ExportService from '@/services/ExportService';
 import ForecastService, { ForecastEvent } from '@/services/ForecastService';
+import SafeToSpendService from '@/services/SafeToSpendService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import SyncService from '@/services/SyncService';
@@ -418,6 +419,10 @@ export default function ReportsScreen() {
     () => forecastResult.events.slice(0, 6),
     [forecastResult.events]
   );
+  const safeToSpend = useMemo(
+    () => SafeToSpendService.calculate(accounts, forecastResult),
+    [accounts, forecastResult]
+  );
 
   // Category-wise breakdown
   const categoryBreakdown = useMemo(() => {
@@ -799,6 +804,50 @@ export default function ReportsScreen() {
                 </Text>
               </View>
             </View>
+
+            <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 mb-6 shadow-lg border border-slate-100 dark:border-slate-700">
+              <View className="flex-row items-start justify-between mb-4">
+                <View className="flex-1 pr-4">
+                  <Text className={`${sectionTitleSize} text-slate-900 dark:text-white font-bold`}>{t('safeToSpend')}</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">
+                    Available through {safeToSpend.horizonEnd ? new Date(safeToSpend.horizonEnd).toLocaleDateString() : 'this forecast'} after locked money, account reserves, and scheduled activity.
+                  </Text>
+                </View>
+                <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6} className="text-emerald-600 dark:text-emerald-400 text-xl font-bold">
+                  {formatCurrency(safeToSpend.total)}
+                </Text>
+              </View>
+              {safeToSpend.accounts.map(row => (
+                <View key={row.accountId} className="py-3 border-t border-slate-100 dark:border-slate-700">
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-slate-900 dark:text-white font-semibold flex-1">{row.accountName}</Text>
+                    <Text className="text-slate-900 dark:text-white font-bold">{formatCurrency(row.safeToSpend)}</Text>
+                  </View>
+                  <Text className="text-slate-500 dark:text-slate-400 text-[11px] mt-1">
+                    Lowest planned {formatCurrency(row.lowestProjectedBalance)} · reserve {formatCurrency(row.reserveAmount)} · locked {formatCurrency(row.lockedAmount)}
+                  </Text>
+                </View>
+              ))}
+              {safeToSpend.unassignedCommitments > 0 && (
+                <View className="flex-row justify-between items-center py-3 border-t border-slate-100 dark:border-slate-700">
+                  <Text className="text-amber-700 dark:text-amber-300 text-xs font-semibold flex-1">{t('unassignedLoanObligations')}</Text>
+                  <Text className="text-amber-700 dark:text-amber-300 text-xs font-bold">−{formatCurrency(safeToSpend.unassignedCommitments)}</Text>
+                </View>
+              )}
+              <Text className="text-amber-600 dark:text-amber-400 text-[10px] mt-2">
+                Based on confirmed balances and saved schedules. Unrecorded SMS and unscheduled spending are not included.
+              </Text>
+            </View>
+
+            {forecastResult.lowBalanceWarnings.map(warning => (
+              <View key={`${warning.accountId}-${warning.crossingDate}`} className="bg-red-50 dark:bg-red-950/20 rounded-2xl p-4 mb-4 border border-red-200 dark:border-red-900/40">
+                <Text className="text-red-700 dark:text-red-300 font-bold">Reserve risk · {warning.accountName}</Text>
+                <Text className="text-red-600 dark:text-red-400 text-xs mt-1">
+                  May fall to {formatCurrency(warning.projectedBalance)} on {new Date(warning.crossingDate).toLocaleDateString()}, below the {formatCurrency(warning.reserveAmount)} reserve.
+                </Text>
+                {warning.causingEvents.length > 0 && <Text className="text-red-600/80 dark:text-red-300/80 text-[11px] mt-2">Caused by: {warning.causingEvents.map(event => event.title).join(', ')}</Text>}
+              </View>
+            ))}
 
             {forecastResult.upcomingLoanPayments > 0 && (
               <View className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-4 mb-6 border border-amber-200 dark:border-amber-800">

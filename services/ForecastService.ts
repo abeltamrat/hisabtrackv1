@@ -24,6 +24,16 @@ export interface ForecastEvent {
 export interface ForecastSnapshot {
   date: number;
   totalBalance: number;
+  accountBalances: Record<string, number>;
+}
+
+export interface ForecastLowBalanceWarning {
+  accountId: string;
+  accountName: string;
+  reserveAmount: number;
+  projectedBalance: number;
+  crossingDate: number;
+  causingEvents: ForecastEvent[];
 }
 
 export interface ForecastAccountProjection {
@@ -47,6 +57,7 @@ export interface ForecastResult {
   snapshots: ForecastSnapshot[];
   largeExpenses: ForecastEvent[];
   accountProjections: ForecastAccountProjection[];
+  lowBalanceWarnings: ForecastLowBalanceWarning[];
 }
 
 interface ForecastOptions {
@@ -164,7 +175,10 @@ export class ForecastService {
 
       snapshots.push({
         date: currentDay,
-        totalBalance: runningBalance,
+        totalBalance: money(runningBalance),
+        accountBalances: Object.fromEntries(
+          [...projectedBalances.entries()].map(([accountId, balance]) => [accountId, money(balance)])
+        ),
       });
 
       if (runningBalance < lowestBalance) {
@@ -196,6 +210,31 @@ export class ForecastService {
       .sort((left, right) => right.amount - left.amount || left.date - right.date)
       .slice(0, 5);
 
+    const lowBalanceWarnings = options.accounts.flatMap((account) => {
+      const reserveAmount = money(Math.max(0, account.reserve_amount || 0));
+      const currentAvailable = money(account.balance - (account.locked_amount || 0));
+      // A warning is useful only for a future crossing. Accounts already below
+      // their reserve are shown as such in safe-to-spend instead of repeatedly
+      // generating a forecast warning.
+      if (currentAvailable < reserveAmount) return [];
+      const crossing = snapshots.find(snapshot =>
+        money(snapshot.accountBalances[account.id] ?? currentAvailable) < reserveAmount
+      );
+      if (!crossing) return [];
+      const causingEvents = events.filter(event =>
+        this.isSameDay(event.date, crossing.date) &&
+        (event.accountId === account.id || event.toAccountId === account.id)
+      );
+      return [{
+        accountId: account.id,
+        accountName: account.name,
+        reserveAmount,
+        projectedBalance: money(crossing.accountBalances[account.id] ?? currentAvailable),
+        crossingDate: crossing.date,
+        causingEvents,
+      }];
+    });
+
     return {
       startingBalance,
       projectedBalance: runningBalance,
@@ -208,6 +247,7 @@ export class ForecastService {
       snapshots,
       largeExpenses,
       accountProjections,
+      lowBalanceWarnings,
     };
   }
 

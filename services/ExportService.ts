@@ -506,6 +506,7 @@ export class ExportService {
       Currency: account.currency,
       Locked: account.is_locked,
       'Locked Amount': account.locked_amount,
+      'Forecast Reserve': account.reserve_amount || 0,
       'Account Number': account.account_number ?? '',
       'SMS Number': account.sms_number ?? '',
     }));
