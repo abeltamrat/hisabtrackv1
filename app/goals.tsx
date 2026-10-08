@@ -8,6 +8,11 @@ import React, { useState, useEffect } from 'react';
 import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
+import { useSelector } from 'react-redux';
+import type { RootState } from '@/store';
+import type { RecurringTransaction } from '@/types/database';
+import { RecurringTransactionService } from '@/services/RecurringTransactionService';
+import { forecastGoal } from '@/services/GoalForecastService';
 
 
 interface Goal {
@@ -19,6 +24,7 @@ interface Goal {
   icon: string;
   color: string;
   category: string;
+  monthlyContribution?: number;
 }
 
 export default function FinancialGoalsScreen() {
@@ -26,8 +32,12 @@ export default function FinancialGoalsScreen() {
   const { formatCurrency } = useAppSettings();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const transactions = useSelector((state: RootState) => state.transactions.items);
+  const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
+  const [scenarios, setScenarios] = useState<Record<string, string>>({});
   useEffect(() => { Storage.getItem('financial_goals').then(raw => { if (raw) setGoals(JSON.parse(raw)); setLoaded(true); }).catch(() => Alert.alert('Goals unavailable', 'Saved goals could not be loaded. Reopen this screen to retry.')); }, []);
   useEffect(() => { if (loaded) void Storage.setItem('financial_goals', JSON.stringify(goals)).catch(() => Alert.alert('Save failed', 'Goal changes could not be saved. Please retry.')); }, [goals, loaded]);
+  useEffect(() => { void RecurringTransactionService.getAll().then(setRecurring); }, []);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
@@ -39,6 +49,7 @@ export default function FinancialGoalsScreen() {
     icon: 'star',
     color: '#6366f1',
     category: ''
+    , monthlyContribution: ''
   });
 
   const availableIcons = [
@@ -63,7 +74,7 @@ export default function FinancialGoalsScreen() {
     return diffDays;
   };
 
-  const validForm = () => loaded && !!formData.title.trim() && Number.isFinite(Number(formData.targetAmount)) && Number(formData.targetAmount) > 0 && Number.isFinite(Number(formData.currentAmount || 0)) && Number(formData.currentAmount || 0) >= 0 && Number.isFinite(Date.parse(formData.deadline));
+  const validForm = () => loaded && !!formData.title.trim() && Number.isFinite(Number(formData.targetAmount)) && Number(formData.targetAmount) > 0 && Number.isFinite(Number(formData.currentAmount || 0)) && Number(formData.currentAmount || 0) >= 0 && Number.isFinite(Number(formData.monthlyContribution || 0)) && Number(formData.monthlyContribution || 0) >= 0 && Number.isFinite(Date.parse(formData.deadline));
   const handleAddGoal = () => {
     if (!validForm()) { Alert.alert('Invalid goal', 'Enter a title, positive target, non-negative saved amount and valid deadline.'); return; }
     if (!formData.title.trim() || !Number.isFinite(Number(formData.targetAmount)) || Number(formData.targetAmount) <= 0 || !Number.isFinite(Date.parse(formData.deadline))) return;
@@ -76,6 +87,7 @@ export default function FinancialGoalsScreen() {
       icon: formData.icon,
       color: formData.color,
       category: formData.category,
+      monthlyContribution: Math.max(0, Number(formData.monthlyContribution) || 0),
     };
     setGoals([...goals, newGoal]);
     resetForm();
@@ -94,6 +106,7 @@ export default function FinancialGoalsScreen() {
           icon: formData.icon,
           color: formData.color,
           category: formData.category,
+          monthlyContribution: Math.max(0, Number(formData.monthlyContribution) || 0),
         }
         : g
     ));
@@ -122,6 +135,7 @@ export default function FinancialGoalsScreen() {
       icon: goal.icon,
       color: goal.color,
       category: goal.category,
+      monthlyContribution: String(goal.monthlyContribution || ''),
     });
   };
 
@@ -136,6 +150,7 @@ export default function FinancialGoalsScreen() {
       icon: 'star',
       color: '#6366f1',
       category: ''
+      , monthlyContribution: ''
     });
   };
 
@@ -203,6 +218,8 @@ export default function FinancialGoalsScreen() {
             const progress = getProgress(goal.currentAmount, goal.targetAmount);
             const daysRemaining = getDaysRemaining(goal.deadline);
             const isCompleted = goal.currentAmount >= goal.targetAmount;
+            const scenario = scenarios[goal.id]?.trim();
+            const forecast = forecastGoal({ targetAmount: goal.targetAmount, currentAmount: goal.currentAmount, deadline: goal.deadline, plannedMonthlyContribution: goal.monthlyContribution, hypotheticalMonthlyContribution: scenario ? Number(scenario) : undefined }, transactions, recurring);
 
             return (
               <View
@@ -274,6 +291,15 @@ export default function FinancialGoalsScreen() {
                     </Text>
                   </View>
                 </View>
+
+                {!isCompleted && <View className="bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl p-3 mb-4">
+                  <Text className="text-yellow-900 dark:text-yellow-100 font-bold text-sm">Completion forecast</Text>
+                  <Text className="text-yellow-800 dark:text-yellow-200 text-xs mt-1">{forecast.estimatedDate ? `${forecast.meetsDeadline ? 'On track' : 'After deadline'} · around ${new Date(forecast.estimatedDate).toLocaleDateString()}` : 'More saving history or a monthly contribution is needed.'}</Text>
+                  <Text className="text-yellow-700 dark:text-yellow-300 text-[10px] mt-1">Typical tracked surplus: {formatCurrency(forecast.typicalMonthlySavings)}/month · obligations: {formatCurrency(forecast.obligationImpact)}/month</Text>
+                  <Text className="text-yellow-700 dark:text-yellow-300 text-[10px] mt-1">Estimated range: {forecast.estimatedRange[0] === null ? 'unavailable' : `${forecast.estimatedRange[0]}–${forecast.estimatedRange[1] ?? 'more'} months`}</Text>
+                  <View className="flex-row items-center mt-2"><TextInput value={scenarios[goal.id] || ''} onChangeText={text => setScenarios(previous => ({ ...previous, [goal.id]: text }))} keyboardType="decimal-pad" placeholder="Test monthly contribution" placeholderTextColor="#a16207" className="flex-1 bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /><Text className="text-yellow-700 dark:text-yellow-300 text-[10px] ml-2">No records changed</Text></View>
+                  <Text className="text-yellow-700 dark:text-yellow-300 text-[10px] mt-2">{forecast.assumptions.slice(0, 3).join(' ')}</Text>
+                </View>}
 
                 {/* Footer */}
                 <View className="flex-row justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-700">
@@ -378,6 +404,9 @@ export default function FinancialGoalsScreen() {
                   onChangeText={(text) => setFormData({ ...formData, currentAmount: text })}
                 />
               </View>
+
+              <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">Planned Monthly Contribution (Optional)</Text>
+              <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 mb-4"><TextInput className="text-slate-900 dark:text-white text-base h-14" placeholder="Enter planned monthly amount" placeholderTextColor="#94a3b8" keyboardType="decimal-pad" value={formData.monthlyContribution} onChangeText={(text) => setFormData({ ...formData, monthlyContribution: text })} /></View>
 
               {/* Deadline */}
               <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">Deadline (YYYY-MM-DD)</Text>

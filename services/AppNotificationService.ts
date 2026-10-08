@@ -249,6 +249,23 @@ export class AppNotificationService {
         ...phase2.recipientSuggestions.slice(0, 3).map(suggestion => ({ sourceKey: `phase2:${suggestion.id}`, title: 'Recipient aliases may match', message: `${suggestion.left} and ${suggestion.right}: ${suggestion.reason}`, type: 'info' as const, icon: 'user-circle', color: '#7c3aed', actionType: 'view_smart_review' as const })),
       ];
       await this.syncSourceNotifications('phase2:', reviewNotifications.slice(0, 12));
+      const settings = await (await import('@/contexts/AppSettingsContext')).loadStoredAppSettings();
+      const digestSettings = settings.backgroundReminders;
+      const hour = new Date().getHours();
+      const inQuietHours = digestSettings.quietHoursStart > digestSettings.quietHoursEnd
+        ? hour >= digestSettings.quietHoursStart || hour < digestSettings.quietHoursEnd
+        : hour >= digestSettings.quietHoursStart && hour < digestSettings.quietHoursEnd;
+      if (digestSettings.periodDigestAlertsEnabled && !inQuietHours) {
+        const drafts = await (await import('@/services/DraftTransactionService')).DraftTransactionService.getAll();
+        const pending = drafts.filter(item => item.status === 'PENDING');
+        const discrepancies = (await import('@/services/ReconciliationService')).ReconciliationService.unresolvedCount(accounts, drafts, transactions);
+        const digestTools = await import('@/services/PeriodDigestService');
+        for (const kind of ['WEEKLY', 'MONTHLY'] as const) {
+          const digest = digestTools.createPeriodDigest(kind, transactions, recurring, { pendingDrafts: pending.length, discrepancies });
+          const copy = digestTools.formatPeriodDigest(digest, accounts[0]?.currency || 'ETB', settings.balancesHidden, settings.language);
+          await this.addNotification({ sourceKey: `digest:${digest.key}`, title: copy.title, message: copy.message, type: digest.discrepancies || digest.pendingDrafts ? 'warning' : 'info', icon: 'calendar-check-o', color: '#4f46e5', actionType: 'view_reports' });
+        }
+      }
       
     } catch (error) {
       console.error('Error in checkAll:', error);

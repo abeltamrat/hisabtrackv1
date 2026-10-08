@@ -128,49 +128,49 @@ Done when: a documented coverage matrix identifies supported formats and their r
 
 ### 10. Plain-language quick add — high value, medium effort
 
-- [ ] Add a local parser for amount, account, category, recipient, date, description, tags, and multiple parts.
-- [ ] Support "lunch 250 cash" and "450 lunch and 150 taxi from cash" as reviewable drafts.
-- [ ] Reuse saved accounts, category hierarchy, and learned defaults; ask for unresolved fields and flag ambiguous amounts.
-- [ ] Verify locale number formats and prevent duplicate submission.
+- [x] Add a local parser for amount, account, category, recipient, date, description, tags, and multiple parts.
+- [x] Support "lunch 250 cash" and "450 lunch and 150 taxi from cash" as reviewable drafts.
+- [x] Reuse saved accounts, category hierarchy, and learned defaults; ask for unresolved fields and flag ambiguous amounts.
+- [x] Verify locale number formats and prevent duplicate submission.
 
 Done when: supported phrases prefill the existing editor; the user reviews the resulting transaction before saving.
 
 ### 11. Receipt photos into split drafts — medium value, high effort
 
-- [ ] Verify the existing image-picker permissions/capability and choose local or explicitly consented OCR.
-- [ ] Extract merchant, date, line items, discounts, subtotal, tax, fees, and total with confidence.
-- [ ] Match a receipt to a recorded payment or SMS draft using amount/date/recipient evidence.
-- [ ] Prefill category splits with individual descriptions/tags and reconcile discounts/taxes to the total.
-- [ ] Allow line-by-line corrections, retain attachments only by choice, and avoid recording an existing payment twice.
-- [ ] Verify unreadable receipts, multiple taxes, discounts, and OCR amount errors.
+- [x] Verify the existing image-picker permissions/capability and choose local or explicitly consented OCR.
+- [x] Extract merchant, date, line items, discounts, subtotal, tax, fees, and total with confidence.
+- [x] Match a receipt to a recorded payment or SMS draft using amount/date/recipient evidence.
+- [x] Prefill category splits with individual descriptions/tags and reconcile discounts/taxes to the total.
+- [x] Allow line-by-line corrections, retain attachments only by choice, and avoid recording an existing payment twice.
+- [x] Verify unreadable receipts, multiple taxes, discounts, and OCR amount errors.
 
 Done when: a reviewed receipt can enrich an existing payment or prepare a new draft, and its splits reconcile to the ledger amount.
 
 ### 12. Assistant search and confirmed actions — high value, high effort
 
-- [ ] Add structured, user-scoped read tools for transactions, recipients, categories, budgets, goals, and recurring rules.
-- [ ] Answer questions such as "Why did transport spending increase?" with deterministic calculations and links to supporting records.
-- [ ] Prepare validated actions for "cap eating-out at ETB 3,000 this month", goal creation, and recurring setup.
-- [ ] Display a confirmation preview before every write; route writes through the existing ledger/services and support retries and Undo.
-- [ ] Treat SMS/receipt text as untrusted data; it cannot authorize assistant actions.
-- [ ] Verify permission boundaries, hallucinated account IDs, ambiguous categories, and disabled external-AI sharing.
+- [x] Add structured, user-scoped read tools for transactions, recipients, categories, budgets, goals, and recurring rules.
+- [x] Answer questions such as "Why did transport spending increase?" with deterministic calculations and links to supporting records.
+- [x] Prepare validated actions for "cap eating-out at ETB 3,000 this month", goal creation, and recurring setup.
+- [x] Display a confirmation preview before every write; route writes through the existing ledger/services and support retries and Undo.
+- [x] Treat SMS/receipt text as untrusted data; it cannot authorize assistant actions.
+- [x] Verify permission boundaries, hallucinated account IDs, ambiguous categories, and disabled external-AI sharing.
 
 Done when: the assistant can search real records and propose useful actions that execute only after user confirmation.
 
 ### 13. Weekly/monthly money digest — medium value, medium effort
 
-- [ ] Combine existing daily insights into an optional period summary: category changes, fees, upcoming commitments, unresolved drafts, and discrepancies.
-- [ ] Compare like-for-like periods and provide enough historical context; explain changes using actual records.
-- [ ] Generate a local deterministic summary first; make optional AI wording subject to sharing consent.
-- [ ] Support quiet hours, balance masking, localized text, and one digest per completed period.
+- [x] Combine existing daily insights into an optional period summary: category changes, fees, upcoming commitments, unresolved drafts, and discrepancies.
+- [x] Compare like-for-like periods and provide enough historical context; explain changes using actual records.
+- [x] Generate a local deterministic summary first; make optional AI wording subject to sharing consent.
+- [x] Support quiet hours, balance masking, localized text, and one digest per completed period.
 
 Done when: users receive an accurate, actionable period review without duplicate reminders or unexplained totals.
 
 ### 14. Savings-goal forecasts — medium value, medium effort; depends on 5
 
-- [ ] Forecast completion from actual saving history and planned contributions, with a range when income is variable.
-- [ ] Avoid treating internal account transfers or Equb payouts as newly earned income.
-- [ ] Show how upcoming obligations change the estimate; let users test a hypothetical contribution without modifying records.
+- [x] Forecast completion from actual saving history and planned contributions, with a range when income is variable.
+- [x] Avoid treating internal account transfers or Equb payouts as newly earned income.
+- [x] Show how upcoming obligations change the estimate; let users test a hypothetical contribution without modifying records.
 
 Done when: a goal estimate explains its data and assumptions and hypothetical scenarios never change the ledger.
 

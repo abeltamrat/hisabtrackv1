@@ -527,6 +527,7 @@ export default function SettingsScreen() {
     setHabitRemindersEnabled,
     setDailySummaryAlertsEnabled,
     setPersonalizedTipsEnabled,
+    setPeriodDigestAlertsEnabled,
     assistantOverlay,
     setAssistantEnabled,
     setAssistantTipsEnabled,
@@ -1534,6 +1535,11 @@ export default function SettingsScreen() {
                     disabled={!backgroundReminders.backgroundProcessingEnabled}
                   />
                 </View>
+              </View>
+
+              <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
+                <View style={{ flex: 1 }}><Text className="text-slate-900 dark:text-white font-semibold">{t('periodDigestTitle')}</Text><Text className="text-slate-500 dark:text-slate-400 text-sm">{t('periodDigestDescription')}</Text></View>
+                <View style={{ marginLeft: 12 }}><Switch value={backgroundReminders.periodDigestAlertsEnabled} onValueChange={setPeriodDigestAlertsEnabled} disabled={!backgroundReminders.backgroundProcessingEnabled} /></View>
               </View>
 
               <View className="flex-row items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">

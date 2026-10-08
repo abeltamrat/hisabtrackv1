@@ -31,6 +31,9 @@ export interface BackgroundReminderSettings {
   habitRemindersEnabled: boolean;
   dailySummaryAlertsEnabled: boolean;
   personalizedTipsEnabled: boolean;
+  periodDigestAlertsEnabled: boolean;
+  quietHoursStart: number;
+  quietHoursEnd: number;
 }
 
 export interface AssistantOverlaySettings {
@@ -77,6 +80,7 @@ interface AppSettingsContextType extends AppSettings {
   setHabitRemindersEnabled: (v: boolean) => void;
   setDailySummaryAlertsEnabled: (v: boolean) => void;
   setPersonalizedTipsEnabled: (v: boolean) => void;
+  setPeriodDigestAlertsEnabled: (v: boolean) => void;
   setAssistantEnabled: (v: boolean) => void;
   setAssistantTipsEnabled: (v: boolean) => void;
   setAssistantDashboardEnabled: (v: boolean) => void;
@@ -96,6 +100,9 @@ const DEFAULT_BACKGROUND_REMINDERS: BackgroundReminderSettings = {
   habitRemindersEnabled: true,
   dailySummaryAlertsEnabled: true,
   personalizedTipsEnabled: true,
+  periodDigestAlertsEnabled: false,
+  quietHoursStart: 21,
+  quietHoursEnd: 7,
 };
 
 const DEFAULT_ASSISTANT_OVERLAY: AssistantOverlaySettings = {
@@ -276,6 +283,9 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const setPersonalizedTipsEnabled = (personalizedTipsEnabled: boolean) => setSettings(prev => ({
     ...prev, backgroundReminders: { ...prev.backgroundReminders, personalizedTipsEnabled },
   }));
+  const setPeriodDigestAlertsEnabled = (periodDigestAlertsEnabled: boolean) => setSettings(prev => ({
+    ...prev, backgroundReminders: { ...prev.backgroundReminders, periodDigestAlertsEnabled },
+  }));
   const setAssistantEnabled = (enabled: boolean) => setSettings(prev => ({
     ...prev,
     assistantOverlay: {
@@ -363,6 +373,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     setHabitRemindersEnabled,
     setDailySummaryAlertsEnabled,
     setPersonalizedTipsEnabled,
+    setPeriodDigestAlertsEnabled,
     setAssistantEnabled,
     setAssistantTipsEnabled,
     setAssistantDashboardEnabled,

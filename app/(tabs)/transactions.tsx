@@ -77,7 +77,7 @@ const SpinnerPickerSheet = ({
 export default function TransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { type, tag } = params as { type?: string; tag?: string };
+  const { type, tag, evidenceIds } = params as { type?: string; tag?: string; evidenceIds?: string };
   const dispatch = useDispatch<AppDispatch>();
   const { items: transactions, loading } = useSelector((state: RootState) => state.transactions);
   const accounts = useSelector((state: RootState) => state.accounts.items);
@@ -164,8 +164,10 @@ export default function TransactionsScreen() {
 
   const filteredTransactions = useMemo(() => {
     const categoriesToInclude = getCategoryNamesToInclude(selectedCategories);
+    const evidence = typeof evidenceIds === 'string' && evidenceIds ? new Set(evidenceIds.split(',')) : null;
 
     return transactions.filter((t) => {
+      if (evidence && !evidence.has(t.id)) return false;
       // Type filter
       if (filter !== 'ALL' && t.type !== filter) return false;
 
@@ -195,7 +197,7 @@ export default function TransactionsScreen() {
 
       return true;
     });
-  }, [transactions, filter, selectedCategories, selectedTags, searchQuery, categories, filterAccountIds, dateFrom, dateTo]);
+  }, [transactions, filter, selectedCategories, selectedTags, searchQuery, categories, filterAccountIds, dateFrom, dateTo, evidenceIds]);
 
   // Group by date
   const groupedTransactions = useMemo(() => {

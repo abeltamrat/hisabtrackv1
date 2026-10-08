@@ -5,13 +5,22 @@ import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
-import { RootState } from '@/store';
+import { AppDispatch, RootState } from '@/store';
 import AIFinancialAssistant, { AssistantApiKeys, AssistantProvider, ChatMessage, FinancialData } from '@/services/AIFinancialAssistant';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
+import { AssistantActionService, type AssistantProposal, type AssistantUndo } from '@/services/AssistantActionService';
+import { RecurringTransactionService } from '@/services/RecurringTransactionService';
+import type { RecurringTransaction } from '@/types/database';
+import { useTransactions } from '@/context/TransactionContext';
+import { useDispatch } from 'react-redux';
+import { fetchBudgets } from '@/store/slices/budgetsSlice';
+import Storage from '@/services/SessionStorage';
 
 export default function AIAssistantScreen() {
     const router = useRouter();
+    const dispatch = useDispatch<AppDispatch>();
+    const { categories } = useTransactions();
     const scrollViewRef = useRef<ScrollView>(null);
     const { geminiApiKey, groqApiKey, openRouterApiKey, puterJsEnabled } = useAppSettings();
 
@@ -19,6 +28,11 @@ export default function AIAssistantScreen() {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [showQuickActions, setShowQuickActions] = useState(true);
+    const [proposal, setProposal] = useState<AssistantProposal>();
+    const [lastUndo, setLastUndo] = useState<AssistantUndo>();
+    const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
+    const [goals, setGoals] = useState<any[]>([]);
+    const [evidenceIds, setEvidenceIds] = useState<string[]>([]);
 
     // Get financial data from Redux
     const transactions = useSelector((state: RootState) => state.transactions.items);
@@ -78,6 +92,7 @@ export default function AIAssistantScreen() {
             setMessages([welcomeMessage]);
         }
     }, []);
+    useEffect(() => { void RecurringTransactionService.getAll().then(setRecurring); void Storage.getItem('financial_goals').then(raw => setGoals(raw ? JSON.parse(raw) : [])).catch(() => setGoals([])); }, []);
 
     useEffect(() => {
         // Scroll to bottom when new messages arrive
@@ -100,14 +115,19 @@ export default function AIAssistantScreen() {
         setShowQuickActions(false);
 
         try {
-            const response = await AIFinancialAssistant.chat(userMessage.content, financialData, providerKeys);
+            const local = AssistantActionService.analyze(userMessage.content, { transactions, accounts, budgets, categories: categories.map(item => item.name), recurring, goals, currency: accounts[0]?.currency || 'ETB' });
+            const response = local.handled
+                ? (local.error || local.answer || 'I could not prepare that safely.')
+                : await AIFinancialAssistant.chat(userMessage.content, financialData, providerKeys);
+            if (local.proposal) setProposal(local.proposal);
+            setEvidenceIds(local.evidenceIds || []);
 
             const assistantMessage: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
                 content: response,
                 timestamp: new Date(),
-                provider: AIFinancialAssistant.getLastProviderUsed(),
+                provider: local.handled ? 'local' : AIFinancialAssistant.getLastProviderUsed(),
             };
 
             setMessages(prev => [...prev, assistantMessage]);
@@ -228,6 +248,15 @@ export default function AIAssistantScreen() {
                 {messages.map((message) => (
                     <MessageBubble key={message.id} message={message} />
                 ))}
+
+                {proposal && <View className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-4 mb-4">
+                    <Text className="text-indigo-900 dark:text-indigo-100 font-bold">{proposal.title}</Text>
+                    <Text className="text-indigo-700 dark:text-indigo-300 text-sm mt-2">{proposal.summary}</Text>
+                    <Text className="text-indigo-600 dark:text-indigo-400 text-xs mt-2">No record changes until you confirm.</Text>
+                    <View className="flex-row mt-3"><TouchableOpacity onPress={() => setProposal(undefined)} className="flex-1 bg-white dark:bg-slate-800 rounded-xl p-3 mr-2"><Text className="text-center text-slate-700 dark:text-slate-200 font-bold">Cancel</Text></TouchableOpacity><TouchableOpacity onPress={async () => { try { const token = await AssistantActionService.execute(proposal); setLastUndo(token); setProposal(undefined); if (token.kind === 'BUDGET') await dispatch(fetchBudgets()); if (token.kind === 'RECURRING') setRecurring(await RecurringTransactionService.getAll()); setMessages(prev => [...prev, { id: `confirmed-${Date.now()}`, role: 'assistant', content: 'Confirmed and saved. You can undo this change below.', timestamp: new Date(), provider: 'local' }]); } catch (error: any) { Alert.alert('Action failed', error?.message || 'Nothing was changed. Try again.'); } }} className="flex-1 bg-indigo-600 rounded-xl p-3"><Text className="text-center text-white font-bold">Confirm</Text></TouchableOpacity></View>
+                </View>}
+                {lastUndo && <TouchableOpacity onPress={async () => { try { await AssistantActionService.undo(lastUndo); if (lastUndo.kind === 'BUDGET') await dispatch(fetchBudgets()); if (lastUndo.kind === 'RECURRING') setRecurring(await RecurringTransactionService.getAll()); setLastUndo(undefined); setMessages(prev => [...prev, { id: `undo-${Date.now()}`, role: 'assistant', content: 'The confirmed action was undone.', timestamp: new Date(), provider: 'local' }]); } catch { Alert.alert('Undo failed', 'The previous action could not be restored.'); } }} className="bg-amber-100 dark:bg-amber-900/30 rounded-xl p-3 mb-4"><Text className="text-amber-800 dark:text-amber-300 text-center font-bold">Undo last assistant action</Text></TouchableOpacity>}
+                {evidenceIds.length > 0 && <TouchableOpacity onPress={() => router.push({ pathname: '/(tabs)/transactions', params: { evidenceIds: evidenceIds.join(',') } })} className="bg-slate-200 dark:bg-slate-700 rounded-xl p-3 mb-4"><Text className="text-slate-800 dark:text-slate-100 text-center font-bold">View supporting transactions ({evidenceIds.length})</Text></TouchableOpacity>}
 
                 {isLoading && (
                     <View className="flex-row items-center my-4">

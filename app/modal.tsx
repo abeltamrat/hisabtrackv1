@@ -28,6 +28,7 @@ import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import { money, sumMoney } from '@/utils/finance';
 import { useI18n } from '@/contexts/I18nContext';
 import { rankTagSuggestions } from '@/utils/tagSuggestions';
+import { InputDraftService, type SmartInputDraft } from '@/services/InputDraftService';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -83,7 +84,7 @@ export default function AddTransactionScreen() {
     return formatCurrency(0).replace(/[\d,.\s]/g, '').trim() || currency;
   }, [currency, formatCurrency]);
 
-  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const { edit, draft } = useLocalSearchParams<{ edit?: string; draft?: string }>();
 
   const isEditing = !!edit;
   const editingTransaction = transactions.find((t: any) => t.id === edit);
@@ -95,6 +96,7 @@ export default function AddTransactionScreen() {
   const [toAccountId, setToAccountId] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [note, setNote] = useState('');
+  const [recipient, setRecipient] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [transactionDate, setTransactionDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -111,6 +113,7 @@ export default function AddTransactionScreen() {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [kbdHeight, setKbdHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const [inputDraft, setInputDraft] = useState<SmartInputDraft>();
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -160,12 +163,32 @@ export default function AddTransactionScreen() {
       setToAccountId(editingTransaction.to_account_id || '');
       setSelectedCategory(editingTransaction.category);
       setNote(editingTransaction.description !== editingTransaction.category ? editingTransaction.description : '');
+      setRecipient(editingTransaction.sender_receiver || '');
       setTagsInput(formatTagInput(editingTransaction.tags));
       setTransactionDate(new Date(editingTransaction.date));
       setSplitEnabled(!!editingTransaction.splits?.length);
       setSplits(editingTransaction.splits || []);
     }
   }, [isEditing, editingTransaction]);
+
+  useEffect(() => {
+    if (!draft) return;
+    let active = true;
+    InputDraftService.get(draft).then(value => {
+      if (!active || !value) return;
+      setInputDraft(value);
+      if (value.accountId) setSelectedAccountId(value.accountId);
+      setAmount(value.amount.toString());
+      setType(value.type);
+      if (value.category) setSelectedCategory(value.category);
+      if (value.recipient) setRecipient(value.recipient);
+      if (value.description) setNote(value.description);
+      if (value.date) setTransactionDate(new Date(value.date));
+      setTagsInput(formatTagInput(value.tags));
+      if (value.splits?.length) { setSplits(value.splits); setSplitEnabled(true); }
+    });
+    return () => { active = false; };
+  }, [draft]);
 
   useEffect(() => {
     if (!selectedAccountId && accounts.length > 0) {
@@ -238,6 +261,8 @@ export default function AddTransactionScreen() {
       type,
       category: type === 'TRANSFER' ? 'Transfer' : selectedCategory,
       description: note || (type === 'TRANSFER' ? 'Bank transfer' : selectedCategory),
+      sender_receiver: recipient.trim() || undefined,
+      operation_id: inputDraft ? `smart-input:${inputDraft.fingerprint}` : editingTransaction?.operation_id,
       tags: parseTagInput(tagsInput),
       date: transactionDate.getTime(),
       ...(type === 'TRANSFER' ? { to_account_id: toAccountId } : {}),
@@ -323,6 +348,11 @@ export default function AddTransactionScreen() {
       }
     }
     const transactionId = (result.payload as any)?.id as string | undefined;
+    const savedTransactionId = transactionId || (isEditing ? edit : undefined);
+    if (inputDraft && savedTransactionId) {
+      await InputDraftService.markUsed(inputDraft.fingerprint);
+      await InputDraftService.attachToTransaction(inputDraft, savedTransactionId);
+    }
     if (!isEditing && transactionId) {
       Alert.alert('Transaction saved', 'The account balance and reports have been updated.', [
         { text: 'Keep', style: 'cancel', onPress: () => router.back() },
@@ -330,6 +360,7 @@ export default function AddTransactionScreen() {
           try {
             if (createdRecurringId) await RecurringTransactionService.remove(createdRecurringId);
             await dispatch(deleteTransaction(transactionId)).unwrap();
+            if (inputDraft) await InputDraftService.markUnused(inputDraft.fingerprint);
             await dispatch(fetchAccounts());
             router.back();
           } catch {
@@ -474,6 +505,7 @@ export default function AddTransactionScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: kbdHeight > 0 ? kbdHeight + 16 : 32 }}
       >
+        {!isEditing && !draft && <TouchableOpacity onPress={() => router.push('/smart-input' as any)} className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-3 mb-3 flex-row items-center"><FontAwesome name="magic" size={16} color="#6366f1" /><View className="ml-3 flex-1"><Text className="text-indigo-700 dark:text-indigo-300 font-bold">Use smart input</Text><Text className="text-indigo-600/70 dark:text-indigo-300/70 text-[10px]">Type a phrase or scan a receipt, then review here.</Text></View><FontAwesome name="chevron-right" size={12} color="#6366f1" /></TouchableOpacity>}
         {/* Type Selector */}
         <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
           <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Transaction Type</Text>
@@ -756,6 +788,11 @@ export default function AddTransactionScreen() {
             </View>
           )}
         </View>
+
+        {type !== 'TRANSFER' && <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+          <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Recipient / Merchant (Optional)</Text>
+          <View className="bg-slate-50 dark:bg-slate-900 px-3 py-2 rounded-xl"><TextInput className="text-slate-900 dark:text-white text-sm" placeholder="Who received or sent the money?" placeholderTextColor="#94a3b8" value={recipient} onChangeText={setRecipient} /></View>
+        </View>}
 
         {/* Note Input */}
         <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-8 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
