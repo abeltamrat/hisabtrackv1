@@ -8,6 +8,8 @@ import CustomTabBar from '@/components/CustomTabBar';
 import { AURORA_VARS } from '@/components/aurora/palette';
 import SummaryCard from '@/components/dashboard/SummaryCard';
 import FinancialPulse from '@/components/dashboard/FinancialPulse';
+import RecentTransactions from '@/components/dashboard/RecentTransactions';
+import { Transaction } from '@/types/database';
 import Coin3D from '@/components/three-d/Coin3D';
 import Wallet3D from '@/components/three-d/Wallet3D';
 import Shield3D from '@/components/three-d/Shield3D';
@@ -87,6 +89,25 @@ export default function AuroraLab() {
             onOpenBudget={() => {}}
             onOpenLoans={() => {}}
             onOpenAssistant={() => {}}
+          />
+        </View>
+
+        <View style={{ gap: 12 }}>
+          <Text className="text-white text-base font-bold">Real RecentTransactions (compact, split-aware)</Text>
+          <RecentTransactions
+            transactions={[
+              { id: 'rt1', account_id: 'bank', amount: 450, category: 'Food & Drink', description: 'Lunch with team', date: Date.now() - 1000 * 60 * 30, type: 'EXPENSE' } as Transaction,
+              {
+                id: 'rt2', account_id: 'bank', amount: 2200, category: 'Shopping', description: 'Weekend errands', date: Date.now() - 1000 * 60 * 60 * 5, type: 'EXPENSE',
+                splits: [
+                  { id: 's1', amount: 1300, category: 'Groceries', description: 'Weekly food', tags: ['home'] },
+                  { id: 's2', amount: 500, category: 'Clothing' },
+                  { id: 's3', amount: 400, category: 'Delivery', tags: ['urgent'] },
+                ],
+              } as Transaction,
+              { id: 'rt3', account_id: 'bank', amount: 18500, category: 'Salary', description: 'Monthly salary', date: Date.now() - 1000 * 60 * 60 * 24, type: 'INCOME' } as Transaction,
+            ]}
+            onSeeAll={() => {}}
           />
         </View>
 

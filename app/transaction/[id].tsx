@@ -96,7 +96,17 @@ export default function TransactionDetail() {
           <FontAwesome name="arrow-left" size={16} color={theme.textMuted} />
         </TouchableOpacity>
         <Text className="text-slate-900 dark:text-white font-bold text-lg">Transaction Details</Text>
-        {transaction.fund_entry_id && transaction.fund_id ? (
+        {transaction.loan_id ? (
+          // Loan postings are corrected only through the loan workflow — see
+          // the matching guard in services/database/ledger.ts.
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open loan"
+            onPress={() => router.push(`/loan/${transaction.loan_id}` as any)}
+            className="h-10 px-3 bg-amber-50 dark:bg-amber-900/30 rounded-xl justify-center items-center flex-row"
+          >
+            <FontAwesome name="money" size={14} color="#b45309" />
+            <Text className="text-amber-700 dark:text-amber-300 text-xs font-bold ml-2">Open loan</Text>
+          </TouchableOpacity>
+        ) : transaction.fund_entry_id && transaction.fund_id ? (
           // Fund rows mirror a shared entry; they change only from the fund screen.
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open fund"
             onPress={() => router.push(`/fund/${transaction.fund_id}` as any)}
@@ -104,6 +114,16 @@ export default function TransactionDetail() {
           >
             <FontAwesome name="briefcase" size={14} color="#0d9488" />
             <Text className="text-teal-700 dark:text-teal-300 text-xs font-bold ml-2">Open fund</Text>
+          </TouchableOpacity>
+        ) : transaction.community_group_id ? (
+          // Equb/Iddir entries are corrected only from the community screen —
+          // see the matching guard in services/database/ledger.ts.
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open group"
+            onPress={() => router.push('/community' as any)}
+            className="h-10 px-3 bg-violet-50 dark:bg-violet-900/30 rounded-xl justify-center items-center flex-row"
+          >
+            <FontAwesome name="users" size={14} color="#7c3aed" />
+            <Text className="text-violet-700 dark:text-violet-300 text-xs font-bold ml-2">Open group</Text>
           </TouchableOpacity>
         ) : (
         <View className="flex-row gap-2">
@@ -224,6 +244,36 @@ export default function TransactionDetail() {
               <DetailRow label="Total account debit" value={formatCurrency(transaction.gross_amount)} />
             ) : null}
 
+            {transaction.loan_id ? (
+              <View className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl p-3 mb-3 border border-amber-100 dark:border-amber-900/40">
+                <Text className="text-amber-800 dark:text-amber-200 text-xs font-bold">Loan posting</Text>
+                <Text className="text-amber-700 dark:text-amber-300 text-xs mt-1">
+                  This is a loan repayment or origination. Change or void it from the loan workflow.
+                </Text>
+                {(transaction.interest_amount ?? 0) > 0 && (
+                  <View className="flex-row justify-between mt-2 pt-2 border-t border-amber-200 dark:border-amber-900/40">
+                    <View>
+                      <Text className="text-amber-700 dark:text-amber-300 text-[11px]">Principal</Text>
+                      <Text className="text-amber-900 dark:text-amber-100 text-sm font-bold">{formatCurrency(transaction.amount - transaction.interest_amount!)}</Text>
+                    </View>
+                    <View className="items-end">
+                      <Text className="text-amber-700 dark:text-amber-300 text-[11px]">Interest</Text>
+                      <Text className="text-amber-900 dark:text-amber-100 text-sm font-bold">{formatCurrency(transaction.interest_amount!)}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            ) : null}
+
+            {transaction.community_group_id ? (
+              <View className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-3 mb-3 border border-violet-100 dark:border-violet-900/40">
+                <Text className="text-violet-800 dark:text-violet-200 text-xs font-bold">Equb/Iddir entry</Text>
+                <Text className="text-violet-700 dark:text-violet-300 text-xs mt-1">
+                  This belongs to a community group. Change or void it from the community screen.
+                </Text>
+              </View>
+            ) : null}
+
             {transaction.fund_entry_id ? (
               <View className="bg-teal-50 dark:bg-teal-900/20 rounded-2xl p-3 mb-3 border border-teal-100 dark:border-teal-900/40">
                 <Text className="text-teal-800 dark:text-teal-200 text-xs font-bold">{transaction.fund_mirror ? 'Recorded in a shared fund' : 'Money held for someone else'}</Text>
@@ -240,7 +290,23 @@ export default function TransactionDetail() {
                 <Text className="text-slate-700 dark:text-slate-300 text-xs font-bold uppercase mb-2">Category splits</Text>
                 {transaction.splits.map(split => (
                   <View key={split.id} className="flex-row justify-between items-start py-2 border-b border-slate-200 dark:border-slate-700">
-                    <View className="flex-1 mr-3"><Text className="text-slate-900 dark:text-white text-sm font-semibold">{split.category}</Text>{split.description ? <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{split.description}</Text> : null}{split.tags?.length ? <Text className="text-indigo-600 dark:text-indigo-300 text-xs mt-1">{split.tags.map(tag => `#${tag}`).join(' ')}</Text> : null}</View>
+                    <View className="flex-1 mr-3">
+                      <Text className="text-slate-900 dark:text-white text-sm font-semibold">{split.category}</Text>
+                      {split.description ? <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{split.description}</Text> : null}
+                      {split.tags?.length ? (
+                        <View className="flex-row flex-wrap mt-1">
+                          {split.tags.map(tag => (
+                            <TouchableOpacity
+                              key={tag}
+                              onPress={() => router.push({ pathname: '/(tabs)/transactions', params: { tag } })}
+                              className="mr-1.5 mb-1"
+                            >
+                              <Text className="text-indigo-600 dark:text-indigo-300 text-xs font-semibold">#{tag}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
+                    </View>
                     <Text className="text-slate-900 dark:text-white text-sm font-bold">{formatCurrency(split.amount)}</Text>
                   </View>
                 ))}

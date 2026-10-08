@@ -5,11 +5,54 @@ import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import Coin3D from '@/components/three-d/Coin3D';
 import { RootState } from '@/store';
-import { Transaction } from '@/types/database';
+import { Transaction, TransactionSplit } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useCallback, useMemo } from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
 import { useSelector } from 'react-redux';
+
+interface TransactionRow {
+  key: string;
+  transaction: Transaction;
+  split: TransactionSplit | null;
+  category: string;
+  description: string;
+  amount: number;
+  tags?: string[];
+}
+
+// A transaction with category splits is one ledger movement that was divided
+// across several categories — each split gets its own row here so it reads
+// (and taps through to the same detail screen) like any other transaction.
+function buildRows(transactions: Transaction[]): TransactionRow[] {
+  const rows: TransactionRow[] = [];
+  transactions.forEach((transaction) => {
+    if (transaction.splits && transaction.splits.length > 0) {
+      transaction.splits.forEach((split) => {
+        rows.push({
+          key: `${transaction.id}:${split.id}`,
+          transaction,
+          split,
+          category: split.category,
+          description: split.description || transaction.description,
+          amount: split.amount,
+          tags: split.tags?.length ? split.tags : transaction.tags,
+        });
+      });
+    } else {
+      rows.push({
+        key: transaction.id,
+        transaction,
+        split: null,
+        category: transaction.category,
+        description: transaction.description,
+        amount: transaction.amount,
+        tags: transaction.tags,
+      });
+    }
+  });
+  return rows;
+}
 
 // Build once at module load — avoids O(n) find() inside render
 const BUNDLED_LOGO_MAP = new Map(BUNDLED_LOGOS.map(b => [b.url, b]));
@@ -63,6 +106,8 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
     }
   }, []);
 
+  const rows = useMemo(() => buildRows(transactions), [transactions]);
+
   return (
     <View className="mb-8">
       <View className="flex-row justify-between items-center mb-4">
@@ -79,33 +124,34 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
           <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">Add your first transaction to get started</Text>
         </View>
       ) : (
-        transactions.map((item) => {
+        rows.map((row) => {
+          const { transaction: item } = row;
           const isIncome = item.type === 'INCOME';
-          const category = categoryMap.get(item.category);
+          const category = categoryMap.get(row.category);
           const account = accountMap.get(item.account_id);
 
           return (
             <TouchableOpacity
-              key={item.id}
+              key={row.key}
               onPress={() => onTransactionPress && onTransactionPress(item)}
               activeOpacity={0.7}
-              className="flex-row items-center bg-white dark:bg-slate-800 p-4 rounded-2xl mb-3 shadow-sm border border-slate-100 dark:border-slate-700"
+              className="flex-row items-center bg-white dark:bg-slate-800 px-3.5 py-2.5 rounded-2xl mb-2 shadow-sm border border-slate-100 dark:border-slate-700"
               style={{ elevation: 1 }}
             >
               <View className="relative">
                 <View
-                  className="w-14 h-14 rounded-2xl justify-center items-center mr-4"
+                  className="w-10 h-10 rounded-xl justify-center items-center mr-3"
                   style={{ backgroundColor: category?.color ? category.color + '20' : (isIncome ? '#dcfce7' : '#fee2e2') }}
                 >
                   <CategoryIcon
                     icon={category?.icon ?? 'question'}
-                    size={20}
+                    size={16}
                     color={category?.color || (isIncome ? '#16a34a' : '#ef4444')}
                   />
                 </View>
                 {account?.logo && (
-                  <View className="absolute -bottom-2 -left-2 w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full justify-center items-center shadow-sm border border-white dark:border-slate-800 z-10 overflow-hidden">
-                    <FontAwesome name="bank" size={12} color="#94a3b8" style={{ position: 'absolute' }} />
+                  <View className="absolute -bottom-1.5 -left-1.5 w-6 h-6 bg-slate-100 dark:bg-slate-700 rounded-full justify-center items-center shadow-sm border border-white dark:border-slate-800 z-10 overflow-hidden">
+                    <FontAwesome name="bank" size={9} color="#94a3b8" style={{ position: 'absolute' }} />
                     <Image
                       source={logoSourceMap.get(account.logo) as any}
                       className="w-full h-full"
@@ -114,15 +160,22 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
                   </View>
                 )}
               </View>
-              <View className="flex-1">
-                <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">{item.description}</Text>
-                <Text className="text-slate-500 text-xs dark:text-slate-400">{formatDate(item.date)}</Text>
+              <View className="flex-1 mr-2">
+                <Text className="text-slate-900 dark:text-white font-bold text-sm" numberOfLines={1}>{row.description}</Text>
+                <View className="flex-row items-center mt-0.5">
+                  <Text className="text-slate-500 text-[11px] dark:text-slate-400" numberOfLines={1}>{formatDate(item.date)}</Text>
+                  {row.split && (
+                    <View className="ml-1.5 px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20">
+                      <Text className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300">Split</Text>
+                    </View>
+                  )}
+                </View>
               </View>
               <View className="items-end">
-                <Text className={`font-bold text-lg ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
-                  {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
+                <Text className={`font-bold text-sm ${isIncome ? 'text-green-600' : 'text-red-500'}`} numberOfLines={1}>
+                  {isIncome ? '+' : '-'}{formatCurrency(row.amount)}
                 </Text>
-                <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">{item.category}</Text>
+                <Text className="text-slate-500 text-[11px] mt-0.5 dark:text-slate-400" numberOfLines={1}>{row.category}</Text>
               </View>
             </TouchableOpacity>
           );

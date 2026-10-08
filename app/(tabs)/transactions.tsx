@@ -94,7 +94,6 @@ export default function TransactionsScreen() {
   const headerTitleSize = fontSize === 'V.Small' ? 'text-lg' : fontSize === 'Small' ? 'text-xl' : fontSize === 'Large' ? 'text-3xl' : 'text-2xl';
   const labelSize = fontSize === 'V.Small' ? 'text-[11px]' : fontSize === 'Small' ? 'text-xs' : fontSize === 'Large' ? 'text-base' : 'text-sm';
   const denseButtonPadding = isVerySmall ? 'py-1.5' : 'py-2';
-  const summaryValueSize = fontSize === 'V.Small' ? 'text-base' : 'text-lg';
   const [filter, setFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -168,46 +167,105 @@ export default function TransactionsScreen() {
   const filteredTransactions = useMemo(() => {
     const categoriesToInclude = getCategoryNamesToInclude(selectedCategories);
     const evidence = typeof evidenceIds === 'string' && evidenceIds ? new Set(evidenceIds.split(',')) : null;
+    const query = searchQuery.trim().toLowerCase();
+
+    // A category split's own category/tags can differ from the parent
+    // transaction's — a transaction qualifies if it matches at the top
+    // level OR through any one of its splits, so a split-only match (e.g.
+    // searching a split's category) is not silently dropped from the list.
+    const fieldsMatch = (category: string, tags: string[] | undefined, description: string) => {
+      if (categoriesToInclude && !categoriesToInclude.includes(category)) return false;
+      if (selectedTags.length > 0 && !selectedTags.some(st => hasTag(tags, st))) return false;
+      if (query) {
+        const tagMatches = (tags || []).some((transactionTag) => transactionTag.toLowerCase().includes(query));
+        if (!(description?.toLowerCase().includes(query) ?? false) && !(category?.toLowerCase().includes(query) ?? false) && !tagMatches) return false;
+      }
+      return true;
+    };
 
     return transactions.filter((t) => {
       if (evidence && !evidence.has(t.id)) return false;
-      // Type filter
       if (filter !== 'ALL' && t.type !== filter) return false;
-
-      // Category filter
-      if (categoriesToInclude && !categoriesToInclude.includes(t.category)) return false;
-
-      // Tag filter
-      if (selectedTags.length > 0 && !selectedTags.some(st => hasTag(t.tags, st))) return false;
-
-      // Account filter (applies to both card and table views)
       if (filterAccountIds.length > 0 && !filterAccountIds.includes(t.account_id) && !filterAccountIds.includes(t.to_account_id ?? '')) return false;
-
-      // Date filter (applies to both card and table views)
       if (dateFrom && t.date < new Date(dateFrom).setHours(0, 0, 0, 0)) return false;
       if (dateTo && t.date > new Date(dateTo).setHours(23, 59, 59, 999)) return false;
 
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const tagMatches = (t.tags || []).some((transactionTag) => transactionTag.toLowerCase().includes(query));
-        return (
-          (t.description?.toLowerCase().includes(query) ?? false) ||
-          (t.category?.toLowerCase().includes(query) ?? false) ||
-          tagMatches
-        );
+      if (categoriesToInclude || selectedTags.length > 0 || query) {
+        const ownMatches = fieldsMatch(t.category, t.tags, t.description);
+        const splitMatches = t.splits?.some(split => fieldsMatch(split.category, split.tags?.length ? split.tags : t.tags, split.description || t.description));
+        if (!ownMatches && !splitMatches) return false;
       }
 
       return true;
     });
   }, [transactions, filter, selectedCategories, selectedTags, searchQuery, categories, filterAccountIds, dateFrom, dateTo, evidenceIds]);
 
+  // Every category split of a transaction becomes its own row — each is
+  // independently interactive, searchable and filterable, while still
+  // opening the one underlying transaction's detail screen on tap.
+  const displayRows = useMemo(() => {
+    const categoriesToInclude = getCategoryNamesToInclude(selectedCategories);
+    const query = searchQuery.trim().toLowerCase();
+    const hasActiveFilter = !!categoriesToInclude || selectedTags.length > 0 || !!query;
+
+    const rowMatches = (category: string, tags: string[] | undefined, description: string) => {
+      if (categoriesToInclude && !categoriesToInclude.includes(category)) return false;
+      if (selectedTags.length > 0 && !selectedTags.some(st => hasTag(tags, st))) return false;
+      if (query) {
+        const tagMatches = (tags || []).some((transactionTag) => transactionTag.toLowerCase().includes(query));
+        if (!(description?.toLowerCase().includes(query) ?? false) && !(category?.toLowerCase().includes(query) ?? false) && !tagMatches) return false;
+      }
+      return true;
+    };
+
+    const rows: {
+      key: string;
+      transaction: typeof filteredTransactions[number];
+      split: NonNullable<typeof filteredTransactions[number]['splits']>[number] | null;
+      category: string;
+      description: string;
+      amount: number;
+      tags?: string[];
+    }[] = [];
+
+    filteredTransactions.forEach((t) => {
+      if (t.splits && t.splits.length > 0) {
+        const candidateRows = t.splits.map(split => ({
+          key: `${t.id}:${split.id}`,
+          transaction: t,
+          split,
+          category: split.category,
+          description: split.description || t.description,
+          amount: split.amount,
+          tags: split.tags?.length ? split.tags : t.tags,
+        }));
+        // If some splits match the active filters, show only those; if
+        // the transaction qualified another way (e.g. only its own
+        // top-level fields matched), show every split rather than none.
+        const matching = hasActiveFilter ? candidateRows.filter(row => rowMatches(row.category, row.tags, row.description)) : candidateRows;
+        rows.push(...(matching.length > 0 ? matching : candidateRows));
+      } else {
+        rows.push({
+          key: t.id,
+          transaction: t,
+          split: null,
+          category: t.category,
+          description: t.description,
+          amount: t.amount,
+          tags: t.tags,
+        });
+      }
+    });
+
+    return rows;
+  }, [filteredTransactions, selectedCategories, selectedTags, searchQuery, categories]);
+
   // Group by date
   const groupedTransactions = useMemo(() => {
-    const groups: { [key: string]: typeof transactions } = {};
+    const groups: { [key: string]: typeof displayRows } = {};
 
-    filteredTransactions.forEach(transaction => {
-      const date = new Date(transaction.date);
+    displayRows.forEach(row => {
+      const date = new Date(row.transaction.date);
       const today = new Date();
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -224,11 +282,11 @@ export default function TransactionsScreen() {
       if (!groups[dateKey]) {
         groups[dateKey] = [];
       }
-      groups[dateKey].push(transaction);
+      groups[dateKey].push(row);
     });
 
     return Object.entries(groups).map(([date, items]) => ({ title: date, data: items }));
-  }, [filteredTransactions, calendarSystem]);
+  }, [displayRows, calendarSystem]);
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -550,7 +608,7 @@ export default function TransactionsScreen() {
         /* ── Card view (existing) ── */
         <SectionList
           sections={groupedTransactions}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(row) => row.key}
           contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 }}
           showsVerticalScrollIndicator={false}
           maxToRenderPerBatch={10}
@@ -560,25 +618,27 @@ export default function TransactionsScreen() {
           renderSectionHeader={({ section: { title } }) => (
             <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-3 mt-2">{title}</Text>
           )}
-          renderItem={({ item }) => {
-            const category = categoriesMap.get(item.category);
+          renderItem={({ item: row }) => {
+            const item = row.transaction;
+            const category = categoriesMap.get(row.category);
             const isIncome = item.type === 'INCOME';
+            const rowTags = row.tags;
 
             return (
               <TouchableOpacity
-                key={item.id}
+                key={row.key}
                 onPress={() => router.push(`/transaction/${item.id}`)}
-                className={`flex-row items-center bg-white dark:bg-slate-800 ${isVerySmall ? 'p-3.5' : 'p-4'} rounded-2xl mb-3 shadow-sm border border-slate-100 dark:border-slate-700`}
+                className="flex-row items-center bg-white dark:bg-slate-800 px-3.5 py-2.5 rounded-2xl mb-2 shadow-sm border border-slate-100 dark:border-slate-700"
                 style={{ elevation: 1 }}
               >
                 <View className="relative">
                   <View
-                    className="w-14 h-14 rounded-2xl justify-center items-center mr-4"
+                    className="w-10 h-10 rounded-xl justify-center items-center mr-3"
                     style={{ backgroundColor: category?.color ? category.color + '20' : (isIncome ? '#dcfce7' : '#fee2e2') }}
                   >
                     <CategoryIcon
                       icon={category?.icon ?? 'question'}
-                      size={20}
+                      size={16}
                       color={category?.color || (isIncome ? '#16a34a' : '#ef4444')}
                     />
                   </View>
@@ -586,8 +646,8 @@ export default function TransactionsScreen() {
                     const account = accountsMap.get(item.account_id);
                     if (account?.logo) {
                       return (
-                        <View className="absolute -bottom-2 -left-2 w-9 h-9 bg-slate-100 dark:bg-slate-700 rounded-full justify-center items-center shadow-sm border border-white dark:border-slate-800 z-10 overflow-hidden">
-                          <FontAwesome name="bank" size={12} color="#94a3b8" style={{ position: 'absolute' }} />
+                        <View className="absolute -bottom-1.5 -left-1.5 w-6 h-6 bg-slate-100 dark:bg-slate-700 rounded-full justify-center items-center shadow-sm border border-white dark:border-slate-800 z-10 overflow-hidden">
+                          <FontAwesome name="bank" size={9} color="#94a3b8" style={{ position: 'absolute' }} />
                           <Image
                             source={getAccountImageSource(account.logo) as any}
                             className="w-full h-full"
@@ -599,20 +659,25 @@ export default function TransactionsScreen() {
                     return null;
                   })()}
                 </View>
-                <View className="flex-1">
-                  <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">{item.description}</Text>
-                  <View className="flex-row items-center">
-                    <Text className="text-slate-500 text-xs dark:text-slate-400">{item.category}</Text>
-                    <View className="w-1 h-1 bg-slate-300 rounded-full mx-2" />
-                    <Text className="text-slate-500 text-xs dark:text-slate-400">{formatTime(item.date)}</Text>
+                <View className="flex-1 mr-2">
+                  <Text className="text-slate-900 dark:text-white font-bold text-sm" numberOfLines={1}>{row.description}</Text>
+                  <View className="flex-row items-center mt-0.5">
+                    <Text className="text-slate-500 text-[11px] dark:text-slate-400" numberOfLines={1}>{row.category}</Text>
+                    <View className="w-1 h-1 bg-slate-300 rounded-full mx-1.5" />
+                    <Text className="text-slate-500 text-[11px] dark:text-slate-400" numberOfLines={1}>{formatTime(item.date)}</Text>
+                    {row.split && (
+                      <View className="ml-1.5 px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20">
+                        <Text className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300">Split</Text>
+                      </View>
+                    )}
                   </View>
-                  {item.tags && item.tags.length > 0 && (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2 -mx-0.5 px-0.5">
-                      {item.tags.slice(0, 4).map((transactionTag) => (
+                  {rowTags && rowTags.length > 0 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-1.5 -mx-0.5 px-0.5">
+                      {rowTags.slice(0, 4).map((transactionTag) => (
                         <TouchableOpacity
-                          key={`${item.id}-${transactionTag}`}
+                          key={`${row.key}-${transactionTag}`}
                           onPress={() => setSelectedTags(prev => prev.includes(transactionTag) ? prev.filter(t => t !== transactionTag) : [...prev, transactionTag])}
-                          className="mr-2 px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800"
+                          className="mr-2 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800"
                         >
                           <Text className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold">#{transactionTag}</Text>
                         </TouchableOpacity>
@@ -621,8 +686,8 @@ export default function TransactionsScreen() {
                   )}
                 </View>
                 <View className="items-end">
-                  <Text className={`font-bold ${summaryValueSize} ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
-                    {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
+                  <Text className={`font-bold text-sm ${isIncome ? 'text-green-600' : 'text-red-500'}`} numberOfLines={1}>
+                    {isIncome ? '+' : '-'}{formatCurrency(row.amount)}
                   </Text>
                 </View>
               </TouchableOpacity>
