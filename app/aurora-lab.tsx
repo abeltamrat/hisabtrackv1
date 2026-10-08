@@ -9,6 +9,11 @@ import { AURORA_VARS } from '@/components/aurora/palette';
 import SummaryCard from '@/components/dashboard/SummaryCard';
 import FinancialPulse from '@/components/dashboard/FinancialPulse';
 import Coin3D from '@/components/three-d/Coin3D';
+import Wallet3D from '@/components/three-d/Wallet3D';
+import Shield3D from '@/components/three-d/Shield3D';
+import Gift3D from '@/components/three-d/Gift3D';
+import Target3D from '@/components/three-d/Target3D';
+import Icon3D from '@/components/three-d/Icon3D';
 
 /**
  * Developer-only lab for the Aurora theme: real shared components rendered
@@ -125,10 +130,28 @@ export default function AuroraLab() {
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 24, alignItems: 'center' }}>
-          <Coin3D size={64} />
-          <Coin3D size={44} />
-          <Text className="text-white/70 text-xs">Coin3D (floating, reduce-motion aware)</Text>
+        <View style={{ gap: 12 }}>
+          <Text className="text-white text-base font-bold">3D object library</Text>
+          <View style={{ flexDirection: 'row', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Coin3D size={64} />
+            <Wallet3D size={64} />
+            <Shield3D size={64} />
+            <Gift3D size={64} />
+            <Target3D size={64} />
+          </View>
+          <Text className="text-white/70 text-xs">All floating + reduce-motion aware</Text>
+
+          <Text className="text-white text-base font-bold mt-2">Icon3D (quick-action tiles)</Text>
+          <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+            <Icon3D icon="plus" color="#0d9488" />
+            <Icon3D icon="exchange" color="#ea580c" />
+            <Icon3D icon="comment" color="#e11d48" />
+            <Icon3D icon="briefcase" color="#0891b2" />
+            <Icon3D icon="pie-chart" color="#9333ea" />
+            <Icon3D icon="bar-chart" color="#4f46e5" />
+            <Icon3D icon="users" color="#d97706" />
+            <Icon3D icon="ellipsis-h" color="#475569" />
+          </View>
         </View>
       </ScrollView>
       <CustomTabBar

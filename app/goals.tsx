@@ -1,5 +1,7 @@
 import Storage from '@/services/SessionStorage';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import Target3D from '@/components/three-d/Target3D';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
@@ -30,6 +32,7 @@ interface Goal {
 export default function FinancialGoalsScreen() {
   const router = useRouter();
   const { formatCurrency } = useAppSettings();
+  const { isAurora } = useTheme();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loaded, setLoaded] = useState(false);
   const transactions = useSelector((state: RootState) => state.transactions.items);
@@ -207,9 +210,13 @@ export default function FinancialGoalsScreen() {
       <ScrollView className="flex-1 px-6 pt-6" showsVerticalScrollIndicator={false}>
         {goals.length === 0 ? (
           <View className="items-center justify-center mt-20">
-            <View className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full justify-center items-center mb-4">
-              <FontAwesome name="star-o" size={32} color="#cbd5e1" />
-            </View>
+            {isAurora ? (
+              <View className="mb-4"><Target3D size={72} /></View>
+            ) : (
+              <View className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full justify-center items-center mb-4">
+                <FontAwesome name="star-o" size={32} color="#cbd5e1" />
+              </View>
+            )}
             <Text className="text-slate-900 dark:text-white font-bold text-lg mb-2">No Goals Yet</Text>
             <Text className="text-slate-500 text-sm text-center dark:text-slate-400">Set your first financial goal to start tracking</Text>
           </View>

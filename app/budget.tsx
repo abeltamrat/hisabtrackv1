@@ -1,6 +1,7 @@
 import { useTransactions } from '@/context/TransactionContext';
 import CategoryIcon from '@/components/CategoryIcon';
 import ScreenInfoCard from '@/components/ScreenInfoCard';
+import Shield3D from '@/components/three-d/Shield3D';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useLedgerClock } from '@/hooks/useLedgerClock';
 import BudgetService from '@/services/BudgetService';
@@ -254,6 +255,7 @@ export default function BudgetScreen() {
                   icon="pie-chart"
                   title="Start with a simple spending plan"
                   description="Budgets help you decide where your money should go before the month gets busy."
+                  object3d={<Shield3D size={56} />}
                   suggestions={[
                     'Create a budget for essentials such as food, transport, or rent.',
                     'Use your recent transactions as a realistic starting amount.',

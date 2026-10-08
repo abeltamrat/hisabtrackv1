@@ -25,6 +25,7 @@ import { getDatabase } from '@/services/database';
 import { DraftTransactionService } from '@/services/DraftTransactionService';
 import SMSSyncOnboardingModal from '@/components/SMSSyncOnboardingModal';
 import ScreenInfoCard from '@/components/ScreenInfoCard';
+import Wallet3D from '@/components/three-d/Wallet3D';
 
 export default function Accounts() {
   const router = useRouter();
@@ -991,6 +992,7 @@ export default function Accounts() {
             icon="credit-card"
             title="Add your first account"
             description="Accounts keep balances and transactions organized across your banks, cash, cards, and mobile money."
+            object3d={<Wallet3D size={56} />}
             suggestions={[
               'Add each account with its current balance for a useful starting point.',
               'Enable SMS sync on a bank account to detect transactions automatically.',

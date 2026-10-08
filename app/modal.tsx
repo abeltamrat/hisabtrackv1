@@ -18,6 +18,7 @@ import { addTransaction, deleteTransaction, updateTransaction, fetchTransactions
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { NotificationService } from '@/services/NotificationService';
 import { formatTagInput, parseTagInput } from '@/utils/tags';
+import { celebrate } from '@/utils/celebrate';
 import FloatingCalculator from '@/components/FloatingCalculator';
 import { useDispatch, useSelector } from 'react-redux';
 import { themeTokens } from '@/constants/theme';
@@ -356,6 +357,7 @@ export default function AddTransactionScreen() {
       await InputDraftService.attachToTransaction(inputDraft, savedTransactionId);
     }
     if (!isEditing && transactionId) {
+      celebrate();
       Alert.alert('Transaction saved', 'The account balance and reports have been updated.', [
         { text: 'Keep', style: 'cancel', onPress: () => router.back() },
         { text: 'Undo', style: 'destructive', onPress: async () => {

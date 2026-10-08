@@ -24,6 +24,7 @@ import FundSyncService, { formatFundMoney } from '@/services/FundSyncService';
 import { fundRole } from '@/services/SharedFundService';
 import { DraftTransactionService } from '@/services/DraftTransactionService';
 import drawerBus from '@/utils/drawerBus';
+import Icon3D from '@/components/three-d/Icon3D';
 import { formatEthiopianDate } from '@/utils/ethiopianCalendar';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -228,16 +229,18 @@ export default function DashboardScreen() {
   }), [fontSize, isVerySmall]);
 
   // Aurora's 8 quick actions: same destinations as the classic grid, plus
-  // Funds and Equb, and an SMS tile carrying the pending-draft badge.
-  const auroraActions: Array<{ key: string; label: string; icon: string; badge?: number; onPress: () => void }> = [
-    { key: 'add', label: t('addNew'), icon: 'plus', onPress: () => router.push('/modal') },
-    { key: 'transfer', label: t('transferAction'), icon: 'exchange', onPress: () => router.push('/transfer') },
-    { key: 'sms', label: t('smsAction'), icon: 'comment', badge: pendingDraftCount, onPress: () => router.push('/draft-transactions') },
-    { key: 'funds', label: t('fundsAction'), icon: 'briefcase', onPress: () => router.push('/funds' as any) },
-    { key: 'budget', label: t('budget'), icon: 'pie-chart', onPress: () => router.push('/budget') },
-    { key: 'reports', label: t('reports'), icon: 'bar-chart', onPress: () => router.push('/(tabs)/reports') },
-    { key: 'equb', label: t('equbAction'), icon: 'users', onPress: () => router.push('/community' as any) },
-    { key: 'more', label: t('moreAction'), icon: 'ellipsis-h', onPress: () => drawerBus.open() },
+  // Funds and Equb, and an SMS tile carrying the pending-draft badge. Each
+  // gets its own Icon3D accent colour, echoing the classic grid's per-tile
+  // gradient colours so the two themes feel like the same app.
+  const auroraActions: Array<{ key: string; label: string; icon: string; color: string; badge?: number; onPress: () => void }> = [
+    { key: 'add', label: t('addNew'), icon: 'plus', color: '#0d9488', onPress: () => router.push('/modal') },
+    { key: 'transfer', label: t('transferAction'), icon: 'exchange', color: '#ea580c', onPress: () => router.push('/transfer') },
+    { key: 'sms', label: t('smsAction'), icon: 'comment', color: '#e11d48', badge: pendingDraftCount, onPress: () => router.push('/draft-transactions') },
+    { key: 'funds', label: t('fundsAction'), icon: 'briefcase', color: '#0891b2', onPress: () => router.push('/funds' as any) },
+    { key: 'budget', label: t('budget'), icon: 'pie-chart', color: '#9333ea', onPress: () => router.push('/budget') },
+    { key: 'reports', label: t('reports'), icon: 'bar-chart', color: '#4f46e5', onPress: () => router.push('/(tabs)/reports') },
+    { key: 'equb', label: t('equbAction'), icon: 'users', color: '#d97706', onPress: () => router.push('/community' as any) },
+    { key: 'more', label: t('moreAction'), icon: 'ellipsis-h', color: '#475569', onPress: () => drawerBus.open() },
   ];
 
   return (
@@ -333,16 +336,7 @@ export default function DashboardScreen() {
                     className="items-center py-3 rounded-2xl"
                   >
                     <View style={{ position: 'relative' }}>
-                      <View
-                        className="rounded-2xl justify-center items-center"
-                        style={{
-                          width: isVerySmall ? 48 : 54, height: isVerySmall ? 48 : 54,
-                          backgroundColor: action.key === 'add' ? 'rgba(103,232,249,0.9)' : 'rgba(255,255,255,0.1)',
-                          borderWidth: 1, borderColor: action.key === 'add' ? 'rgba(103,232,249,0.9)' : 'rgba(255,255,255,0.18)',
-                        }}
-                      >
-                        <FontAwesome name={action.icon as any} size={isVerySmall ? 18 : 20} color={action.key === 'add' ? '#082f49' : '#ffffff'} />
-                      </View>
+                      <Icon3D icon={action.icon as any} color={action.color} size={isVerySmall ? 48 : 54} iconSize={isVerySmall ? 18 : 20} />
                       {!!action.badge && (
                         <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#fb7185', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
                           <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{action.badge}</Text>

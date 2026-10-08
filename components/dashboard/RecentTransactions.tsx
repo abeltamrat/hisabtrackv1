@@ -2,6 +2,8 @@ import { BUNDLED_LOGOS } from '@/assets/bankLogos/et';
 import CategoryIcon from '@/components/CategoryIcon';
 import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import Coin3D from '@/components/three-d/Coin3D';
 import { RootState } from '@/store';
 import { Transaction } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
@@ -29,6 +31,7 @@ interface RecentTransactionsProps {
 function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: RecentTransactionsProps) {
   const { categories } = useTransactions();
   const { formatCurrency } = useAppSettings();
+  const { isAurora } = useTheme();
   const accounts = useSelector((state: RootState) => state.accounts.items);
 
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.name, c])), [categories]);
@@ -71,7 +74,7 @@ function RecentTransactions({ transactions, onSeeAll, onTransactionPress }: Rece
 
       {transactions.length === 0 ? (
         <View className="bg-white dark:bg-slate-800 rounded-2xl p-8 items-center border border-slate-100 dark:border-slate-700">
-          <FontAwesome name="inbox" size={48} color="#cbd5e1" />
+          {isAurora ? <Coin3D size={56} /> : <FontAwesome name="inbox" size={48} color="#cbd5e1" />}
           <Text className="text-slate-500 mt-4 text-sm dark:text-slate-400">No transactions yet</Text>
           <Text className="text-slate-500 text-xs mt-1 dark:text-slate-400">Add your first transaction to get started</Text>
         </View>

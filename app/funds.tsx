@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux';
 import ScreenInfoCard from '@/components/ScreenInfoCard';
 import { CreateFundSheet, InviteShareCard, JoinFundSheet } from '@/components/funds/FundInviteSheets';
 import { FUND_GRADIENT, fundTypeLabel } from '@/components/funds/fundUi';
+import Wallet3D from '@/components/three-d/Wallet3D';
 import { FUNDS_ENABLED } from '@/config/features';
 import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
@@ -145,6 +146,7 @@ export default function FundsScreen() {
             icon="briefcase"
             title="Know where every birr goes"
             description="Give petty cash or a revolving float to someone you trust, or let people pay you through them. They record each payment, often straight from their bank SMS, and you see it live, with the receipt."
+            object3d={<Wallet3D size={56} />}
             suggestions={[
               'Tap + to create a fund and get an invite code.',
               'Send the code to your assistant by SMS, WhatsApp or Telegram.',
