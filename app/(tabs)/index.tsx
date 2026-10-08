@@ -325,26 +325,34 @@ export default function DashboardScreen() {
             <Text className={`text-white ${sectionTitleSize} font-bold mb-4`}>{t('quickActions')}</Text>
 
             {isAurora ? (
-              <View className="flex-row flex-wrap" style={{ gap: 10 }}>
-                {auroraActions.map(action => (
-                  <TouchableOpacity
-                    key={action.key}
-                    onPress={action.onPress}
-                    accessibilityRole="button"
-                    accessibilityLabel={action.label}
-                    style={{ width: '23%' }}
-                    className="items-center py-3 rounded-2xl"
-                  >
-                    <View style={{ position: 'relative' }}>
-                      <Icon3D icon={action.icon as any} color={action.color} size={isVerySmall ? 48 : 54} iconSize={isVerySmall ? 18 : 20} />
-                      {!!action.badge && (
-                        <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#fb7185', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
-                          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{action.badge}</Text>
+              // Explicit rows of exactly 4, the same technique the classic grid
+              // below uses — a percentage width inside flex-wrap previously
+              // landed on 3 columns instead of 4 on some screen widths, making
+              // the grid a row taller than intended and pushing it into the
+              // floating assistant button.
+              <View style={{ gap: 10 }}>
+                {[auroraActions.slice(0, 4), auroraActions.slice(4, 8)].map((row, rowIndex) => (
+                  <View key={rowIndex} className="flex-row justify-between">
+                    {row.map(action => (
+                      <TouchableOpacity
+                        key={action.key}
+                        onPress={action.onPress}
+                        accessibilityRole="button"
+                        accessibilityLabel={action.label}
+                        className="flex-1 items-center py-1"
+                      >
+                        <View style={{ position: 'relative' }}>
+                          <Icon3D icon={action.icon as any} color={action.color} size={isVerySmall ? 48 : 54} iconSize={isVerySmall ? 18 : 20} />
+                          {!!action.badge && (
+                            <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#fb7185', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{action.badge}</Text>
+                            </View>
+                          )}
                         </View>
-                      )}
-                    </View>
-                    <Text className="text-white text-[11px] font-semibold mt-1.5" numberOfLines={1}>{action.label}</Text>
-                  </TouchableOpacity>
+                        <Text className="text-white text-[11px] font-semibold mt-1.5" numberOfLines={1}>{action.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 ))}
               </View>
             ) : (

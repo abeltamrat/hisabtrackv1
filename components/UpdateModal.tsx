@@ -73,7 +73,11 @@ export default function UpdateModal({ visible, updateInfo, onClose }: UpdateModa
     >
       <View className="flex-1 bg-black/60 justify-center items-center px-6">
         <View
-          className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl items-center"
+          // dark:bg-slate-900 (not -800): this card stands alone, with
+          // nothing else backing it, unlike a card nested inside a sheet —
+          // slate-800's ~8%-opaque glass fill was nearly invisible here,
+          // especially if BlurView doesn't render on a given device.
+          className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-sm shadow-2xl items-center"
           style={isAurora ? { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' } : undefined}
         >
           {isAurora && (
