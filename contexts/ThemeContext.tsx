@@ -5,6 +5,7 @@ import { useColorScheme as useNWColorScheme, vars } from 'nativewind';
 
 import AuroraBackground from '@/components/aurora/AuroraBackground';
 import { AURORA_VARS } from '@/components/aurora/palette';
+import { auroraFlag } from '@/components/aurora/auroraFlag';
 
 /**
  * 'aurora' is the glass look: it runs on NativeWind's dark scheme (so every
@@ -66,8 +67,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme, systemTheme]);
 
   // On web, modals and portals render outside this view, so the glass palette
-  // also goes on the document root there.
+  // also goes on the document root there. The alert module reads
+  // auroraFlag directly, since it has no React context of its own.
   useEffect(() => {
+    auroraFlag.set(isAurora);
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     const root = document.documentElement;
     for (const [name, value] of Object.entries(AURORA_VARS)) {

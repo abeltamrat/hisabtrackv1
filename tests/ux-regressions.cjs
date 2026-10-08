@@ -198,6 +198,41 @@ test('web Alert is inert during static prerender, where there is no document', (
   }
 });
 
+test('web Alert keeps its structural and colour contract when Aurora Glass is active', async () => {
+  await withDom(async ({ document }) => {
+    const { auroraFlag } = load('@/components/aurora/auroraFlag.ts');
+    auroraFlag.set(true);
+    try {
+      const { Alert } = load('./utils/alert.web.ts');
+      const pressed = [];
+      Alert.alert('Delete Account', 'Are you sure?', [
+        { text: 'Cancel', style: 'cancel', onPress: () => pressed.push('cancel') },
+        { text: 'Keep', onPress: () => pressed.push('keep') },
+        { text: 'Delete', style: 'destructive', onPress: () => pressed.push('delete') },
+      ]);
+      await settle();
+
+      const dialog = document.body.children[0];
+      const card = dialog.children[0];
+      // The structural contract — role, attachment point, button order — is
+      // identical to the non-Aurora path; only colours/blur differ.
+      assert.equal(card.getAttribute('role'), 'alertdialog');
+      assert.equal(card.getAttribute('aria-modal'), 'true');
+      const buttons = dialog.buttons;
+      assert.deepEqual(buttons.map(b => b.textContent), ['Cancel', 'Keep', 'Delete']);
+      // Destructive stays this exact red regardless of theme.
+      assert.equal(buttons[2].style.backgroundColor, '#dc2626');
+      buttons.forEach(b => assert.equal(b.style.minHeight, '44px'));
+      // The confirm action picks up the Aurora accent instead of indigo.
+      assert.equal(buttons[1].style.backgroundColor, '#67e8f9');
+      buttons[1].click();
+      assert.deepEqual(pressed, ['keep']);
+    } finally {
+      auroraFlag.set(false);
+    }
+  });
+});
+
 test('no screen imports Alert from react-native, which is a no-op on web', () => {
   const offenders = [];
   const walk = dir => {

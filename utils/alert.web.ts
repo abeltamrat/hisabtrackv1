@@ -5,8 +5,17 @@
  * renders a real DOM dialog. It is built imperatively rather than as a React
  * component so the ~250 existing `Alert.alert(...)` call sites keep working
  * with no provider wiring, and so it stays callable from plain services.
+ *
+ * When the Aurora Glass theme is active (read from `auroraFlag`, mirrored
+ * here by ThemeContext since this module has no React context of its own)
+ * the dialog renders as frosted glass instead of a plain light/dark card.
+ * Every structural and behavioural contract below — role/aria attributes,
+ * button order and text, the exact `#dc2626` destructive colour, the 44px
+ * minimum touch target, queueing, Escape and backdrop handling — is
+ * unchanged between the two looks.
  */
 import type { AlertButton, AlertOptions } from 'react-native';
+import { auroraFlag } from '@/components/aurora/auroraFlag';
 
 export type { AlertButton, AlertOptions };
 
@@ -28,6 +37,7 @@ function present(request: Request) {
   const buttons = request.buttons?.length ? request.buttons : [DEFAULT_BUTTON];
   const dark = typeof window.matchMedia === 'function'
     && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const aurora = auroraFlag.active;
   const cancelable = request.options?.cancelable !== false;
 
   const backdrop = document.createElement('div');
@@ -39,7 +49,7 @@ function present(request: Request) {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '16px',
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    backgroundColor: aurora ? 'rgba(7, 11, 26, 0.68)' : 'rgba(15, 23, 42, 0.55)',
   } satisfies Partial<CSSStyleDeclaration>);
 
   const card = document.createElement('div');
@@ -50,11 +60,14 @@ function present(request: Request) {
     maxWidth: '340px',
     boxSizing: 'border-box',
     padding: '20px',
-    borderRadius: '16px',
-    boxShadow: '0 16px 48px rgba(15, 23, 42, 0.28)',
-    backgroundColor: dark ? '#1e293b' : '#ffffff',
-    color: dark ? '#f1f5f9' : '#0f172a',
+    borderRadius: aurora ? '24px' : '16px',
+    boxShadow: aurora
+      ? '0 20px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.2)'
+      : '0 16px 48px rgba(15, 23, 42, 0.28)',
+    backgroundColor: aurora ? 'rgba(20, 26, 51, 0.72)' : (dark ? '#1e293b' : '#ffffff'),
+    color: aurora ? '#ffffff' : (dark ? '#f1f5f9' : '#0f172a'),
     fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    ...(aurora ? { border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(28px) saturate(140%)' } : null),
   } satisfies Partial<CSSStyleDeclaration>);
 
   if (request.title) {
@@ -80,7 +93,7 @@ function present(request: Request) {
       fontSize: '14px',
       lineHeight: '1.5',
       whiteSpace: 'pre-wrap',
-      color: dark ? '#cbd5e1' : '#334155',
+      color: aurora ? 'rgba(255,255,255,0.8)' : (dark ? '#cbd5e1' : '#334155'),
     } satisfies Partial<CSSStyleDeclaration>);
     card.appendChild(body);
     card.setAttribute('aria-describedby', body.id);
@@ -143,16 +156,20 @@ function present(request: Request) {
       // 44px tall keeps the dialog usable with a coarse pointer.
       minHeight: '44px',
       padding: '0 16px',
-      borderRadius: '10px',
+      borderRadius: aurora ? '12px' : '10px',
       fontSize: '14px',
       fontWeight: '600',
       fontFamily: 'inherit',
       backgroundColor: cancel
-        ? (dark ? '#334155' : '#e2e8f0')
+        ? (aurora ? 'rgba(255,255,255,0.12)' : (dark ? '#334155' : '#e2e8f0'))
         : destructive
           ? '#dc2626'
-          : '#4f46e5',
-      color: cancel ? (dark ? '#e2e8f0' : '#1e293b') : '#ffffff',
+          // Confirm action: the Aurora accent cyan with a dark navy label for
+          // contrast, same treatment as the tab bar's add button.
+          : (aurora ? '#67e8f9' : '#4f46e5'),
+      color: cancel
+        ? (aurora ? '#ffffff' : (dark ? '#e2e8f0' : '#1e293b'))
+        : (destructive ? '#ffffff' : (aurora ? '#082f49' : '#ffffff')),
     } satisfies Partial<CSSStyleDeclaration>);
     element.addEventListener('click', () => dismiss(button));
     actions.appendChild(element);

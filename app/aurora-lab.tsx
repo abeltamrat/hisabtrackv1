@@ -14,6 +14,8 @@ import Shield3D from '@/components/three-d/Shield3D';
 import Gift3D from '@/components/three-d/Gift3D';
 import Target3D from '@/components/three-d/Target3D';
 import Icon3D from '@/components/three-d/Icon3D';
+import FormSheet from '@/components/FormSheet';
+import FormField from '@/components/FormField';
 
 /**
  * Developer-only lab for the Aurora theme: real shared components rendered
@@ -53,6 +55,7 @@ function Sample({ label }: { label: string }) {
 
 export default function AuroraLab() {
   if (!__DEV__) return null;
+  const [sheetOpen, setSheetOpen] = React.useState(true);
   return (
     <View className="flex-1">
       <Stack.Screen options={{ headerShown: false }} />
@@ -154,6 +157,13 @@ export default function AuroraLab() {
           </View>
         </View>
       </ScrollView>
+      <FormSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} accessibilityLabel="Demo form">
+        <Text className="text-white text-lg font-bold mb-4">New account</Text>
+        <FormField label="Name" placeholder="e.g. CBE" />
+        <FormField label="Balance" placeholder="0.00" keyboardType="decimal-pad" />
+        <View style={{ height: 12 }} />
+        <Text className="text-white/70 text-xs">FormSheet (Aurora): grab handle + blur + glow edge</Text>
+      </FormSheet>
       <CustomTabBar
         {...({
           state: { index: 0, routes: [{ key: 'i', name: 'index' }, { key: 't', name: 'transactions' }, { key: 'r', name: 'reports' }] },

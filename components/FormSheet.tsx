@@ -10,6 +10,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export type FormSheetVariant = 'sheet' | 'center';
 
@@ -43,6 +45,13 @@ interface FormSheetProps {
  * `KeyboardAvoidingView` is also unreliable inside a `Modal` (the modal window
  * is not resized), so this tracks the keyboard directly and lifts the card by
  * the measured height. That behaves the same on both platforms.
+ *
+ * The card's fill (`dark:bg-slate-900`) already turns to glass automatically
+ * in the Aurora theme, since that colour is one of the CSS variables Aurora
+ * re-tints (see components/aurora/palette.ts) — no branching needed here for
+ * the base look. This file only adds the purely decorative grab handle, glow
+ * edge and blur layer on top; every keyboard/accessibility/dismiss behaviour
+ * below is unchanged from before.
  */
 export default function FormSheet({
   visible,
@@ -57,6 +66,7 @@ export default function FormSheet({
   testID,
 }: FormSheetProps) {
   const insets = useSafeAreaInsets();
+  const { isAurora } = useTheme();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const lift = useRef(new Animated.Value(0)).current;
 
@@ -106,8 +116,25 @@ export default function FormSheet({
         // Keep the card clear of the gesture bar; while the keyboard is up it
         // supplies its own inset, so the bottom padding would be dead space.
         paddingBottom: isSheet && keyboardHeight === 0 ? insets.bottom : 0,
+        overflow: 'hidden',
+        ...(isAurora ? { borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', borderBottomWidth: isSheet ? 0 : 1 } : null),
       }}
     >
+      {isAurora && (
+        <BlurView
+          intensity={36}
+          tint="dark"
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+      )}
+      {isAurora && isSheet && (
+        // Grab handle + glowing top edge — purely decorative affordance.
+        <View pointerEvents="none" style={{ alignItems: 'center', paddingTop: 10 }}>
+          <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.35)' }} />
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(103,232,249,0.4)' }} />
+        </View>
+      )}
       {scrollable
         ? <ScrollView
             // Without this a tap on a button while the keyboard is open only
