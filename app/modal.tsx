@@ -29,6 +29,7 @@ import type { TransactionSplit } from '@/types/database';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import { money, sumMoney } from '@/utils/finance';
 import { useI18n } from '@/contexts/I18nContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { rankTagSuggestions } from '@/utils/tagSuggestions';
 import { InputDraftService, type SmartInputDraft } from '@/services/InputDraftService';
 
@@ -40,7 +41,8 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
-  const theme = themeTokens(isDark);
+  const { isAurora } = useTheme();
+  const theme = themeTokens(isDark, isAurora);
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
   return (

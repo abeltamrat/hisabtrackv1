@@ -40,8 +40,8 @@ export default function Accounts() {
 
   // Icon colours are props rather than classes, so the grey tones need the
   // token palette to follow the theme (#64748b is 3.07:1 on a dark card).
-  const { actualTheme } = useTheme();
-  const theme = themeTokens(actualTheme === 'dark');
+  const { actualTheme, isAurora } = useTheme();
+  const theme = themeTokens(actualTheme === 'dark', isAurora);
   const [accountName, setAccountName] = useState('');
   const { errors, validate, clearError, resetErrors } = useFormErrors<'name' | 'balance' | 'reserve'>();
   const [accountType, setAccountType] = useState<AccountType>('CASH');

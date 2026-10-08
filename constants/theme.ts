@@ -64,7 +64,31 @@ const DARK: ThemeTokens = {
   warning: '#fbbf24',
 };
 
-export function themeTokens(isDark: boolean): ThemeTokens {
+// Aurora's glass values are translucent, so — unlike LIGHT/DARK — they are
+// not plain opaque hex: safe here because these are only ever read into an
+// inline `style={{}}` object, never parsed as a Tailwind class string.
+const AURORA: ThemeTokens = {
+  background: 'rgba(7,11,26,0)',
+  surface: 'rgba(255,255,255,0.08)',
+  surfaceMuted: 'rgba(255,255,255,0.14)',
+  text: '#ffffff',
+  textMuted: 'rgba(255,255,255,0.78)',
+  textSubtle: 'rgba(255,255,255,0.55)',
+  border: 'rgba(255,255,255,0.18)',
+  primary: '#67e8f9',
+  danger: '#fca5a5',
+  success: '#6ee7b7',
+  warning: '#fbbf24',
+};
+
+/**
+ * `isAurora` is an optional third state, additive to the existing two-value
+ * contract: every call site and test written against `themeTokens(isDark)`
+ * keeps returning exactly LIGHT or DARK, since omitting the argument (or
+ * passing `false`) is indistinguishable from code that predates Aurora.
+ */
+export function themeTokens(isDark: boolean, isAurora?: boolean): ThemeTokens {
+  if (isAurora) return AURORA;
   return isDark ? DARK : LIGHT;
 }
 

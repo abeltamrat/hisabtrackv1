@@ -13,6 +13,7 @@ import { useSelector } from 'react-redux';
 import { Category, useTransactions } from '../context/TransactionContext';
 import { operatingTransactions, sumMoney } from '@/utils/finance';
 import { themeTokens } from '@/constants/theme';
+import { useTheme } from '@/contexts/ThemeContext';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -215,8 +216,9 @@ function MergeModal({ source, candidates, onConfirm, onClose }: MergeModalProps)
 export default function ManageCategoriesScreen() {
   const colorScheme = useColorScheme();
   const { errors, validate, clearError, resetErrors } = useFormErrors<'name'>();
+  const { isAurora } = useTheme();
   const isDark = colorScheme === 'dark';
-  const theme = themeTokens(isDark);
+  const theme = themeTokens(isDark, isAurora);
   const router = useRouter();
   const { categories, addCategory, updateCategory, deleteCategory } = useTransactions();
   const transactions = useSelector((s: RootState) => s.transactions.items);

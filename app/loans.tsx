@@ -41,7 +41,8 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
-  const theme = themeTokens(isDark);
+  const { isAurora } = useTheme();
+  const theme = themeTokens(isDark, isAurora);
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
   return (

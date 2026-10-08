@@ -37,10 +37,10 @@ export default function LoanDetailsScreen() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { formatCurrency } = useAppSettings();
-  const { actualTheme } = useTheme();
+  const { actualTheme, isAurora } = useTheme();
   const { user } = useAuth();
   const isDark = actualTheme === 'dark';
-  const theme = themeTokens(isDark);
+  const theme = themeTokens(isDark, isAurora);
 
   const loan = useSelector((state: RootState) =>
     state.loans.items.find(l => l.id === id),

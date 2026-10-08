@@ -46,7 +46,8 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
-  const theme = themeTokens(isDark);
+  const { isAurora } = useTheme();
+  const theme = themeTokens(isDark, isAurora);
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
   return (
@@ -86,9 +87,9 @@ export default function TransactionsScreen() {
   const { categories } = useTransactions();
   const { t } = useI18n();
   const { formatCurrency, fontSize, calendarSystem } = useAppSettings();
-  const { actualTheme } = useTheme();
+  const { actualTheme, isAurora } = useTheme();
   const isDark = actualTheme === 'dark';
-  const theme = themeTokens(isDark);
+  const theme = themeTokens(isDark, isAurora);
   const isVerySmall = fontSize === 'V.Small';
   const headerTitleSize = fontSize === 'V.Small' ? 'text-lg' : fontSize === 'Small' ? 'text-xl' : fontSize === 'Large' ? 'text-3xl' : 'text-2xl';
   const labelSize = fontSize === 'V.Small' ? 'text-[11px]' : fontSize === 'Small' ? 'text-xs' : fontSize === 'Large' ? 'text-base' : 'text-sm';

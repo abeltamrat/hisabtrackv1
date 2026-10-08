@@ -27,9 +27,9 @@ export default function AccountDetail() {
   const accountsState = useSelector((s: RootState) => s.accounts);
   const account = accountsState.items.find(a => a.id === id);
   const { formatCurrency } = useAppSettings();
-  const { actualTheme } = useTheme();
+  const { actualTheme, isAurora } = useTheme();
   const isDark = actualTheme === 'dark';
-  const theme = themeTokens(isDark);
+  const theme = themeTokens(isDark, isAurora);
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);

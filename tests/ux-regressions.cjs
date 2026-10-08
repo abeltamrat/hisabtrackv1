@@ -1282,6 +1282,25 @@ test('theme tokens match the Tailwind palette and meet AA both ways', () => {
   }
 });
 
+test('themeTokens stays backward compatible and Aurora is a genuine third state', () => {
+  const { themeTokens } = load('./constants/theme.ts');
+  // Every pre-Aurora call site and test calls themeTokens with one argument
+  // (or `false` for the third). That must keep returning plain LIGHT/DARK.
+  assert.deepEqual(themeTokens(false), themeTokens(false, false));
+  assert.deepEqual(themeTokens(true), themeTokens(true, false));
+  assert.deepEqual(themeTokens(false), themeTokens(false, undefined));
+
+  const aurora = themeTokens(true, true);
+  const dark = themeTokens(true);
+  // Aurora is visibly its own palette, not a relabelled dark theme.
+  assert.notEqual(aurora.surface, dark.surface);
+  assert.notEqual(aurora.background, dark.background);
+  // Every token is still defined (a screen reading theme.X never gets undefined).
+  assert.deepEqual(Object.keys(aurora).sort(), Object.keys(dark).sort());
+  // isAurora wins regardless of the isDark argument — there's no "aurora light".
+  assert.deepEqual(themeTokens(false, true), aurora);
+});
+
 test('screens using theme tokens declare them in scope', () => {
   const offenders = [];
   const walk = dir => {

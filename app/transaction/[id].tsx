@@ -24,8 +24,8 @@ export default function TransactionDetail() {
   const { formatCurrency } = useAppSettings();
   // Icon colours are props, not classes, so they need the token palette to
   // follow the theme; #64748b was only 3.07:1 on the dark cards.
-  const { actualTheme } = useTheme();
-  const theme = themeTokens(actualTheme === 'dark');
+  const { actualTheme, isAurora } = useTheme();
+  const theme = themeTokens(actualTheme === 'dark', isAurora);
 
   const transaction = transactions.find(t => t.id === id);
 

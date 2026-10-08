@@ -2,6 +2,7 @@ import { advanceDate } from '@/utils/finance';
 import { sessionLocalStorage } from '@/services/SessionStorage';
 import { useTransactions } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { NotificationService } from '@/services/NotificationService';
 import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
@@ -37,7 +38,8 @@ const SpinnerPickerSheet = ({
 }) => {
   const pendingRef = React.useRef<Date>(value);
   const isDark = useColorScheme() === 'dark';
-  const theme = themeTokens(isDark);
+  const { isAurora } = useTheme();
+  const theme = themeTokens(isDark, isAurora);
   // Reset ref to current value whenever the sheet opens
   React.useEffect(() => { if (show) pendingRef.current = value; }, [show]);
   if (!show) return null;
