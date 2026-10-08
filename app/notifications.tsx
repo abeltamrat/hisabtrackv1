@@ -104,6 +104,8 @@ export default function NotificationsScreen() {
       router.push('/draft-transactions');
     } else if (notification.actionType === 'view_smart_review') {
       router.push('/smart-review' as any);
+    } else if (notification.actionType === 'view_funds') {
+      router.push((notification.fundId ? `/fund/${notification.fundId}` : '/funds') as any);
     }
   };
 

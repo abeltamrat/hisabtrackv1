@@ -31,6 +31,15 @@ import { useI18n } from '@/contexts/I18nContext';
 import { rankTagSuggestions } from '@/utils/tagSuggestions';
 import ReconciliationService, { type BalanceGapAnalysis } from '@/services/ReconciliationService';
 import RecipientIdentityService from '@/services/RecipientIdentityService';
+import SmsFundBlock from '@/components/funds/SmsFundBlock';
+import { FUNDS_ENABLED } from '@/config/features';
+import { useAuth } from '@/contexts/AuthContext';
+import FundPostingService, { custodianTransactionId } from '@/services/FundPostingService';
+import FundSyncService from '@/services/FundSyncService';
+import { SharedFundService, type FundEntryInput } from '@/services/SharedFundService';
+import type { FundEntry, SharedFund, Transaction } from '@/types/database';
+import { custodianFundFields } from '@/utils/fundLedger';
+import { generateUUID } from '@/utils/uuid';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -65,6 +74,21 @@ export default function DraftTransactionsScreen() {
 
   const { formatCurrency } = useAppSettings();
   const { categories } = useTransactions();
+  const { user } = useAuth();
+  // Shared funds this user holds for someone else; an SMS can be recorded against one.
+  const [fundSnapshot, setFundSnapshot] = useState(FundSyncService.getSnapshot());
+  const [fundOn, setFundOn] = useState(false);
+  const [fundId, setFundId] = useState('');
+  const [fundSource, setFundSource] = useState<'owner' | 'third'>('owner');
+  const [fundPayer, setFundPayer] = useState('');
+  const [fundCategory, setFundCategory] = useState('');
+  const [fundCandidates, setFundCandidates] = useState<FundEntry[]>([]);
+  const [fundMatchEntryId, setFundMatchEntryId] = useState('');
+  useEffect(() => (FUNDS_ENABLED ? FundSyncService.subscribe(setFundSnapshot) : undefined), []);
+  const heldFunds = useMemo(
+    () => fundSnapshot.funds.filter(item => !!user?.uid && item.custodianUid === user.uid && item.status === 'ACTIVE' && item.linkStatus === 'ACCEPTED'),
+    [fundSnapshot.funds, user?.uid],
+  );
   const { items: accounts } = useSelector((state: RootState) => state.accounts);
   const { items: transactions } = useSelector((state: RootState) => state.transactions);
   const account = accountId ? accounts.find(a => a.id === accountId) : undefined;
@@ -418,10 +442,70 @@ export default function DraftTransactionsScreen() {
     setTagsInput('');
     void applyRecipientDefaults(draft);
     setRecordAsLoan(!!draft.is_loan_disbursement);
+    setFundOn(false);
+    setFundId('');
+    setFundSource('owner');
+    setFundPayer(draft.sender_receiver || '');
+    setFundCategory('');
+    setFundCandidates([]);
+    setFundMatchEntryId('');
     setLoanCounterparty(draft.sender_receiver || 'SMS loan');
     const defaultDue = new Date(draft.date + 30 * 24 * 60 * 60 * 1000);
     setLoanDueDate(defaultDue.toISOString().slice(0, 10));
     setShowConfirmModal(true);
+  };
+
+  // A credit SMS may be money the owner already told us to expect.
+  useEffect(() => {
+    if (!FUNDS_ENABLED || !fundOn || !fundId || editedType !== 'INCOME' || !selectedDraft) { setFundCandidates([]); return; }
+    let cancelled = false;
+    const amount = Math.round(selectedDraft.amount * 100);
+    SharedFundService.getAllEntries(fundId).then(entries => {
+      if (cancelled) return;
+      const open = entries.filter(item => item.kind === 'DEPOSIT' && item.recordedByRole === 'OWNER' && !item.ackAt && item.status !== 'VOIDED' && Math.round(item.amount * 100) === amount);
+      setFundCandidates(open);
+      setFundMatchEntryId(open[0]?.id ?? '');
+    }).catch(() => { if (!cancelled) setFundCandidates([]); });
+    return () => { cancelled = true; };
+  }, [fundOn, fundId, editedType, selectedDraft]);
+
+  /**
+   * Records the confirmed SMS against a fund this user holds. The custodian's
+   * own ledger row is written first (offline-safe); the fund hears about it
+   * through FundPostingService. Fees the bank took count toward the payment.
+   */
+  const postFundEntry = async (fund: SharedFund, input: Omit<Transaction, 'id'>, description: string, tags?: string[]) => {
+    const draft = selectedDraft!;
+    const isSpend = editedType === 'EXPENSE';
+    const match = !isSpend && fundMatchEntryId ? fundCandidates.find(item => item.id === fundMatchEntryId) : undefined;
+    const entryId = match?.id ?? generateUUID();
+    const httpsReceipt = input.receipt_url && /^https:\/\//i.test(input.receipt_url) ? input.receipt_url : undefined;
+    const fee = isSpend ? Math.max(0, money((draft.gross_amount ?? draft.amount + (draft.fees ?? 0) + (draft.tax ?? 0)) - draft.amount)) : 0;
+    const category = isSpend ? fundCategory || input.category : 'Fund deposit';
+    const local = { ...input, category, ...custodianFundFields(fund.id, entryId) } as Omit<Transaction, 'id'>;
+    const evidence = { reference_number: draft.reference_number, receipt_url: httpsReceipt, sms_linked: true };
+    let entry: FundEntryInput | undefined;
+    if (!match && isSpend) {
+      const parts = input.splits?.length ? [...input.splits, ...(fee > 0 ? [{ id: 'bank-fees', amount: fee, category: 'Bank Fees' }] : [])] : undefined;
+      entry = { kind: 'SPEND', amount: money(draft.amount + fee), date: draft.date, description, recipient: input.sender_receiver, category, splits: parts, tags, ...evidence };
+    } else if (!match) {
+      entry = {
+        kind: 'DEPOSIT', source: fundSource === 'third' ? 'THIRD_PARTY' : 'OWNER_UNRECORDED',
+        payerName: fundSource === 'third' ? fundPayer.trim() || input.sender_receiver || 'Someone' : undefined,
+        amount: draft.amount, date: draft.date, description, tags, ...evidence,
+      };
+    }
+    const kind: 'record' | 'ack' = match ? 'ack' : 'record';
+    const result = await FundPostingService.submit(
+      { id: entryId, uid: user!.uid, fundId: fund.id, fundName: fund.name, kind, entry, evidence: match ? evidence : undefined },
+      () => dispatch(addTransaction(local)).unwrap(),
+    );
+    return {
+      transactionId: custodianTransactionId(entryId),
+      entryId,
+      kind,
+      message: result.synced ? `${fund.ownerName} can see it now.` : result.error ? `The fund refused it: ${result.error}` : `It will be shared with ${fund.ownerName} when you are online.`,
+    };
   };
 
   const handleRecordConfirmed = async () => {
@@ -482,7 +566,7 @@ export default function DraftTransactionsScreen() {
           await dispatch(updateAccount({ ...ownedAccount, aliases: [...(ownedAccount.aliases || []), alias] })).unwrap();
         }
       }
-      const result = await dispatch(addTransaction({
+      const transactionInput = {
         account_id: isTransferDraft ? transferSourceAccountId : selectedDraft.account_id,
         type: isTransferDraft ? 'TRANSFER' : editedType,
         ...(isTransferDraft ? { to_account_id: transferDestinationAccountId } : {}),
@@ -504,16 +588,27 @@ export default function DraftTransactionsScreen() {
         disaster_recovery_fee: expenseLeg.disaster_recovery_fee,
         receipt_url: expenseLeg.receipt_url || selectedDraft.receipt_url,
         ...(editedType !== 'TRANSFER' && splitEnabled ? { splits } : {}),
-      }));
+      } as Omit<Transaction, 'id'>;
 
-      if (addTransaction.rejected.match(result)) {
-        Alert.alert('Error', 'Failed to record transaction. Please try again.');
-        return;
+      let transactionId: string | undefined;
+      let fundUndo: { fundId: string; entryId: string; kind: 'record' | 'ack' } | undefined;
+      let fundMessage = '';
+      const fundForEntry = FUNDS_ENABLED && fundOn && !isTransferDraft ? heldFunds.find(item => item.id === fundId) : undefined;
+      if (fundForEntry) {
+        const posted = await postFundEntry(fundForEntry, transactionInput, finalDescription, parsedTags);
+        transactionId = posted.transactionId;
+        fundUndo = { fundId: fundForEntry.id, entryId: posted.entryId, kind: posted.kind };
+        fundMessage = posted.message;
+      } else {
+        const result = await dispatch(addTransaction(transactionInput));
+        if (addTransaction.rejected.match(result)) {
+          Alert.alert('Error', 'Failed to record transaction. Please try again.');
+          return;
+        }
+        transactionId = (result.payload as any)?.id;
       }
 
       await dispatch(fetchAccounts());
-
-      const transactionId = (result.payload as any)?.id;
       const counterpartId = matchedCounterpartId || selectedDraft.paired_draft_id;
       if (transactionId) {
         const confirmation: NonNullable<DraftTransaction['confirmation']> = {
@@ -536,7 +631,7 @@ export default function DraftTransactionsScreen() {
 
       let recurringError = '';
       let recurringRuleId: string | undefined;
-      if (makeRecurring) {
+      if (makeRecurring && !fundUndo) {
         try {
           const match = /^(\d{1,2}):(\d{2})$/.exec(reminderTime.trim());
           const hour = match ? Number(match[1]) : -1;
@@ -575,7 +670,7 @@ export default function DraftTransactionsScreen() {
       // the account balance, which was already updated by the cash transaction.
       let loanCreated = false;
       let loanId: string | undefined;
-      if (recordAsLoan && editedType !== 'TRANSFER') {
+      if (recordAsLoan && editedType !== 'TRANSFER' && !fundUndo) {
         const loanPrincipal = selectedDraft.type === 'EXPENSE'
           ? Math.max(0, Math.round((selectedDraft.amount - (selectedDraft.fees ?? 0) - (selectedDraft.tax ?? 0)) * 100) / 100)
           : selectedDraft.amount;
@@ -599,7 +694,9 @@ export default function DraftTransactionsScreen() {
       await BackgroundService.markReconciliationReview();
       setShowConfirmModal(false);
       await loadDrafts();
-      const successMessage = recordAsLoan
+      const successMessage = fundUndo
+          ? `Recorded for ${fundForEntry?.name}. ${fundMessage}`
+          : recordAsLoan
           ? loanCreated
             ? `Transaction recorded and ${selectedDraft.type === 'INCOME' ? 'borrowed loan' : 'loan given'} added to Loans.`
             : 'Transaction recorded, but the loan record could not be created. You can add it manually from Loans.'
@@ -613,7 +710,9 @@ export default function DraftTransactionsScreen() {
             try {
               if (recurringRuleId) await RecurringTransactionService.remove(recurringRuleId);
               if (loanId) await dispatch(deleteLoan(loanId)).unwrap();
-              await dispatch(deleteTransaction(transactionId)).unwrap();
+              // Fund rows are guarded in the ledger; they are taken back through the fund.
+              if (fundUndo) await FundPostingService.undo(fundUndo.fundId, fundUndo.entryId, fundUndo.kind);
+              else await dispatch(deleteTransaction(transactionId)).unwrap();
               await DraftTransactionService.reopenRecorded([selectedDraft.id, ...(counterpartId ? [counterpartId] : [])], transactionId);
               await dispatch(fetchAccounts());
               await dispatch(fetchTransactions());
@@ -1550,7 +1649,33 @@ export default function DraftTransactionsScreen() {
                 </View>
               )}
 
-              {editedType !== 'TRANSFER' && (
+              {FUNDS_ENABLED && editedType !== 'TRANSFER' && heldFunds.length > 0 && (
+                <SmsFundBlock
+                  funds={heldFunds}
+                  isSpend={editedType === 'EXPENSE'}
+                  on={fundOn}
+                  fundId={fundId}
+                  source={fundSource}
+                  payer={fundPayer}
+                  category={fundCategory}
+                  candidates={fundCandidates}
+                  matchId={fundMatchEntryId}
+                  formatCurrency={formatCurrency}
+                  onToggle={() => {
+                    const next = !fundOn;
+                    setFundOn(next);
+                    if (next) { setRecordAsLoan(false); setMakeRecurring(false); }
+                    if (next && !fundId) setFundId(heldFunds[0].id);
+                  }}
+                  onFund={setFundId}
+                  onSource={setFundSource}
+                  onPayer={setFundPayer}
+                  onCategory={setFundCategory}
+                  onMatch={setFundMatchEntryId}
+                />
+              )}
+
+              {editedType !== 'TRANSFER' && !fundOn && (
                 <View className={`rounded-2xl p-4 mb-5 border-2 ${recordAsLoan ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 dark:border-amber-700' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
                   <TouchableOpacity
                     onPress={() => setRecordAsLoan(!recordAsLoan)}

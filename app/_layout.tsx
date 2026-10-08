@@ -196,6 +196,8 @@ function RootLayoutNav() {
         router.push('/(tabs)' as any);
       } else if (data?.actionType === 'view_smart_review') {
         router.push('/smart-review' as any);
+      } else if (data?.actionType === 'view_funds') {
+        router.push((typeof data.fundId === 'string' ? `/fund/${data.fundId}` : '/funds') as any);
       }
     });
 

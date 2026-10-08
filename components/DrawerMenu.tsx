@@ -15,6 +15,7 @@ import { UpdateService, UpdateInfo } from '@/services/UpdateService';
 import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import UpdateModal from './UpdateModal';
+import { FUNDS_ENABLED } from '@/config/features';
 
 interface DrawerMenuProps {
   visible: boolean;
@@ -124,6 +125,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     { id: 'transfer', title: 'Transfer Money', icon: 'exchange', route: '/transfer', color: '#3b82f6' },
     { id: 'categories', title: 'Manage Categories', icon: 'tags', route: '/categories', color: '#10b981' },
     { id: 'loans', title: 'Loans & Debts', icon: 'line-chart', route: '/loans', color: '#ef4444' },
+    ...(FUNDS_ENABLED ? [{ id: 'funds', title: 'Funds & Petty Cash', icon: 'briefcase', route: '/funds', color: '#0d9488' }] : []),
     { id: 'recurring', title: 'Recurring Payments', icon: 'refresh', route: '/recurring', color: '#14b8a6' },
   ];
 
