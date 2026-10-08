@@ -174,6 +174,8 @@ Done when: users receive an accurate, actionable period review without duplicate
 
 Done when: a goal estimate explains its data and assumptions and hypothetical scenarios never change the ledger.
 
+Phase 3 delivery record (2026-10-08): implementation commit `d18adb4`; 161 regression tests, TypeScript, Expo Doctor 18/18, and the production Android export passed. Preview OTA runtime `1.0.4`: update group `2c2c17ff-2b9c-453f-a8cb-81809c2124fc` ([Expo dashboard](https://expo.dev/accounts/andriondsystems/projects/hisabtrackv1/updates/2c2c17ff-2b9c-453f-a8cb-81809c2124fc)). Physical-device checks remain recorded separately because they require an installed device build and OS permission/background conditions.
+
 ## Phase 4 — Ethiopian financial workflows
 
 ### 15. Equb and Iddir — high local value, high effort
