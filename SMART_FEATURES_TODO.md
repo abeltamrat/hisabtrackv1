@@ -204,7 +204,9 @@ Done when: dates and budgets work in the chosen calendar without shifting transa
 - [x] Verify new screens and notifications in light/dark themes and every supported language.
 - [x] Verify isolation, backup/restore, and legacy records for added data fields.
 - [x] Validate the production Android bundle and determine whether changes require OTA, a native APK, or backend deployment.
-- [ ] Commit/push and record the release/update ID after the feature is implemented and validated.
+- [x] Commit/push and record the release/update ID after the feature is implemented and validated.
 - [ ] Run physical Android checks for background delivery, permission denial, offline operation, and notification actions; record actual results rather than marking these complete from code inspection.
+
+Phase 4 delivery record (2026-10-08): implementation commit `8c8fc46`; 170 regression tests, TypeScript, Expo Doctor 18/18, and the production Android export passed. Preview OTA runtime `1.0.4`: update group `3881fe39-6573-4f8f-b53c-84af3e9b0096`, Android update `01a11bbc-5f18-7be2-ba4f-743f40c40860`, iOS update `01a11bbc-5f18-788c-8032-32da523eb5be` ([Expo dashboard](https://expo.dev/accounts/andriondsystems/projects/hisabtrackv1/updates/3881fe39-6573-4f8f-b53c-84af3e9b0096)). This phase is OTA-compatible because it changes JavaScript and user-scoped stored data without changing the native runtime. Physical-device checks remain open because they require an installed build and real OS permission/background conditions.
 
 Recommended starting sequence: 4 (reconciliation correctness), 1 (low-balance warnings), 2 (budget pace), 3 (tag ranking), then 5 (safe-to-spend). These establish trustworthy data and useful daily feedback before richer AI or group accounting.
