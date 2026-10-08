@@ -55,9 +55,30 @@ module.exports = {
         }
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['Manrope_400Regular', 'sans-serif'],
       },
     },
   },
-  plugins: [],
+  // React Native needs one exact font file per visual weight (it cannot
+  // synthesize bold the way a browser does), so the font-weight utilities
+  // are replaced below with ones that also set fontFamily to the matching
+  // Manrope weight. Every existing `font-bold`/`font-semibold`/etc. className
+  // in the app picks this up automatically — no screen needed to change.
+  corePlugins: {
+    fontWeight: false,
+  },
+  plugins: [
+    function ({ addUtilities }) {
+      addUtilities({
+        '.font-light': { fontFamily: 'Manrope_300Light', fontWeight: 'normal' },
+        '.font-normal': { fontFamily: 'Manrope_400Regular', fontWeight: 'normal' },
+        '.font-medium': { fontFamily: 'Manrope_500Medium', fontWeight: 'normal' },
+        '.font-semibold': { fontFamily: 'Manrope_600SemiBold', fontWeight: 'normal' },
+        '.font-bold': { fontFamily: 'Manrope_700Bold', fontWeight: 'normal' },
+        '.font-extrabold': { fontFamily: 'Manrope_800ExtraBold', fontWeight: 'normal' },
+        // Manrope ships no black/900 weight; extrabold is the closest available.
+        '.font-black': { fontFamily: 'Manrope_800ExtraBold', fontWeight: 'normal' },
+      });
+    },
+  ],
 }

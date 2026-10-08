@@ -104,13 +104,13 @@ function SummaryCard({ balance, income, expense, percentageChange = 0, loading =
           <View className="flex-row mt-3" style={{ gap: 10 }}>
             <View className="flex-1 rounded-2xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
               <Text className="text-white/80 text-xs">{t('inFlow')}</Text>
-              <Text className="text-emerald-300 font-bold mt-0.5" style={{ fontSize: isVerySmall ? 14 : 17 }}>
+              <Text className="text-emerald-300 font-bold mt-0.5" style={{ fontSize: isVerySmall ? 14 : 17 }} numberOfLines={1} adjustsFontSizeToFit>
                 {loading ? '—' : `+${formatCurrency(income)}`}
               </Text>
             </View>
             <View className="flex-1 rounded-2xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
               <Text className="text-white/80 text-xs">{t('outFlow')}</Text>
-              <Text className="text-rose-300 font-bold mt-0.5" style={{ fontSize: isVerySmall ? 14 : 17 }}>
+              <Text className="text-rose-300 font-bold mt-0.5" style={{ fontSize: isVerySmall ? 14 : 17 }} numberOfLines={1} adjustsFontSizeToFit>
                 {loading ? '—' : `−${formatCurrency(expense)}`}
               </Text>
             </View>
