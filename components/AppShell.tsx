@@ -12,6 +12,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DrawerMenu from './DrawerMenu';
+import drawerBus from '@/utils/drawerBus';
 import FinanceAssistantOverlay from './FinanceAssistantOverlay';
 
 const HEADER_HEIGHT = 56;
@@ -23,6 +24,8 @@ interface AppShellProps {
 export default function AppShell({ children }: AppShellProps) {
   const [drawerVisible, setDrawerVisible] = React.useState(false);
   const router = useRouter();
+
+  useEffect(() => drawerBus.subscribe(() => setDrawerVisible(true)), []);
   const { user } = useAuth();
   const { actualTheme, isAurora } = useTheme();
 

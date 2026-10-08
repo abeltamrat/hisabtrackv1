@@ -1,8 +1,10 @@
 import { useAppSettings } from '@/contexts/AppSettingsContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import React, { memo } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 
 interface FinancialPulseProps {
   monthlyNet: number;
@@ -33,6 +35,7 @@ function FinancialPulse({
   onOpenAssistant,
 }: FinancialPulseProps) {
   const { formatCurrency, fontSize } = useAppSettings();
+  const { isAurora } = useTheme();
   const isVerySmall = fontSize === 'V.Small';
   const headline = getHeadline({
     hasData,
@@ -44,6 +47,83 @@ function FinancialPulse({
     topExpenseCategoryAmount,
     formatCurrency,
   });
+
+  if (isAurora) {
+    // Clamp for the ring: never claim more than 100% saved, never draw a
+    // negative arc when the month is in the red.
+    const ringPct = Math.max(0, Math.min(100, savingsRate));
+    const radius = 34, stroke = 9, circumference = 2 * Math.PI * radius;
+    const dash = hasData ? (ringPct / 100) * circumference : 0;
+
+    return (
+      <View className="mb-8">
+        <View className="rounded-3xl p-5 border" style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.18)', elevation: 4 }}>
+          <View className="flex-row items-center" style={{ gap: 16 }}>
+            <View style={{ width: 84, height: 84 }}>
+              <Svg width={84} height={84} viewBox="0 0 84 84">
+                <Circle cx={42} cy={42} r={radius} fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth={stroke} />
+                <Circle
+                  cx={42} cy={42} r={radius} fill="none" stroke="#67e8f9" strokeWidth={stroke}
+                  strokeLinecap="round" strokeDasharray={`${dash} ${circumference}`}
+                  rotation={-90} origin="42,42"
+                />
+              </Svg>
+              <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
+                <Text className="text-white font-extrabold text-lg">{hasData ? `${Math.round(ringPct)}%` : '—'}</Text>
+                <Text className="text-white/80" style={{ fontSize: 10 }}>Saved</Text>
+              </View>
+            </View>
+            <View className="flex-1">
+              <Text className="text-white/80 text-xs">This month's pulse</Text>
+              <Text className="text-white font-extrabold text-lg mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
+                {hasData ? `${monthlyNet >= 0 ? '+' : ''}${formatCurrency(monthlyNet)} net` : '—'}
+              </Text>
+              <Text className="text-white/80 text-xs mt-1" numberOfLines={2}>{headline}</Text>
+            </View>
+          </View>
+
+          {(overBudgetCount > 0 || dueSoonLoanCount > 0) && (
+            <View className="mt-4" style={{ gap: 8 }}>
+              {overBudgetCount > 0 && (
+                <TouchableOpacity
+                  onPress={onOpenBudget}
+                  accessibilityRole="button"
+                  className="flex-row items-center rounded-2xl px-3 py-2.5"
+                  style={{ backgroundColor: 'rgba(251,113,133,0.14)', borderWidth: 1, borderColor: 'rgba(251,113,133,0.3)' }}
+                >
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fb7185' }} />
+                  <Text className="text-white text-sm ml-2.5 flex-1">
+                    {overBudgetCount} {overBudgetCount === 1 ? 'category is' : 'categories are'} over budget
+                  </Text>
+                  <FontAwesome name="chevron-right" size={11} color="rgba(255,255,255,0.6)" />
+                </TouchableOpacity>
+              )}
+              {dueSoonLoanCount > 0 && (
+                <TouchableOpacity
+                  onPress={onOpenLoans}
+                  accessibilityRole="button"
+                  className="flex-row items-center rounded-2xl px-3 py-2.5"
+                  style={{ backgroundColor: 'rgba(251,191,36,0.13)', borderWidth: 1, borderColor: 'rgba(251,191,36,0.3)' }}
+                >
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fbbf24' }} />
+                  <Text className="text-white text-sm ml-2.5 flex-1">
+                    {dueSoonLoanCount} loan {dueSoonLoanCount === 1 ? 'payment is' : 'payments are'} due this week
+                  </Text>
+                  <FontAwesome name="chevron-right" size={11} color="rgba(255,255,255,0.6)" />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          <View className="flex-row mt-4" style={{ gap: 8 }}>
+            <AuroraChip label="Budget" icon="pie-chart" onPress={onOpenBudget} />
+            <AuroraChip label="Loans" icon="money" onPress={onOpenLoans} />
+            <AuroraChip label="AI" icon="magic" onPress={onOpenAssistant} />
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View className="mb-8">
@@ -187,6 +267,21 @@ function ActionChip({
     >
       <FontAwesome name={icon as any} size={12} color="#e2e8f0" />
       <Text className="text-slate-100 text-xs font-semibold ml-2">{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function AuroraChip({ label, icon, onPress }: { label: string; icon: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      accessibilityRole="button"
+      activeOpacity={0.8}
+      className="flex-1 rounded-xl py-2.5 px-3 flex-row items-center justify-center"
+      style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}
+    >
+      <FontAwesome name={icon as any} size={12} color="#ffffff" />
+      <Text className="text-white text-xs font-semibold ml-2">{label}</Text>
     </TouchableOpacity>
   );
 }

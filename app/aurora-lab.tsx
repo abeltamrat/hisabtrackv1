@@ -6,11 +6,15 @@ import { ScrollView, Text, View } from 'react-native';
 import AuroraBackground from '@/components/aurora/AuroraBackground';
 import CustomTabBar from '@/components/CustomTabBar';
 import { AURORA_VARS } from '@/components/aurora/palette';
+import SummaryCard from '@/components/dashboard/SummaryCard';
+import FinancialPulse from '@/components/dashboard/FinancialPulse';
+import Coin3D from '@/components/three-d/Coin3D';
 
 /**
- * Developer-only lab for the Aurora theme: the same dark-mode markup, as the
- * screens write it, rendered with and without the Aurora palette override.
- * Not reachable from the app; production builds render nothing.
+ * Developer-only lab for the Aurora theme: real shared components rendered
+ * with representative data, so the look can be checked without needing a
+ * signed-in session. Not reachable from the app; production builds render
+ * nothing.
  */
 const auroraStyle = vars(AURORA_VARS);
 
@@ -48,12 +52,83 @@ export default function AuroraLab() {
     <View className="flex-1">
       <Stack.Screen options={{ headerShown: false }} />
       <AuroraBackground />
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 28, paddingBottom: 80 }}>
+      <ScrollView contentContainerStyle={{ padding: 20, gap: 28, paddingBottom: 100 }}>
         <View className="bg-background-dark p-4 rounded-3xl gap-3">
           <Sample label="Today (no override)" />
         </View>
         <View style={auroraStyle} className="bg-background-dark p-4 rounded-3xl gap-3">
           <Sample label="Aurora (vars override)" />
+        </View>
+
+        <View style={{ gap: 12 }}>
+          <Text className="text-white text-base font-bold">Real SummaryCard (Aurora)</Text>
+          <SummaryCard balance={84250.6} income={32500} expense={18940} percentageChange={6.2} trendPoints={[0, 1200, 900, 2400, 1800, 3200, 2600, 4100, 3500, 5200, 4600, 6300, 5700, 7200, 6800]} />
+        </View>
+
+        <View style={{ gap: 12 }}>
+          <Text className="text-white text-base font-bold">Real FinancialPulse (Aurora)</Text>
+          <FinancialPulse
+            monthlyNet={13560}
+            savingsRate={42}
+            overBudgetCount={1}
+            nearBudgetCount={0}
+            dueSoonLoanCount={1}
+            topExpenseCategoryName="Groceries"
+            topExpenseCategoryAmount={6420}
+            hasData
+            onOpenBudget={() => {}}
+            onOpenLoans={() => {}}
+            onOpenAssistant={() => {}}
+          />
+        </View>
+
+        <View style={{ gap: 12 }}>
+          <Text className="text-white text-base font-bold">Account chips + 8-action grid</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            {['CBE', 'telebirr', 'Cash'].map(name => (
+              <View key={name} className="rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' }}>
+                <Text className="text-white/90 text-[11px]">{name}</Text>
+                <Text className="text-white font-extrabold text-sm mt-0.5">ETB 9,840</Text>
+              </View>
+            ))}
+            <View className="rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: 'rgba(103,232,249,0.12)', borderWidth: 1, borderColor: 'rgba(103,232,249,0.35)' }}>
+              <Text className="text-cyan-200 text-[11px]">Held by Abebe</Text>
+              <Text className="text-white font-extrabold text-sm mt-0.5">ETB 3,250</Text>
+            </View>
+          </ScrollView>
+          <View className="flex-row flex-wrap" style={{ gap: 10 }}>
+            {[
+              { key: 'add', label: 'Add', icon: true },
+              { key: 'transfer', label: 'Transfer' },
+              { key: 'sms', label: 'SMS', badge: 3 },
+              { key: 'funds', label: 'Funds' },
+              { key: 'budget', label: 'Budget' },
+              { key: 'reports', label: 'Reports' },
+              { key: 'equb', label: 'Equb' },
+              { key: 'more', label: 'More' },
+            ].map(a => (
+              <View key={a.key} style={{ width: '23%', alignItems: 'center' }} className="py-3 rounded-2xl">
+                <View style={{ position: 'relative' }}>
+                  <View
+                    className="rounded-2xl justify-center items-center"
+                    style={{ width: 54, height: 54, backgroundColor: a.icon ? 'rgba(103,232,249,0.9)' : 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: a.icon ? 'rgba(103,232,249,0.9)' : 'rgba(255,255,255,0.18)' }}
+                  />
+                  {!!a.badge && (
+                    <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#fb7185', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{a.badge}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text className="text-white text-[11px] font-semibold mt-1.5">{a.label}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 24, alignItems: 'center' }}>
+          <Coin3D size={64} />
+          <Coin3D size={44} />
+          <Text className="text-white/70 text-xs">Coin3D (floating, reduce-motion aware)</Text>
         </View>
       </ScrollView>
       <CustomTabBar

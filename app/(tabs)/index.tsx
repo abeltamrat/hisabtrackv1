@@ -19,6 +19,12 @@ import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
+import { FUNDS_ENABLED } from '@/config/features';
+import FundSyncService, { formatFundMoney } from '@/services/FundSyncService';
+import { fundRole } from '@/services/SharedFundService';
+import { DraftTransactionService } from '@/services/DraftTransactionService';
+import drawerBus from '@/utils/drawerBus';
+import { formatEthiopianDate } from '@/utils/ethiopianCalendar';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -31,8 +37,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useAuth();
-  const { fontSize } = useAppSettings();
-  const { actualTheme } = useTheme();
+  const { fontSize, formatCurrency } = useAppSettings();
+  const { actualTheme, isAurora } = useTheme();
   const { t } = useI18n();
   const { items: transactions } = useSelector((state: RootState) => state.transactions);
   const { items: accounts } = useSelector((state: RootState) => state.accounts);
@@ -46,6 +52,25 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // SMS drafts awaiting review (Aurora quick-action badge). Refreshed on the
+  // same local-change signal the rest of the dashboard already listens to.
+  const [pendingDraftCount, setPendingDraftCount] = useState(0);
+  const refreshDraftCount = useCallback(() => {
+    DraftTransactionService.getAll().then(all => setPendingDraftCount(all.filter(d => d.status === 'PENDING').length)).catch(() => {});
+  }, []);
+
+  // Funds this user holds for someone else, or that someone else holds for them.
+  const [fundSnapshot, setFundSnapshot] = useState(FundSyncService.getSnapshot());
+  useEffect(() => {
+    if (!FUNDS_ENABLED || !user?.uid) return;
+    FundSyncService.start(user.uid);
+    return FundSyncService.subscribe(setFundSnapshot);
+  }, [user?.uid]);
+  const heldForMeFunds = useMemo(
+    () => fundSnapshot.funds.filter(f => user?.uid && fundRole(f, user.uid) === 'OWNER' && f.status === 'ACTIVE' && f.linkStatus === 'ACCEPTED'),
+    [fundSnapshot.funds, user?.uid]
+  );
+
   // Re-fetch when local SQLite data changes. 600 ms debounce avoids back-to-back dispatches.
   useEffect(() => {
     const unsub = LocalChangeEmitter.subscribe(() => {
@@ -53,19 +78,21 @@ export default function DashboardScreen() {
       refreshTimer.current = setTimeout(() => {
         dispatch(fetchAccounts());
         dispatch(fetchTransactions());
+        refreshDraftCount();
       }, 600);
     });
     return () => {
       unsub();
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
     };
-  }, [dispatch]);
+  }, [dispatch, refreshDraftCount]);
 
   useEffect(() => {
     dispatch(fetchTransactions());
     dispatch(fetchAccounts());
     dispatch(fetchBudgets());
     dispatch(fetchLoans());
+    refreshDraftCount();
 
     // AI Insights check: throttle to once per 10 min so tab switches don't re-run it
     const now = Date.now();
@@ -75,7 +102,7 @@ export default function DashboardScreen() {
         AppNotificationService.checkAll();
       });
     }
-  }, [dispatch]);
+  }, [dispatch, refreshDraftCount]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -127,6 +154,24 @@ export default function DashboardScreen() {
     if (prevBalance === 0) return thisMonthNet > 0 ? 100 : 0;
     return ((balance - prevBalance) / Math.abs(prevBalance)) * 100;
   }, [balance, prevBalance, thisMonthNet]);
+  // Cumulative cash position across the last 14 days, oldest first — feeds the
+  // balance card's sparkline. Real ledger deltas, not synthetic data.
+  const trendPoints = useMemo(() => {
+    const WINDOW_DAYS = 14;
+    const dayMs = 24 * 60 * 60 * 1000;
+    const windowStart = nowTs - WINDOW_DAYS * dayMs;
+    const before = sumMoney(transactions.filter(t => t.date < windowStart).map(cashDelta));
+    const inWindow = transactions.filter(t => t.date >= windowStart && t.date <= nowTs);
+    let running = before;
+    const points: number[] = [running];
+    for (let day = 0; day < WINDOW_DAYS; day++) {
+      const dayEnd = windowStart + (day + 1) * dayMs;
+      const delta = sumMoney(inWindow.filter(t => t.date >= windowStart + day * dayMs && t.date < dayEnd).map(cashDelta));
+      running += delta;
+      points.push(running);
+    }
+    return points;
+  }, [transactions, nowTs]);
   const topExpenseCategoryEntry = useMemo(() => {
     const totals = operatingTransactions(thisMonthTransactions)
       .filter(t => t.type === 'EXPENSE')
@@ -168,6 +213,11 @@ export default function DashboardScreen() {
     return t('greetingEvening');
   }, [t]);
 
+  const dateLine = useMemo(() => {
+    const gregorian = new Date(nowTs).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    return `${gregorian} · ${formatEthiopianDate(nowTs)}`;
+  }, [nowTs]);
+
   const isVerySmall = fontSize === 'V.Small';
   const { headerTitleSize, sectionTitleSize, quickActionCardClass, quickActionIconWrapClass, quickActionLabelClass } = useMemo(() => ({
     headerTitleSize: fontSize === 'V.Small' ? 'text-base' : fontSize === 'Small' ? 'text-lg' : fontSize === 'Large' ? 'text-2xl' : 'text-xl',
@@ -176,6 +226,19 @@ export default function DashboardScreen() {
     quickActionIconWrapClass: `${isVerySmall ? 'w-10 h-10 mb-1.5' : 'w-12 h-12 mb-2'} rounded-xl justify-center items-center shadow-lg`,
     quickActionLabelClass: `text-slate-900 dark:text-white ${isVerySmall ? 'text-[10px]' : 'text-[10px]'} font-bold`,
   }), [fontSize, isVerySmall]);
+
+  // Aurora's 8 quick actions: same destinations as the classic grid, plus
+  // Funds and Equb, and an SMS tile carrying the pending-draft badge.
+  const auroraActions: Array<{ key: string; label: string; icon: string; badge?: number; onPress: () => void }> = [
+    { key: 'add', label: t('addNew'), icon: 'plus', onPress: () => router.push('/modal') },
+    { key: 'transfer', label: t('transferAction'), icon: 'exchange', onPress: () => router.push('/transfer') },
+    { key: 'sms', label: t('smsAction'), icon: 'comment', badge: pendingDraftCount, onPress: () => router.push('/draft-transactions') },
+    { key: 'funds', label: t('fundsAction'), icon: 'briefcase', onPress: () => router.push('/funds' as any) },
+    { key: 'budget', label: t('budget'), icon: 'pie-chart', onPress: () => router.push('/budget') },
+    { key: 'reports', label: t('reports'), icon: 'bar-chart', onPress: () => router.push('/(tabs)/reports') },
+    { key: 'equb', label: t('equbAction'), icon: 'users', onPress: () => router.push('/community' as any) },
+    { key: 'more', label: t('moreAction'), icon: 'ellipsis-h', onPress: () => drawerBus.open() },
+  ];
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
@@ -203,7 +266,11 @@ export default function DashboardScreen() {
             <View className="w-12 h-12" />
             <View className="flex-1 items-center">
               <Text className="text-primary-100 text-sm font-medium">{greeting}</Text>
-              <Text className={`text-white ${headerTitleSize} font-bold mt-1`}>{t('welcomeBack')}</Text>
+              {isAurora ? (
+                <Text className="text-white/80 text-xs font-medium mt-0.5">{dateLine}</Text>
+              ) : (
+                <Text className={`text-white ${headerTitleSize} font-bold mt-1`}>{t('welcomeBack')}</Text>
+              )}
             </View>
             <TouchableOpacity
               onPress={handleRefresh}
@@ -222,14 +289,72 @@ export default function DashboardScreen() {
           </View>
 
           {/* Balance Card - Floating */}
-          <SummaryCard balance={balance} income={thisMonthIncome} expense={thisMonthExpense} percentageChange={percentageChange} loading={initialLoad} />
+          <SummaryCard balance={balance} income={thisMonthIncome} expense={thisMonthExpense} percentageChange={percentageChange} loading={initialLoad} trendPoints={trendPoints} />
         </LinearGradient>
 
         {/* Content Section */}
         <View className="px-6 -mt-20">
+          {isAurora && (accounts.length > 0 || heldForMeFunds.length > 0) && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5" contentContainerStyle={{ gap: 10 }}>
+              {accounts.map(account => (
+                <View key={account.id} className="rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' }}>
+                  <Text className="text-white/90 text-[11px]" numberOfLines={1}>{account.name}</Text>
+                  <Text className="text-white font-extrabold text-sm mt-0.5" numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(account.balance)}</Text>
+                </View>
+              ))}
+              {heldForMeFunds.map(fund => (
+                <TouchableOpacity
+                  key={fund.id}
+                  onPress={() => router.push(`/fund/${fund.id}` as any)}
+                  accessibilityRole="button"
+                  className="rounded-2xl px-3.5 py-2.5"
+                  style={{ backgroundColor: 'rgba(103,232,249,0.12)', borderWidth: 1, borderColor: 'rgba(103,232,249,0.35)' }}
+                >
+                  <Text className="text-cyan-200 text-[11px]" numberOfLines={1}>{t('heldByLabel')} {fund.custodianName}</Text>
+                  <Text className="text-white font-extrabold text-sm mt-0.5" numberOfLines={1} adjustsFontSizeToFit>{formatFundMoney(fund.balance, fund.currency)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
           {/* Quick Actions */}
           <View className="mb-8">
             <Text className={`text-white ${sectionTitleSize} font-bold mb-4`}>{t('quickActions')}</Text>
+
+            {isAurora ? (
+              <View className="flex-row flex-wrap" style={{ gap: 10 }}>
+                {auroraActions.map(action => (
+                  <TouchableOpacity
+                    key={action.key}
+                    onPress={action.onPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={action.label}
+                    style={{ width: '23%' }}
+                    className="items-center py-3 rounded-2xl"
+                  >
+                    <View style={{ position: 'relative' }}>
+                      <View
+                        className="rounded-2xl justify-center items-center"
+                        style={{
+                          width: isVerySmall ? 48 : 54, height: isVerySmall ? 48 : 54,
+                          backgroundColor: action.key === 'add' ? 'rgba(103,232,249,0.9)' : 'rgba(255,255,255,0.1)',
+                          borderWidth: 1, borderColor: action.key === 'add' ? 'rgba(103,232,249,0.9)' : 'rgba(255,255,255,0.18)',
+                        }}
+                      >
+                        <FontAwesome name={action.icon as any} size={isVerySmall ? 18 : 20} color={action.key === 'add' ? '#082f49' : '#ffffff'} />
+                      </View>
+                      {!!action.badge && (
+                        <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#fb7185', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{action.badge}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text className="text-white text-[11px] font-semibold mt-1.5" numberOfLines={1}>{action.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <>
             <View className="flex-row justify-between">
               <TouchableOpacity
                 className={`${quickActionCardClass} mr-3`}
@@ -335,6 +460,8 @@ export default function DashboardScreen() {
                 <Text className={quickActionLabelClass}>{t('accounts')}</Text>
               </TouchableOpacity>
             </View>
+              </>
+            )}
           </View>
 
           {/* Financial Pulse */}
