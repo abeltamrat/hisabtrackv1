@@ -12,7 +12,7 @@ import FloatingCalculator from '@/components/FloatingCalculator';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@/services/SessionStorage';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { createElement, useEffect, useMemo, useState } from 'react';

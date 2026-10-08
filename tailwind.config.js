@@ -35,7 +35,14 @@ module.exports = {
         },
         background: {
           light: '#f8fafc', // Slate 50
-          dark: '#0f172a', // Slate 900
+          // Aurora swaps these through CSS variables (global.css :root holds
+          // today's exact values, so Light and Dark render unchanged).
+          dark: 'var(--c-bg-dark)', // Slate 900
+        },
+        slate: {
+          700: 'var(--c-slate-700)',
+          800: 'var(--c-slate-800)',
+          900: 'var(--c-slate-900)',
         },
         surface: {
           light: '#ffffff',

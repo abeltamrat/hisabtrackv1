@@ -327,12 +327,15 @@ function RootLayoutNav() {
   );
 }
 
+// Aurora: screens sit on the shared aurora background, so the navigator paints nothing.
+const AuroraNavTheme = { ...DarkTheme, colors: { ...DarkTheme.colors, background: 'transparent', card: 'transparent' } };
+
 function ThemedStack() {
-  const { actualTheme } = useTheme();
+  const { actualTheme, isAurora } = useTheme();
   const isDark = actualTheme === 'dark';
 
   return (
-    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={isAurora ? AuroraNavTheme : isDark ? DarkTheme : DefaultTheme}>
       {/* Derived from the theme. This was pinned to 'dark', which put dark
           status-bar icons on the dark app bar in dark mode, and it also fought
           the per-screen `<StatusBar style="auto" />` so the winner depended on

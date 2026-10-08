@@ -6,7 +6,7 @@ import { useI18n } from '@/contexts/I18nContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AppNotificationService } from '@/services/AppNotificationService';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';

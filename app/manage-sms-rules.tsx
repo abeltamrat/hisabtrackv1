@@ -6,7 +6,7 @@ import FormSheet from '@/components/FormSheet';
 import { useFormErrors } from '@/hooks/useFormErrors';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { FontAwesome } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store';

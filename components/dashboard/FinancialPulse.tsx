@@ -1,6 +1,6 @@
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import React, { memo } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 

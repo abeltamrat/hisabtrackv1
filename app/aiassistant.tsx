@@ -4,7 +4,7 @@ import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingVi
 import { Alert } from '@/utils/alert';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '@/store';
 import AIFinancialAssistant, { AssistantApiKeys, AssistantProvider, ChatMessage, FinancialData } from '@/services/AIFinancialAssistant';

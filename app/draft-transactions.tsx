@@ -11,7 +11,7 @@ import { addTransaction, deleteTransaction, fetchTransactions } from '@/store/sl
 import { addLoan, deleteLoan } from '@/store/slices/loansSlice';
 import { FontAwesome } from '@expo/vector-icons';
 import { SMSSyncService } from '@/services/SMSSyncService';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -1959,7 +1959,7 @@ export default function DraftTransactionsScreen() {
               {/* Original Message Ref */}
               <View className="mb-8">
                 <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Source Message</Text>
-                <View className="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-xl border border-dotted border-slate-300 dark:border-slate-700">
+                <View className="bg-slate-100 dark:bg-[rgba(30,41,59,0.5)] p-3 rounded-xl border border-dotted border-slate-300 dark:border-slate-700">
                   <Text className="text-slate-500 dark:text-slate-400 text-xs italic">
                     "{selectedDraft?.raw_sms}"
                   </Text>

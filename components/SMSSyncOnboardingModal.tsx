@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { DraftTransaction, DraftTransactionService } from '@/services/DraftTransactionService';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import { useTransactions } from '@/context/TransactionContext';

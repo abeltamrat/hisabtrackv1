@@ -11,7 +11,7 @@ import ExportService from '@/services/ExportService';
 import { hasTag } from '@/utils/tags';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Image, InteractionManager, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';

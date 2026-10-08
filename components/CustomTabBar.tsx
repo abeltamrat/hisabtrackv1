@@ -6,6 +6,8 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import { AURORA_ACCENT } from '@/components/aurora/palette';
 import { themeTokens } from '@/constants/theme';
 
 type TabEntry =
@@ -22,34 +24,22 @@ const TAB_CONFIG: TabEntry[] = [
 ];
 
 export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
-  const { actualTheme } = useTheme();
+  const { actualTheme, isAurora } = useTheme();
   const { t } = useI18n();
   const isDark = actualTheme === 'dark';
   const theme = themeTokens(isDark);
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const inactive = isDark ? '#475569' : '#94a3b8';
-  const active   = '#6366f1';
+  const inactive = isAurora ? 'rgba(255,255,255,0.78)' : isDark ? '#475569' : '#94a3b8';
+  const active   = isAurora ? '#ffffff' : '#6366f1';
   const bg       = theme.surface;
   const border   = isDark ? '#1e293b' : '#f1f5f9';
 
-  return (
-    <View
-      accessibilityRole="tablist"
-      style={[
-        styles.bar,
-        {
-          backgroundColor: bg,
-          borderTopColor: border,
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
-        },
-      ]}
-    >
-      {TAB_CONFIG.map((entry, idx) => {
+  const items = TAB_CONFIG.map((entry, idx) => {
         /* ── Centre FAB ── */
         if (entry.kind === 'fab') {
-          const fabBg = isDark ? '#6366f1' : '#1e293b';
+          const fabBg = isAurora ? AURORA_ACCENT : isDark ? '#6366f1' : '#1e293b';
           return (
             <View key="fab" style={styles.fabWrap}>
               <TouchableOpacity
@@ -66,13 +56,13 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   elevation: 8,
-                  shadowColor: '#000',
+                  shadowColor: isAurora ? AURORA_ACCENT : '#000',
                   shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
+                  shadowOpacity: isAurora ? 0.7 : 0.3,
+                  shadowRadius: isAurora ? 16 : 8,
                 }}
               >
-                <FontAwesome name="plus" size={22} color="#fff" />
+                <FontAwesome name="plus" size={22} color={isAurora ? '#082f49' : '#fff'} />
               </TouchableOpacity>
             </View>
           );
@@ -124,7 +114,7 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
             android_ripple={{ color: active + '30', borderless: true }}
             style={styles.tab}
           >
-            <View importantForAccessibility="no-hide-descendants" style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
+            <View importantForAccessibility="no-hide-descendants" style={[styles.iconWrap, isActive && (isAurora ? styles.iconWrapAurora : styles.iconWrapActive)]}>
               <FontAwesome
                 name={entry.icon as any}
                 size={20}
@@ -136,7 +126,38 @@ export default function CustomTabBar({ state, navigation }: BottomTabBarProps) {
             </Text>
           </Pressable>
         );
-      })}
+      });
+
+  if (isAurora) {
+    // A frosted pill floating over the aurora; it stays in the layout so no
+    // screen content is ever hidden behind it.
+    return (
+      <View style={{ paddingHorizontal: 16, paddingBottom: (insets.bottom > 0 ? insets.bottom : 0) + 10, paddingTop: 6 }}>
+        <View accessibilityRole="tablist" style={styles.pill}>
+          {/* Clipped background layers; the raised add button may overflow the pill. */}
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 34, overflow: 'hidden' }]}>
+            <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(15,23,42,0.55)' }]} />
+          </View>
+          {items}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      accessibilityRole="tablist"
+      style={[
+        styles.bar,
+        {
+          backgroundColor: bg,
+          borderTopColor: border,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+        },
+      ]}
+    >
+      {items}
     </View>
   );
 }
@@ -172,6 +193,22 @@ const styles = StyleSheet.create({
   },
   iconWrapActive: {
     backgroundColor: '#6366f1',
+  },
+  iconWrapAurora: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 68,
+    borderRadius: 34,
+    overflow: 'visible',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    ...Platform.select({
+      android: { elevation: 10 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.4, shadowRadius: 20 },
+    }),
   },
   label: {
     fontSize: 10,

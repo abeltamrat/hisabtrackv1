@@ -7,7 +7,7 @@ import { communityPosition, matchCommunitySms, type CommunitySmsMatch } from '@/
 import { formatCalendarDate, parseEthiopianDate } from '@/utils/ethiopianCalendar';
 import { Alert } from '@/utils/alert';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';

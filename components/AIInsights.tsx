@@ -4,7 +4,7 @@ import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FinancialAdvisorService, FinancialInsight } from '@/services/FinancialAdvisorService';
 import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 

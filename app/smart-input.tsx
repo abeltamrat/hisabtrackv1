@@ -8,7 +8,7 @@ import { parseQuickAdd } from '@/utils/quickAddParser';
 import { matchReceipt, parseReceiptText, receiptSplits } from '@/utils/receiptParser';
 import { FontAwesome } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { Stack, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';

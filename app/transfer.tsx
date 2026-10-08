@@ -5,7 +5,7 @@ import { AppDispatch, RootState } from '@/store';
 import { Account } from '@/types/database';
 import { parseTagInput } from '@/utils/tags';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';

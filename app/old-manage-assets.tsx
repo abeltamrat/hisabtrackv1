@@ -1,7 +1,7 @@
 import LocalAssetService from '@/services/LocalAssetService';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@/services/SessionStorage';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';

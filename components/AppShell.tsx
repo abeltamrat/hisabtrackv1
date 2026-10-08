@@ -24,7 +24,7 @@ export default function AppShell({ children }: AppShellProps) {
   const [drawerVisible, setDrawerVisible] = React.useState(false);
   const router = useRouter();
   const { user } = useAuth();
-  const { actualTheme } = useTheme();
+  const { actualTheme, isAurora } = useTheme();
 
   const [disabledUntil, setDisabledUntil] = useState<number>(SyncService.disableAutoSyncUntil || 0);
 
@@ -123,7 +123,7 @@ export default function AppShell({ children }: AppShellProps) {
   // it renders as a pale band over the dark theme.
   return (
     <SafeAreaView
-      style={{ flex: 1, backgroundColor: actualTheme === 'dark' ? '#0f172a' : '#ffffff' }}
+      style={{ flex: 1, backgroundColor: isAurora ? 'transparent' : actualTheme === 'dark' ? '#0f172a' : '#ffffff' }}
       edges={['top', 'left', 'right']}
     >
       <DataStatusBanner />
@@ -224,7 +224,7 @@ export default function AppShell({ children }: AppShellProps) {
                 {recentNotifications.map(notification => (
                   <TouchableOpacity
                     key={notification.id}
-                    className={`p-3 border-b border-slate-50 dark:border-slate-700/50 ${notification.read ? 'bg-white dark:bg-slate-800' : 'bg-slate-50 dark:bg-slate-700/30' }`}
+                    className={`p-3 border-b border-slate-50 dark:border-[rgba(51,65,85,0.5)] ${notification.read ? 'bg-white dark:bg-slate-800' : 'bg-slate-50 dark:bg-[rgba(51,65,85,0.3)]' }`}
                     onPress={() => handleNotificationPress(notification)}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
@@ -261,7 +261,7 @@ export default function AppShell({ children }: AppShellProps) {
 
             <TouchableOpacity
               onPress={handleSeeAll}
-              className="p-3 items-center bg-slate-50 dark:bg-slate-700/50 rounded-b-2xl"
+              className="p-3 items-center bg-slate-50 dark:bg-[rgba(51,65,85,0.5)] rounded-b-2xl"
             >
               <Text className="text-indigo-600 dark:text-indigo-400 font-bold text-sm">See all notifications</Text>
             </TouchableOpacity>

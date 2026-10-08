@@ -1199,7 +1199,8 @@ test('the app bar controls are labelled and large enough to hit', () => {
   // These were 36px icon targets built from padding: 8.
   assert.match(shell, /width: 44, height: 44/);
   // The status-bar strip and the sync banner must follow the theme.
-  assert.match(shell, /backgroundColor: actualTheme === 'dark' \? '#0f172a' : '#ffffff'/);
+  // Aurora shows its background through the strip; Light and Dark keep their fills.
+  assert.match(shell, /backgroundColor: (isAurora \? 'transparent' : )?actualTheme === 'dark' \? '#0f172a' : '#ffffff'/);
   assert.ok(!/backgroundColor: '#fee2e2'/.test(shell), 'the sync banner must not be fixed light');
 });
 

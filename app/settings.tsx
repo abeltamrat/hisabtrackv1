@@ -23,7 +23,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
@@ -848,7 +848,8 @@ export default function SettingsScreen() {
     label: value === 'V.Small' ? 'v.small' : value.toLowerCase(),
   }));
 
-  const themeOptions: Array<{ value: 'light' | 'dark' | 'system'; label: string; icon: string }> = [
+  const themeOptions: Array<{ value: 'aurora' | 'light' | 'dark' | 'system'; label: string; icon: string }> = [
+    { value: 'aurora', label: 'Aurora Glass', icon: 'magic' },
     { value: 'light', label: 'Light', icon: 'sun-o' },
     { value: 'dark', label: 'Dark', icon: 'moon-o' },
     { value: 'system', label: 'System', icon: 'mobile' },

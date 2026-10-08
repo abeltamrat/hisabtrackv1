@@ -24,7 +24,7 @@ import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { fetchLoans } from '@/store/slices/loansSlice';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { RecurringTransaction } from '@/types/database';
 import AsyncStorage from '@/services/SessionStorage';
 import { useEffect, useMemo, useState } from 'react';
@@ -935,7 +935,7 @@ export default function ReportsScreen() {
                   return (
                     <View
                       key={event.id}
-                      className="flex-row items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700/70"
+                      className="flex-row items-center justify-between py-3 border-b border-slate-100 dark:border-[rgba(51,65,85,0.7)]"
                     >
                       <View className="flex-row items-center flex-1 pr-4">
                         <View
@@ -1006,7 +1006,7 @@ export default function ReportsScreen() {
                 forecastResult.accountProjections.map((projection) => (
                   <View
                     key={projection.accountId}
-                    className="flex-row items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700/70"
+                    className="flex-row items-center justify-between py-3 border-b border-slate-100 dark:border-[rgba(51,65,85,0.7)]"
                   >
                     <View className="flex-1 pr-4">
                       <Text className="text-slate-900 dark:text-white font-bold">
@@ -1058,7 +1058,7 @@ export default function ReportsScreen() {
                 </View>
               </View>
 
-              <View className="bg-slate-50 dark:bg-slate-900/40 rounded-2xl p-4">
+              <View className="bg-slate-50 dark:bg-[rgba(15,23,42,0.4)] rounded-2xl p-4">
                 <View className="flex-row justify-between">
                   <View>
                     <Text className="text-slate-500 dark:text-slate-400 text-xs">Avg Monthly Expense</Text>

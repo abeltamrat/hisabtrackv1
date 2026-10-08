@@ -9,7 +9,7 @@ import { addAccount, deleteAccount, fetchAccounts, updateAccount } from '@/store
 import { Bank } from '@/types/bank';
 import { Account, AccountType } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';

@@ -10,7 +10,7 @@ import { LinkedLoanService } from '@/services/LinkedLoanService';
 import { AppDispatch, RootState } from '@/store';
 import { LinkedChangelogEntry, LinkedChatMessage, LinkedRepayment, SharedLoan } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';

@@ -18,7 +18,7 @@ import { fetchLoans } from '@/store/slices/loansSlice';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';

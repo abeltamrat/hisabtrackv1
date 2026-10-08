@@ -1,3 +1,12 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Surfaces the Aurora theme re-tints (see components/aurora/palette.ts).
+   These defaults are the stock Tailwind slate values, so Light and Dark are unchanged. */
+:root {
+  --c-bg-dark: #0f172a;
+  --c-slate-700: #334155;
+  --c-slate-800: #1e293b;
+  --c-slate-900: #0f172a;
+}
