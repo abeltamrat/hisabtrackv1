@@ -1,9 +1,10 @@
+import CoinLoader from '@/components/CoinLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthService, validatePhone } from '@/services/AuthService';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@/services/SessionStorage';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 
 const KEY_LOGIN_COUNT = '@hisabtrack_login_count';
@@ -185,7 +186,7 @@ export default function PhonePromptManager() {
               }}
             >
               {saving ? (
-                <ActivityIndicator color="#fff" />
+                <CoinLoader color="#fff" />
               ) : (
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Save Phone Number</Text>
               )}

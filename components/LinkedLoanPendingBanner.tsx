@@ -1,10 +1,11 @@
+import CoinLoader from '@/components/CoinLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { LinkedLoanService } from '@/services/LinkedLoanService';
 import { SharedLoan } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 
 interface PendingRequest {
@@ -144,7 +145,7 @@ export default function LinkedLoanPendingBanner({ onAccepted }: Props) {
                 }}
               >
                 {isProcessing
-                  ? <ActivityIndicator size="small" color="#fff" />
+                  ? <CoinLoader size="small" color="#fff" />
                   : <>
                       <FontAwesome name="check" size={12} color="#fff" style={{ marginRight: 6 }} />
                       <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Accept</Text>

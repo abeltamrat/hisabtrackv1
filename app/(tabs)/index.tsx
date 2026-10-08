@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { useLedgerClock } from '@/hooks/useLedgerClock';
 import { sumMoney, operatingIncome, operatingExpense, operatingTransactions, cashDelta } from '@/utils/finance';
 // DrawerMenu moved to AppShell — no local import
@@ -20,7 +21,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 
 // Throttle the AI notification check to once every 10 minutes across mounts (e.g. tab switches)
@@ -213,7 +214,7 @@ export default function DashboardScreen() {
               className="w-12 h-12 items-center justify-center"
             >
               {refreshing ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <CoinLoader size="small" color="#fff" />
               ) : (
                 <FontAwesome name="refresh" size={isVerySmall ? 20 : 22} color="#fff" />
               )}

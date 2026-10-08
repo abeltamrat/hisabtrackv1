@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { getDatabase } from '@/services/database';
 import LinkedPaymentService from '@/services/LinkedPaymentService';
 import { generateUUID } from '@/utils/uuid';
@@ -12,7 +13,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import { useFormErrors } from '@/hooks/useFormErrors';
@@ -455,7 +456,7 @@ export default function LoanDetailsScreen() {
                         style={{ backgroundColor: '#16a34a', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10, alignItems: 'center', minWidth: 70 }}
                       >
                         {confirmingId === r.id
-                          ? <ActivityIndicator size="small" color="#fff" />
+                          ? <CoinLoader size="small" color="#fff" />
                           : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Confirm</Text>
                         }
                       </TouchableOpacity>
@@ -618,7 +619,7 @@ export default function LoanDetailsScreen() {
               }}
             >
               {sendingChat
-                ? <ActivityIndicator size="small" color="#fff" />
+                ? <CoinLoader size="small" color="#fff" />
                 : <FontAwesome name="send" size={16} color="#fff" />
               }
             </TouchableOpacity>
@@ -746,7 +747,7 @@ export default function LoanDetailsScreen() {
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: tabColor, alignItems: 'center' }}
               >
                 {recordingPayment
-                  ? <ActivityIndicator size="small" color="#fff" />
+                  ? <CoinLoader size="small" color="#fff" />
                   : <Text style={{ color: '#fff', fontWeight: '700' }}>Submit</Text>
                 }
               </TouchableOpacity>
@@ -810,7 +811,7 @@ export default function LoanDetailsScreen() {
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: '#16a34a', alignItems: 'center', opacity: accounts.length === 0 ? 0.5 : 1 }}
               >
                 {confirmingWithAccount
-                  ? <ActivityIndicator size="small" color="#fff" />
+                  ? <CoinLoader size="small" color="#fff" />
                   : <Text style={{ color: '#fff', fontWeight: '700' }}>Confirm & Record</Text>
                 }
               </TouchableOpacity>

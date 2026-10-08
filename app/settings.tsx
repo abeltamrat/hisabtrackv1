@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { sessionLocalStorage } from '@/services/SessionStorage';
 import { APP_FONT_SIZE_OPTIONS, type AppFontSize, useAppSettings } from '@/contexts/AppSettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,7 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Modal, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Linking, Modal, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
@@ -951,7 +952,7 @@ export default function SettingsScreen() {
                     className="bg-indigo-600 px-3 py-2 rounded-xl"
                   >
                     {savingPhone
-                      ? <ActivityIndicator size="small" color="#fff" />
+                      ? <CoinLoader size="small" color="#fff" />
                       : <Text className="text-white font-bold text-xs">Save</Text>
                     }
                   </TouchableOpacity>
@@ -2079,7 +2080,7 @@ export default function SettingsScreen() {
                 className={`flex-1 h-14 rounded-xl justify-center items-center ${isResettingAccount || (isEmailPasswordUser && !resetPassword.trim()) ? 'bg-red-300 dark:bg-red-900/50' : 'bg-red-500'}`}
               >
                 {isResettingAccount ? (
-                  <ActivityIndicator color="#fff" />
+                  <CoinLoader color="#fff" />
                 ) : (
                   <Text className="text-white font-bold">Delete Permanently</Text>
                 )}

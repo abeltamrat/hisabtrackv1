@@ -1,5 +1,6 @@
+import CoinLoader from '@/components/CoinLoader';
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Animated, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Animated, Platform, KeyboardAvoidingView } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import { useFormErrors } from '@/hooks/useFormErrors';
@@ -705,7 +706,7 @@ export default function ManageSMSRulesScreen() {
       {/* Main List */}
       {loading ? (
         <View className="py-16 justify-center items-center">
-          <ActivityIndicator size="large" color="#14b8a6" />
+          <CoinLoader size="large" color="#14b8a6" />
         </View>
       ) : (
         <Animated.View style={{ opacity: fadeAnim }} className="px-6">
@@ -748,7 +749,7 @@ export default function ManageSMSRulesScreen() {
 
           {calibrationLoading ? (
             <View className="flex-1 justify-center items-center px-8">
-              <ActivityIndicator size="large" color="#6366f1" />
+              <CoinLoader size="large" color="#6366f1" />
               <Text className="text-slate-700 dark:text-slate-300 font-bold mt-4">
                 {selectedSample ? 'AI is reading the sample…' : 'Loading recent bank messages…'}
               </Text>

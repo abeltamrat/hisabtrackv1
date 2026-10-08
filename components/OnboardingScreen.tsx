@@ -1,16 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, Image, ScrollView } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, Image, ScrollView, useWindowDimensions, StyleSheet, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { FontAwesome } from '@expo/vector-icons';
-import Animated, {
-    useSharedValue,
-    useAnimatedStyle,
-    withSpring,
-    interpolate,
-    Extrapolate
-} from 'react-native-reanimated';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import AuthBackground, { AUTH_ACCENT, AUTH_BASE } from './AuthBackground';
 
 interface OnboardingSlide {
     id: string;
@@ -109,198 +102,110 @@ interface OnboardingScreenProps {
 
 export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     const [currentIndex, setCurrentIndex] = useState(0);
+    const { width } = useWindowDimensions();
     const scrollViewRef = useRef<ScrollView>(null);
-    const scrollX = useSharedValue(0);
+    const currentIndexRef = useRef(0);
 
-    const handleNext = () => {
-        if (currentIndex < slides.length - 1) {
-            const nextIndex = currentIndex + 1;
-            setCurrentIndex(nextIndex);
-            scrollViewRef.current?.scrollTo({ x: nextIndex * SCREEN_WIDTH, animated: true });
-        } else {
-            onComplete();
-        }
+    useEffect(() => {
+        scrollViewRef.current?.scrollTo({ x: currentIndexRef.current * width, animated: false });
+    }, [width]);
+
+    const goTo = (index: number) => {
+        currentIndexRef.current = index;
+        setCurrentIndex(index);
+        scrollViewRef.current?.scrollTo({ x: index * width, animated: true });
     };
-
-    const handleSkip = () => {
-        onComplete();
-    };
-
-    const handleScroll = (event: any) => {
-        const offsetX = event.nativeEvent.contentOffset.x;
-        scrollX.value = offsetX;
-        const index = Math.round(offsetX / SCREEN_WIDTH);
+    const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const index = Math.max(0, Math.min(slides.length - 1, Math.round(event.nativeEvent.contentOffset.x / width)));
+        currentIndexRef.current = index;
         setCurrentIndex(index);
     };
 
     return (
-        <View className="flex-1 bg-white dark:bg-slate-900">
-            {/* Skip Button */}
-            {currentIndex < slides.length - 1 && (
-                <TouchableOpacity
-                    onPress={handleSkip}
-                    className="absolute top-12 right-6 z-10 px-4 py-2 bg-white/20 rounded-full"
-                >
-                    <Text className="text-white font-semibold">Skip</Text>
-                </TouchableOpacity>
-            )}
-
-            {/* Slides */}
-            <ScrollView
-                ref={scrollViewRef}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                onScroll={handleScroll}
-                scrollEventThrottle={16}
-                bounces={false}
-            >
-                {slides.map((slide, index) => (
-                    <SlideItem
-                        key={slide.id}
-                        slide={slide}
-                        index={index}
-                        scrollX={scrollX}
-                    />
-                ))}
-            </ScrollView>
-
-            {/* Bottom Section */}
-            <View className="absolute bottom-0 left-0 right-0 pb-12 px-6">
-                {/* Pagination Dots */}
-                <View className="flex-row justify-center mb-8">
-                    {slides.map((_, index) => {
-                        const dotStyle = useAnimatedStyle(() => {
-                            const inputRange = [
-                                (index - 1) * SCREEN_WIDTH,
-                                index * SCREEN_WIDTH,
-                                (index + 1) * SCREEN_WIDTH,
-                            ];
-
-                            const width = interpolate(
-                                scrollX.value,
-                                inputRange,
-                                [8, 24, 8],
-                                Extrapolate.CLAMP
-                            );
-
-                            const opacity = interpolate(
-                                scrollX.value,
-                                inputRange,
-                                [0.3, 1, 0.3],
-                                Extrapolate.CLAMP
-                            );
-
-                            return {
-                                width,
-                                opacity,
-                            };
-                        });
-
-                        return (
-                            <Animated.View
-                                key={index}
-                                style={[dotStyle]}
-                                className="h-2 bg-indigo-500 rounded-full mx-1"
-                            />
-                        );
-                    })}
+        <View style={[styles.root, { backgroundColor: AUTH_BASE }]}>
+            <AuthBackground />
+            <StatusBar style="light" />
+            <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+                <View style={styles.topBar}>
+                    <Text style={styles.brand}>HISAB TRACK</Text>
+                    <TouchableOpacity onPress={onComplete} accessibilityRole="button" style={styles.textButton}>
+                        <Text style={styles.link}>{currentIndex === slides.length - 1 ? 'Sign in' : 'Skip intro'}</Text>
+                    </TouchableOpacity>
                 </View>
-
-                {/* Action Button */}
-                <TouchableOpacity onPress={handleNext} activeOpacity={0.8}>
-                    <LinearGradient
-                        colors={slides[currentIndex].gradient as [string, string]}
-                        className="py-4 rounded-2xl flex-row items-center justify-center"
-                    >
-                        <Text className="text-white text-lg font-bold mr-2">
-                            {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
-                        </Text>
-                        <FontAwesome
-                            name={currentIndex === slides.length - 1 ? 'check' : 'arrow-right'}
-                            size={20}
-                            color="#fff"
-                        />
-                    </LinearGradient>
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-}
-
-function SlideItem({
-    slide,
-    index,
-    scrollX
-}: {
-    slide: OnboardingSlide;
-    index: number;
-    scrollX: any;
-}) {
-    const animatedStyle = useAnimatedStyle(() => {
-        const inputRange = [
-            (index - 1) * SCREEN_WIDTH,
-            index * SCREEN_WIDTH,
-            (index + 1) * SCREEN_WIDTH,
-        ];
-
-        const scale = interpolate(
-            scrollX.value,
-            inputRange,
-            [0.8, 1, 0.8],
-            Extrapolate.CLAMP
-        );
-
-        const opacity = interpolate(
-            scrollX.value,
-            inputRange,
-            [0.5, 1, 0.5],
-            Extrapolate.CLAMP
-        );
-
-        return {
-            transform: [{ scale }],
-            opacity,
-        };
-    });
-
-    return (
-        <View style={{ width: SCREEN_WIDTH }} className="flex-1">
-            <LinearGradient
-                colors={slide.gradient as [string, string]}
-                className="flex-1 pt-32 px-8"
-            >
-                {/* Icon */}
-                <Animated.View style={animatedStyle} className="items-center mb-12">
-                    <View className="w-32 h-32 bg-white/20 rounded-full items-center justify-center mb-8">
-                        <FontAwesome name={slide.icon as any} size={64} color="#fff" />
-                    </View>
-
-                    {/* Title */}
-                    <Text className="text-white text-3xl font-bold text-center mb-4">
-                        {slide.title}
-                    </Text>
-
-                    {/* Description */}
-                    <Text className="text-white/90 text-lg text-center leading-7 mb-8">
-                        {slide.description}
-                    </Text>
-
-                    {/* Features List */}
-                    {slide.features && (
-                        <View className="w-full bg-white/10 rounded-3xl p-6 backdrop-blur-lg gap-3">
-                            {slide.features.map((feature, idx) => (
-                                <View key={idx} className="flex-row items-center">
-                                    <View className="w-6 h-6 bg-white/20 rounded-full items-center justify-center mr-3">
-                                        <FontAwesome name="check" size={12} color="#fff" />
-                                    </View>
-                                    <Text className="text-white text-base flex-1">{feature}</Text>
+                <ScrollView ref={scrollViewRef} horizontal pagingEnabled
+                    showsHorizontalScrollIndicator={false} onMomentumScrollEnd={handleScroll}
+                    bounces={false} style={{ flex: 1 }}>
+                    {slides.map((slide, index) => (
+                        <ScrollView key={slide.id} style={{ width }} showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.slideScroll}>
+                            <View style={styles.slide}>
+                                <View style={styles.emblem}>
+                                    {index === 0 || index === slides.length - 1 ? (
+                                        <Image source={require('../assets/images/hisab-coin-loader.png')}
+                                            accessibilityLabel="Hisab Track coin logo" style={{ width: 124, height: 124 }} />
+                                    ) : <FontAwesome name={slide.icon as React.ComponentProps<typeof FontAwesome>['name']} size={48} color={AUTH_ACCENT} />}
                                 </View>
-                            ))}
-                        </View>
-                    )}
-                </Animated.View>
-            </LinearGradient>
+                                <Text style={styles.eyebrow}>YOUR MONEY. A CLEARER PICTURE.</Text>
+                                <Text accessibilityRole="header" style={styles.title}>{slide.title}</Text>
+                                <Text style={styles.description}>{slide.description}</Text>
+                                {slide.features && (
+                                    <View style={styles.glass}>
+                                        {slide.features.map(feature => (
+                                            <View key={feature} style={styles.feature}>
+                                                <View style={styles.check}><FontAwesome name="check" size={12} color={AUTH_ACCENT} /></View>
+                                                <Text style={styles.featureText}>{feature}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
+                            </View>
+                        </ScrollView>
+                    ))}
+                </ScrollView>
+                <View style={styles.footer}>
+                    <View style={styles.pagination}>
+                        {slides.map((slide, index) => (
+                            <TouchableOpacity key={slide.id} onPress={() => goTo(index)}
+                                accessibilityRole="button" accessibilityLabel={'Go to introduction slide ' + (index + 1)}
+                                accessibilityState={{ selected: currentIndex === index }} style={styles.dotButton}>
+                                <View style={[styles.dot, currentIndex === index && styles.activeDot]} />
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                    <TouchableOpacity accessibilityRole="button" activeOpacity={0.8} style={styles.primary}
+                        onPress={() => currentIndex === slides.length - 1 ? onComplete() : goTo(currentIndex + 1)}>
+                        <Text style={styles.primaryText}>{currentIndex === slides.length - 1 ? 'Get Started' : 'Continue'}</Text>
+                        <FontAwesome name="arrow-right" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.step}>{currentIndex + 1} of {slides.length}</Text>
+                </View>
+            </SafeAreaView>
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    root: { flex: 1 },
+    topBar: { paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 64 },
+    brand: { color: '#e2e8f0', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
+    textButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
+    link: { color: AUTH_ACCENT, fontWeight: '600' },
+    slideScroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+    slide: { width: '100%', maxWidth: 460, alignSelf: 'center', alignItems: 'center' },
+    emblem: { width: 144, height: 144, borderRadius: 48, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginBottom: 28 },
+    eyebrow: { color: AUTH_ACCENT, fontSize: 10, fontWeight: '700', letterSpacing: 2, textAlign: 'center', marginBottom: 14 },
+    title: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center', lineHeight: 40, marginBottom: 16 },
+    description: { color: '#cbd5e1', fontSize: 16, lineHeight: 25, textAlign: 'center', marginBottom: 28 },
+    glass: { width: '100%', backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderRadius: 24, padding: 22, gap: 18 },
+    feature: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    check: { backgroundColor: 'rgba(103,232,249,0.1)', width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+    featureText: { color: '#e2e8f0', fontSize: 15, flex: 1, lineHeight: 22 },
+    footer: { paddingHorizontal: 24, paddingBottom: 12, width: '100%', maxWidth: 508, alignSelf: 'center' },
+    pagination: { flexDirection: 'row', justifyContent: 'center', marginBottom: 8 },
+    dotButton: { minWidth: 36, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+    dot: { height: 6, width: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.25)' },
+    activeDot: { width: 22, backgroundColor: AUTH_ACCENT },
+    primary: { backgroundColor: '#4f46e5', borderWidth: 1, borderColor: '#818cf8', borderRadius: 18, minHeight: 56, padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center' },
+    primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    step: { color: '#94a3b8', fontSize: 12, textAlign: 'center', marginTop: 12 },
+});

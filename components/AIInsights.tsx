@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FinancialAdvisorService, FinancialInsight } from '@/services/FinancialAdvisorService';
@@ -5,7 +6,7 @@ import { Budget, Loan, RecurringTransaction, Transaction } from '@/types/databas
 import { FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 interface AIInsightsProps {
   transactions: Transaction[];
@@ -111,7 +112,7 @@ export default function AIInsights({
         <View>
           {loading ? (
             <View className="bg-white dark:bg-slate-800 rounded-2xl p-8 items-center border border-slate-100 dark:border-slate-700 shadow-sm">
-              <ActivityIndicator size="large" color="#8b5cf6" />
+              <CoinLoader size="large" color="#8b5cf6" />
               <Text className="text-slate-500 dark:text-slate-400 mt-4">
                 Analyzing your financial data...
               </Text>

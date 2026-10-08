@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import BudgetService from '@/services/BudgetService';
 import { RootState } from '@/store';
@@ -7,7 +8,6 @@ import AsyncStorage from '@/services/SessionStorage';
 import { usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -424,7 +424,7 @@ export default function FinanceAssistantOverlay({ hidden = false }: FinanceAssis
                   {isTyping ? (
                     <View className="items-start mb-3">
                       <View className="bg-slate-100 dark:bg-slate-800 px-3 py-2.5 rounded-2xl flex-row items-center">
-                        <ActivityIndicator size="small" color="#6366f1" />
+                        <CoinLoader size="small" color="#6366f1" />
                         <Text className="text-slate-600 dark:text-slate-300 text-sm ml-2">Thinking...</Text>
                       </View>
                     </View>

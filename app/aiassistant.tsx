@@ -1,5 +1,6 @@
+import CoinLoader from '@/components/CoinLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
@@ -261,7 +262,7 @@ export default function AIAssistantScreen() {
                 {isLoading && (
                     <View className="flex-row items-center my-4">
                         <View className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-lg">
-                            <ActivityIndicator size="small" color="#6366f1" />
+                            <CoinLoader size="small" color="#6366f1" />
                             <Text className="text-slate-500 dark:text-slate-400 text-sm ml-2">Thinking...</Text>
                         </View>
                     </View>

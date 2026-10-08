@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { BUNDLED_LOGOS } from '@/assets/bankLogos/et';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { BankService } from '@/services/BankService';
@@ -12,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -970,7 +971,7 @@ export default function Accounts() {
             <View className="flex-row items-center flex-1">
               <View className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 justify-center items-center mr-4">
                 {loadingSms ? (
-                  <ActivityIndicator size="small" color="#10b981" />
+                  <CoinLoader size="small" color="#10b981" />
                 ) : (
                   <FontAwesome name="envelope-open-o" size={20} color="#10b981" />
                 )}
@@ -1225,7 +1226,7 @@ export default function Accounts() {
                   <Text className="text-slate-500 dark:text-slate-400 text-xs mb-2">Image suggestions</Text>
                   {imageLoading ? (
                     <View className="h-24 justify-center items-center">
-                      <ActivityIndicator size="small" color="#059669" />
+                      <CoinLoader size="small" color="#059669" />
                     </View>
                   ) : imageSuggestions.length === 0 ? (
                     <Text className="text-slate-500 text-xs dark:text-slate-400">No image suggestions yet</Text>

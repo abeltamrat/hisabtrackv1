@@ -1,6 +1,6 @@
+import CoinLoader from '@/components/CoinLoader';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Dimensions,
   Linking,
@@ -722,7 +722,7 @@ export default function SMSSyncOnboardingModal({
     return (
       <View className="flex-1 px-5 pt-6 pb-8 items-center justify-center">
         <View className="w-20 h-20 rounded-full bg-indigo-100 dark:bg-indigo-900/40 items-center justify-center mb-6">
-          <ActivityIndicator size="large" color="#6366f1" />
+          <CoinLoader size="large" color="#6366f1" />
         </View>
         <Text className="text-lg font-bold text-slate-900 dark:text-white mb-1 text-center">
           Scanning Messages…
@@ -821,7 +821,7 @@ export default function SMSSyncOnboardingModal({
               style={{ flex: 2 }}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <CoinLoader size="small" color="#fff" />
               ) : (
                 <Text className="text-sm font-semibold text-white">
                   Save {acceptedCount} Transaction{acceptedCount !== 1 ? 's' : ''}

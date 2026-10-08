@@ -1,8 +1,9 @@
+import CoinLoader from '@/components/CoinLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import CustomTabBar from '@/components/CustomTabBar';
 import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 
 export default function TabLayout() {
   const { user, loading } = useAuth();
@@ -10,7 +11,7 @@ export default function TabLayout() {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <CoinLoader size="large" color="#6366f1" />
       </View>
     );
   }

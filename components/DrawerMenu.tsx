@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { sessionLocalStorage } from '@/services/SessionStorage';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,7 +9,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 import { UpdateService, UpdateInfo } from '@/services/UpdateService';
@@ -510,7 +511,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
                       <Text className={`text-white font-bold ${isVerySmall ? 'text-[10px]' : 'text-xs'}`}>{item.badge}</Text>
                     </View>
                   ) : item.id === 'checkUpdate' && isCheckingUpdate ? (
-                    <ActivityIndicator size="small" color="#10b981" />
+                    <CoinLoader size="small" color="#10b981" />
                   ) : (
                     <FontAwesome name="chevron-right" size={menuChevronSize} color="#94a3b8" />
                   )}

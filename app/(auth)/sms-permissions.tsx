@@ -1,8 +1,9 @@
+import CoinLoader from '@/components/CoinLoader';
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -121,7 +122,7 @@ export default function SMSPermissionsScreen() {
           accessibilityState={{ disabled: !supported || hasPermission || requesting, busy: requesting }}
         >
           {requesting
-            ? <ActivityIndicator color="#ffffff" />
+            ? <CoinLoader color="#ffffff" />
             : <Text className="text-white text-lg font-bold">
                 {hasPermission ? 'Enabled' : 'Enable Auto-Tracking'}
               </Text>}

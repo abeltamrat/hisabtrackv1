@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { BUNDLED_LOGOS } from '@/assets/bankLogos/et';
 import CategoryIcon from '@/components/CategoryIcon';
 import { useTransactions } from '@/context/TransactionContext';
@@ -13,7 +14,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, InteractionManager, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { FlatList, Image, InteractionManager, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
@@ -649,7 +650,7 @@ export default function TransactionsScreen() {
               style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#6366f1' }}
             >
               {exporting
-                ? <ActivityIndicator size="small" color="#fff" />
+                ? <CoinLoader size="small" color="#fff" />
                 : <FontAwesome name="download" size={11} color="#fff" />
               }
               <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700', marginLeft: 5 }}>Export</Text>

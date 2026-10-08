@@ -1,9 +1,10 @@
+import CoinLoader from '@/components/CoinLoader';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { useTheme } from '@/contexts/ThemeContext';
 import { getDatabase } from '@/services/database';
@@ -55,7 +56,7 @@ export default function SmartReviewScreen() {
       <View className="flex-row items-center"><TouchableOpacity accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl items-center justify-center"><FontAwesome name="arrow-left" size={17} color="white" /></TouchableOpacity><View className="ml-3 flex-1"><Text className="text-white text-2xl font-bold">Smart Review</Text><Text className="text-indigo-100 text-xs mt-1">Evidence first. Nothing is changed automatically.</Text></View></View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-5">{(['ALERTS', 'RECURRING', 'RECIPIENTS', 'COVERAGE'] as Tab[]).map(item => <TouchableOpacity key={item} onPress={() => setTab(item)} className={`px-3 py-2 rounded-xl mr-2 ${tab === item ? 'bg-white' : 'bg-white/15'}`}><Text className={`text-xs font-bold ${tab === item ? 'text-indigo-700' : 'text-white'}`}>{item}</Text></TouchableOpacity>)}</ScrollView>
     </LinearGradient>
-    {loading ? <View className="flex-1 items-center justify-center"><ActivityIndicator size="large" color="#6366f1" /></View> : <ScrollView className="flex-1 px-5 pt-5" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
+    {loading ? <View className="flex-1 items-center justify-center"><CoinLoader size="large" color="#6366f1" /></View> : <ScrollView className="flex-1 px-5 pt-5" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
       {tab === 'ALERTS' && <>
         <Text className="text-slate-900 dark:text-white font-bold text-lg mb-1">SMS charge and debit checks</Text><Text className="text-slate-500 dark:text-slate-400 text-sm mb-4">Flags require comparable history. Refunds and reversals are excluded.</Text>
         {!snapshot.smsAlerts.length && <Card><Text className="text-slate-600 dark:text-slate-300">No unusual SMS charges or likely duplicate debits need review.</Text></Card>}

@@ -7,14 +7,14 @@
       "policy": "appVersion"
     },
     "orientation": "portrait",
-    "icon": "./assets/images/Ethiopia-Coin-1-Birr-Weighing-Scale-Lion-KM78-2010-2016-removebg-preview.png",
+    "icon": "./assets/images/hisab-coin-icon.png",
     "scheme": "hisabtrackv1",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/Ethiopia-Coin-1-Birr-Weighing-Scale-Lion-KM78-2010-2016-removebg-preview.png",
+      "image": "./assets/images/hisab-coin-adaptive.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0f172a"
     },
     "ios": {
       "supportsTablet": true,
@@ -24,8 +24,8 @@
     "android": {
       "versionCode": 3,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/Ethiopia-Coin-1-Birr-Weighing-Scale-Lion-KM78-2010-2016-removebg-preview.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/hisab-coin-adaptive.png",
+        "backgroundColor": "#0f172a"
       },
       "permissions": [
         "USE_BIOMETRIC",
@@ -50,7 +50,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/hisab-coin-favicon.png"
     },
     "updates": {
       "enabled": true,

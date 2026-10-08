@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { getDatabase } from '@/services/database';
 import { BUNDLED_LOGOS } from '@/assets/bankLogos/et';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
@@ -12,7 +13,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import * as Router from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ImageBackground, Platform, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ImageBackground, Platform, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { useDispatch, useSelector } from 'react-redux';
@@ -251,7 +252,7 @@ export default function AccountDetail() {
             <Text className="text-slate-500 dark:text-slate-400 text-sm mb-2">Transactions</Text>
             {loading ? (
               <View className="h-24 justify-center items-center">
-                <ActivityIndicator size="small" color="#059669" />
+                <CoinLoader size="small" color="#059669" />
               </View>
             ) : transactions.length === 0 ? (
               <View className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">

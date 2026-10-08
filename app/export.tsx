@@ -1,3 +1,4 @@
+import CoinLoader from '@/components/CoinLoader';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import ExportService, { ReportType } from '@/services/ExportService';
@@ -15,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { createElement, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, ScrollView, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Modal, Platform, ScrollView, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
 import { themeTokens } from '@/constants/theme';
@@ -717,7 +718,7 @@ export default function ExportDataScreen() {
           className={`rounded-3xl ${isVerySmall ? 'p-4' : 'p-5'} mb-8 flex-row justify-center items-center ${!canExport || isExporting ? 'bg-slate-300 dark:bg-slate-700' : 'bg-sky-600'}`}
         >
           {isExporting ? (
-            <ActivityIndicator color="#fff" />
+            <CoinLoader color="#fff" />
           ) : (
             <>
               <FontAwesome name="download" size={isVerySmall ? 16 : 18} color="#fff" />
