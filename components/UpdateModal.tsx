@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { useTheme } from '@/contexts/ThemeContext';
 import { UpdateInfo, UpdateInstallProgress, UpdateService } from '@/services/UpdateService';
 
 interface UpdateModalProps {
@@ -10,6 +12,7 @@ interface UpdateModalProps {
 }
 
 export default function UpdateModal({ visible, updateInfo, onClose }: UpdateModalProps) {
+  const { isAurora } = useTheme();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<UpdateInstallProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -69,7 +72,13 @@ export default function UpdateModal({ visible, updateInfo, onClose }: UpdateModa
       }}
     >
       <View className="flex-1 bg-black/60 justify-center items-center px-6">
-        <View className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl items-center">
+        <View
+          className="bg-white dark:bg-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl items-center"
+          style={isAurora ? { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' } : undefined}
+        >
+          {isAurora && (
+            <BlurView intensity={36} tint="dark" pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+          )}
           <View className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full justify-center items-center mb-4">
             <FontAwesome
               name={updateInfo.updateType === 'ota' ? 'refresh' : 'cloud-download'}

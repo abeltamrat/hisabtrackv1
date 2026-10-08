@@ -1,7 +1,10 @@
 import { useAppLock } from '@/contexts/AppLockContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { FontAwesome } from '@expo/vector-icons';
-import { LinearGradient } from '@/components/aurora/AuroraGradient';
+// A security lock screen must always stay fully opaque, in every theme —
+// never the translucent glass AuroraGradient would make it, which would let
+// whatever was on screen before locking show through underneath.
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Text, TouchableOpacity, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

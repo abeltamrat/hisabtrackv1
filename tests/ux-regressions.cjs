@@ -233,6 +233,16 @@ test('web Alert keeps its structural and colour contract when Aurora Glass is ac
   });
 });
 
+test('the app-lock screen never becomes translucent, in any theme', () => {
+  // AuroraGradient re-tints whatever colours it is given to a low-opacity
+  // glass panel. That is right for a header or an icon tile with content
+  // meant to show through behind it, and wrong for a full-screen security
+  // screen, which must stay opaque so nothing before locking shows through.
+  const src = fs.readFileSync(path.join(root, 'components/AppLockScreen.tsx'), 'utf8');
+  assert.match(src, /from 'expo-linear-gradient'/, 'AppLockScreen must use the real LinearGradient, not the Aurora-glass one');
+  assert.ok(!src.includes("from '@/components/aurora/AuroraGradient'"), 'AppLockScreen must not import the Aurora-glass gradient');
+});
+
 test('no screen imports Alert from react-native, which is a no-op on web', () => {
   const offenders = [];
   const walk = dir => {
