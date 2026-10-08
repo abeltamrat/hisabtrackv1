@@ -48,7 +48,7 @@ function SummaryCard({ balance, income, expense, percentageChange = 0, loading =
 
   if (isAurora) {
     const sparkW = 300, sparkH = 48;
-    const path = !loading && trendPoints && trendPoints.length >= 2 ? sparklinePath(trendPoints, sparkW, sparkH) : '';
+    const path = !loading && !balancesHidden && trendPoints && trendPoints.length >= 2 ? sparklinePath(trendPoints, sparkW, sparkH) : '';
     const lastPoint = trendPoints && trendPoints.length >= 2
       ? { x: sparkW, y: sparkH - ((trendPoints[trendPoints.length - 1] - Math.min(...trendPoints)) / ((Math.max(...trendPoints) - Math.min(...trendPoints)) || 1)) * sparkH }
       : null;
@@ -105,13 +105,13 @@ function SummaryCard({ balance, income, expense, percentageChange = 0, loading =
             <View className="flex-1 rounded-2xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
               <Text className="text-white/80 text-xs">{t('inFlow')}</Text>
               <Text className="text-emerald-300 font-bold mt-0.5" style={{ fontSize: isVerySmall ? 14 : 17 }} numberOfLines={1} adjustsFontSizeToFit>
-                {loading ? '—' : `+${formatCurrency(income)}`}
+                {loading ? '—' : balancesHidden ? '••••••' : `+${formatCurrency(income)}`}
               </Text>
             </View>
             <View className="flex-1 rounded-2xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
               <Text className="text-white/80 text-xs">{t('outFlow')}</Text>
               <Text className="text-rose-300 font-bold mt-0.5" style={{ fontSize: isVerySmall ? 14 : 17 }} numberOfLines={1} adjustsFontSizeToFit>
-                {loading ? '—' : `−${formatCurrency(expense)}`}
+                {loading ? '—' : balancesHidden ? '••••••' : `−${formatCurrency(expense)}`}
               </Text>
             </View>
           </View>

@@ -16,6 +16,8 @@ interface FinancialPulseProps {
   topExpenseCategoryAmount?: number;
   /** False before anything has been recorded, so the card does not assert a verdict. */
   hasData?: boolean;
+  /** Mirrors the global "hide balances" setting; masks every figure this card shows. */
+  balancesHidden?: boolean;
   onOpenBudget: () => void;
   onOpenLoans: () => void;
   onOpenAssistant: () => void;
@@ -30,6 +32,7 @@ function FinancialPulse({
   topExpenseCategoryName,
   topExpenseCategoryAmount = 0,
   hasData = true,
+  balancesHidden = false,
   onOpenBudget,
   onOpenLoans,
   onOpenAssistant,
@@ -46,6 +49,7 @@ function FinancialPulse({
     topExpenseCategoryName,
     topExpenseCategoryAmount,
     formatCurrency,
+    balancesHidden,
   });
 
   if (isAurora) {
@@ -76,7 +80,7 @@ function FinancialPulse({
             <View className="flex-1">
               <Text className="text-white/80 text-xs">This month's pulse</Text>
               <Text className="text-white font-extrabold text-lg mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
-                {hasData ? `${monthlyNet >= 0 ? '+' : ''}${formatCurrency(monthlyNet)} net` : '—'}
+                {!hasData ? '—' : balancesHidden ? '•••••• net' : `${monthlyNet >= 0 ? '+' : ''}${formatCurrency(monthlyNet)} net`}
               </Text>
               <Text className="text-white/80 text-xs mt-1" numberOfLines={2}>{headline}</Text>
             </View>
@@ -187,6 +191,7 @@ function getHeadline({
   topExpenseCategoryName,
   topExpenseCategoryAmount,
   formatCurrency,
+  balancesHidden,
 }: {
   hasData: boolean;
   monthlyNet: number;
@@ -196,14 +201,16 @@ function getHeadline({
   topExpenseCategoryName?: string;
   topExpenseCategoryAmount: number;
   formatCurrency: (amount: number) => string;
+  balancesHidden?: boolean;
 }) {
+  const amount = (value: number) => balancesHidden ? '••••••' : formatCurrency(value);
   // With an empty ledger every metric is zero, which used to fall through to
   // "Your financial health is stable" — a verdict on data that does not exist.
   if (!hasData) {
     return 'Add an account and record your first transaction, and this card will start tracking your month.';
   }
   if (monthlyNet < 0) {
-    return `This month is negative by ${formatCurrency(Math.abs(monthlyNet))}. Focus on essential spending only this week.`;
+    return `This month is negative by ${amount(Math.abs(monthlyNet))}. Focus on essential spending only this week.`;
   }
   if (overBudgetCount > 0) {
     return `You are over budget in ${overBudgetCount} ${overBudgetCount === 1 ? 'category' : 'categories'}. Rebalance now before month-end.`;
@@ -212,7 +219,7 @@ function getHeadline({
     return `${dueSoonLoanCount} ${dueSoonLoanCount === 1 ? 'loan payment is' : 'loan payments are'} due in 7 days. Plan cash coverage early.`;
   }
   if (topExpenseCategoryName) {
-    return `Top expense focus is ${topExpenseCategoryName} at ${formatCurrency(topExpenseCategoryAmount)}. Try trimming it by 10%.`;
+    return `Top expense focus is ${topExpenseCategoryName} at ${amount(topExpenseCategoryAmount)}. Try trimming it by 10%.`;
   }
   if (savingsRate >= 20) {
     return 'Your current savings momentum is strong. Keep this pace and protect your emergency buffer.';

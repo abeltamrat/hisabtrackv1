@@ -38,7 +38,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useAuth();
-  const { fontSize, formatCurrency } = useAppSettings();
+  const { fontSize, formatCurrency, balancesHidden } = useAppSettings();
   const { actualTheme, isAurora } = useTheme();
   const { t } = useI18n();
   const { items: transactions } = useSelector((state: RootState) => state.transactions);
@@ -298,11 +298,21 @@ export default function DashboardScreen() {
         {/* Content Section */}
         <View className="px-6 -mt-20">
           {isAurora && (accounts.length > 0 || heldForMeFunds.length > 0) && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5" contentContainerStyle={{ gap: 10 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              // Required on Android for a horizontal scroller nested inside this
+              // screen's own vertical ScrollView — without it, drags here were
+              // claimed by the outer scroll and this row never moved.
+              nestedScrollEnabled
+              directionalLockEnabled
+              className="mb-5"
+              contentContainerStyle={{ gap: 10 }}
+            >
               {accounts.map(account => (
                 <View key={account.id} className="rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' }}>
                   <Text className="text-white/90 text-[11px]" numberOfLines={1}>{account.name}</Text>
-                  <Text className="text-white font-extrabold text-sm mt-0.5" numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(account.balance)}</Text>
+                  <Text className="text-white font-extrabold text-sm mt-0.5" numberOfLines={1} adjustsFontSizeToFit>{balancesHidden ? '••••••' : formatCurrency(account.balance)}</Text>
                 </View>
               ))}
               {heldForMeFunds.map(fund => (
@@ -314,7 +324,7 @@ export default function DashboardScreen() {
                   style={{ backgroundColor: 'rgba(103,232,249,0.12)', borderWidth: 1, borderColor: 'rgba(103,232,249,0.35)' }}
                 >
                   <Text className="text-cyan-200 text-[11px]" numberOfLines={1}>{t('heldByLabel')} {fund.custodianName}</Text>
-                  <Text className="text-white font-extrabold text-sm mt-0.5" numberOfLines={1} adjustsFontSizeToFit>{formatFundMoney(fund.balance, fund.currency)}</Text>
+                  <Text className="text-white font-extrabold text-sm mt-0.5" numberOfLines={1} adjustsFontSizeToFit>{balancesHidden ? '••••••' : formatFundMoney(fund.balance, fund.currency)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -469,6 +479,7 @@ export default function DashboardScreen() {
           {/* Financial Pulse */}
           <FinancialPulse
             monthlyNet={thisMonthNet}
+            balancesHidden={balancesHidden}
             savingsRate={monthlySavingsRate}
             overBudgetCount={overBudgetCount}
             nearBudgetCount={nearBudgetCount}
