@@ -194,6 +194,8 @@ function RootLayoutNav() {
         router.push('/draft-transactions' as any);
       } else if (data?.actionType === 'view_transactions') {
         router.push('/(tabs)' as any);
+      } else if (data?.actionType === 'view_smart_review') {
+        router.push('/smart-review' as any);
       }
     });
 
@@ -357,6 +359,7 @@ function ThemedStack() {
         <Stack.Screen name="cards" options={{ headerShown: false }} />
         <Stack.Screen name="draft-transactions" options={{ headerShown: false }} />
         <Stack.Screen name="manage-sms-rules" options={{ headerShown: false }} />
+        <Stack.Screen name="smart-review" options={{ headerShown: false }} />
         <Stack.Screen name="aiassistant" options={{ headerShown: false }} />
         <Stack.Screen name="about" options={{ headerShown: false }} />
         <Stack.Screen name="privacy" options={{ headerShown: false }} />

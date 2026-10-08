@@ -201,6 +201,8 @@ const ENHANCED_SMS_PATTERNS: Record<string, any> = {
     credit: [
       /(?:credited|received|deposited|added)\s+(?:with\s+)?(?:rs\.?|inr|₹|birr|etb|br|usd|\$)?\s*([\d,]+\.?\d*)/i,
       /(?:rs\.?|inr|₹|birr|etb|br|usd|\$)\s*([\d,]+\.?\d*).*?(?:credited|received|deposited|added)/i,
+      /(?:refund(?:ed)?|reversal|reversed).*?(?:birr|etb|br|usd)\s*([\d,]+\.?\d*)/i,
+      /(?:birr|etb|br|usd)\s*([\d,]+\.?\d*).*?(?:refund(?:ed)?|reversal|reversed)/i,
       // Amount-before-currency-before-verb
       /(?:etb|birr|br)\s*([\d,]+\.?\d*)\s*has\s+been\s+(?:credited|deposited|received)/i,
     ],
@@ -255,6 +257,25 @@ export class EnhancedSMSParser {
             const parsed = this.parseAmount(m[1]);
             if (parsed > 0) { amount = parsed; type = 'INCOME'; break; }
           }
+        }
+      }
+
+      // Identified institutions sometimes introduce new wording before the
+      // dedicated parser is updated. Reuse only the conservative generic
+      // amount grammar, while keeping bank-specific account/fee extraction.
+      if (!type && bankType !== 'generic') {
+        const fallbacks: Array<{ type: 'INCOME' | 'EXPENSE'; patterns: RegExp[] }> = [
+          { type: 'EXPENSE', patterns: ENHANCED_SMS_PATTERNS.generic.debit },
+          { type: 'INCOME', patterns: ENHANCED_SMS_PATTERNS.generic.credit },
+        ];
+        for (const fallback of fallbacks) {
+          for (const pattern of fallback.patterns) {
+            const match = message.match(pattern);
+            if (!match) continue;
+            const parsed = this.parseAmount(match[1]);
+            if (parsed > 0) { amount = parsed; type = fallback.type; break; }
+          }
+          if (type) break;
         }
       }
 

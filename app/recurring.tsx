@@ -349,108 +349,11 @@ export default function RecurringTransactionsScreen() {
     }
   };
 
-  /**
-   * Fix #4: Catch-up processor for overdue recurring transactions.
-   *
-   * On each app open, checks every active recurring transaction.
-   * If its nextDate is in the past, creates one transaction per missed interval
-   * (capped at MAX_CATCH_UP to guard against runaway loops), then advances
-   * nextDate so it falls in the future again.
-   */
-  const processOverdueRecurring = async (items: RecurringTransaction[]) => {
-    const MAX_CATCH_UP = 12;
-    const now = Date.now();
-    let anyUpdated = false;
-
-    let dbTransactions: any[] = [];
-    try {
-      const { getDatabase } = await import('@/services/database');
-      const db = await getDatabase();
-      dbTransactions = await db.getTransactions();
-    } catch (dbErr) {
-      console.warn('[Recurring catch-up] Failed to load database transactions for duplicate checking:', dbErr);
-    }
-
-    const updated = await Promise.all(
-      items.map(async (rt) => {
-        if (!rt.isActive || rt.nextDate > now) return rt;
-
-        let current = { ...rt };
-        let catchUpCount = 0;
-
-        while (current.nextDate <= now && catchUpCount < MAX_CATCH_UP) {
-          if (current.endDate && current.nextDate > current.endDate) break;
-          if (current.totalRepetitions && current.completedRepetitions >= current.totalRepetitions) {
-            current = { ...current, isActive: false };
-            break;
-          }
-
-          const operationId = `recurring-${current.id}-${current.nextDate}`;
-          const isDuplicate = dbTransactions.some(tx => tx.operation_id === operationId);
-          if (current.type === 'TRANSFER' && !current.toAccountId) return current;
-          if (!isDuplicate) {
-            try {
-              if (current.type === 'TRANSFER' && current.toAccountId) {
-                await dispatch(addTransaction({
-                  account_id: current.accountId,
-                  operation_id: operationId,
-                  to_account_id: current.toAccountId,
-                  type: 'TRANSFER',
-                  amount: current.amount,
-                  fees: current.fees,
-                  tax: current.tax,
-                  category: current.category,
-                  tags: current.tags,
-                  description: `${current.name} (Recurring - catch-up)`,
-                  splits: current.splits,
-                  date: current.nextDate,
-                })).unwrap();
-              } else if (current.type !== 'TRANSFER') {
-                await dispatch(addTransaction({
-                  account_id: current.accountId,
-                  operation_id: operationId,
-                  type: current.type,
-                  amount: current.amount,
-                  category: current.category,
-                  tags: current.tags,
-                  description: `${current.name} (Recurring - catch-up)`,
-                  splits: current.splits,
-                  date: current.nextDate,
-                })).unwrap();
-              }
-            } catch (err) {
-              console.warn('[Recurring catch-up] Failed to create transaction:', err);
-              return current;
-            }
-          } else {
-          }
-
-          current = {
-            ...current,
-            nextDate: advanceDate(current.frequency, current.nextDate, current.startDate),
-            completedRepetitions: current.completedRepetitions + 1,
-          };
-          catchUpCount++;
-          anyUpdated = true;
-        }
-
-        return current;
-      })
-    );
-
-    if (anyUpdated) {
-      const raw = JSON.stringify(updated);
-      if (Platform.OS === 'web') {
-        sessionLocalStorage.setItem('recurring_transactions', raw);
-      } else {
-        await AsyncStorage.setItem('@hisabtrack_recurring_transactions', raw);
-      }
-      setRecurringTransactions(updated);
-      dispatch(fetchAccounts());
-      dispatch(fetchTransactions());
-    }
+  // An overdue recurring item is an expectation, not proof that cash moved.
+  // Keep it overdue for Smart Review; users can record, skip, move or pause it.
+  const processOverdueRecurring = async (_items: RecurringTransaction[]) => {
+    return;
   };
-
   const handleSave = async () => {
     setFormError(null);
     if (!name.trim() || !amount) {

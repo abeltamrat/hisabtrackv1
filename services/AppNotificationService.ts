@@ -20,7 +20,7 @@ export interface AppNotification {
   timestamp: number;
   read: boolean;
   isAI?: boolean; // Flag to distinguish AI-driven notifications
-  actionType?: 'view_transactions' | 'view_budget' | 'view_reports' | 'view_loans' | 'view_recurring' | 'view_drafts' | 'view_funds';
+  actionType?: 'view_transactions' | 'view_budget' | 'view_reports' | 'view_loans' | 'view_recurring' | 'view_drafts' | 'view_funds' | 'view_smart_review';
   /** Opens this fund when actionType is view_funds. */
   fundId?: string;
 }
@@ -29,6 +29,28 @@ const STORAGE_KEY = 'app_notifications';
 const MAX_NOTIFICATIONS = 50;
 
 export class AppNotificationService {
+  static async syncSourceNotifications(
+    prefix: string,
+    active: Array<Omit<AppNotification, 'id' | 'timestamp' | 'read'>>,
+  ): Promise<void> {
+    const existing = await this.getNotifications();
+    const previousKeys = new Set(existing.filter(item => item.sourceKey?.startsWith(prefix)).map(item => item.sourceKey));
+    const activeKeys = new Set(active.map(item => item.sourceKey).filter((key): key is string => !!key));
+    const now = Date.now();
+    const next = existing
+      .filter(item => !item.sourceKey?.startsWith(prefix) || activeKeys.has(item.sourceKey))
+      .map(item => {
+        const replacement = active.find(activeItem => activeItem.sourceKey === item.sourceKey);
+        return replacement ? { ...item, ...replacement } : item;
+      });
+    for (const item of active) {
+      if (item.sourceKey && !previousKeys.has(item.sourceKey)) next.push({ ...item, id: `${item.sourceKey}:${now}`, timestamp: now, read: false });
+    }
+    next.sort((a, b) => b.timestamp - a.timestamp);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next.slice(0, MAX_NOTIFICATIONS)));
+    LocalChangeEmitter.emit();
+  }
+
   static async syncForecastNotifications(
     active: Array<Omit<AppNotification, 'id' | 'timestamp' | 'read'>>,
   ): Promise<void> {
@@ -220,6 +242,13 @@ export class AppNotificationService {
       const effectiveCategories = categories.length ? categories : (await import('@/constants/MockData')).CATEGORIES;
       const categoryScopes = (await import('@/utils/categoryHierarchy')).buildCategoryScopes(effectiveCategories);
       await this.generateSmartNotifications(transactions, loans, recurring, budgets, accounts[0]?.currency || 'ETB', accounts, categoryScopes);
+      const phase2 = await (await import('@/services/Phase2IntelligenceService')).Phase2IntelligenceService.analyze(transactions, accounts);
+      const reviewNotifications: Array<Omit<AppNotification, 'id' | 'timestamp' | 'read'>> = [
+        ...phase2.smsAlerts.map(alert => ({ sourceKey: `phase2:${alert.id}`, title: alert.title, message: alert.explanation, type: alert.severity === 'WARNING' ? 'warning' as const : 'info' as const, icon: alert.kind === 'POSSIBLE_DOUBLE_DEBIT' ? 'clone' : 'exclamation-circle', color: alert.severity === 'WARNING' ? '#dc2626' : '#2563eb', actionType: 'view_smart_review' as const })),
+        ...phase2.recurringAlerts.map(alert => ({ sourceKey: `phase2:${alert.id}`, title: alert.title, message: alert.explanation, type: 'warning' as const, icon: 'calendar-times-o', color: '#d97706', actionType: 'view_smart_review' as const })),
+        ...phase2.recipientSuggestions.slice(0, 3).map(suggestion => ({ sourceKey: `phase2:${suggestion.id}`, title: 'Recipient aliases may match', message: `${suggestion.left} and ${suggestion.right}: ${suggestion.reason}`, type: 'info' as const, icon: 'user-circle', color: '#7c3aed', actionType: 'view_smart_review' as const })),
+      ];
+      await this.syncSourceNotifications('phase2:', reviewNotifications.slice(0, 12));
       
     } catch (error) {
       console.error('Error in checkAll:', error);

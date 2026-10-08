@@ -128,6 +128,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   ];
 
   const toolsItems: MenuItem[] = [
+    { id: 'smart-review', title: 'Smart Review', icon: 'shield', route: '/smart-review', color: '#7c3aed' },
     { id: 'sms-learning', title: 'Teach SMS Parser', icon: 'graduation-cap', route: '/manage-sms-rules', color: '#14b8a6' },
     { id: 'ai-assistant', title: 'AI Assistant', icon: 'magic', route: '/aiassistant', color: '#6366f1' },
     { id: 'export', title: 'Export Data', icon: 'download', route: '/export', color: '#06b6d4' },

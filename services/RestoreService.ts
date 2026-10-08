@@ -39,6 +39,11 @@ export class RestoreService {
       const rules = await SMSLearningService.getAllRules(); check();
       await SMSLearningService.saveAllRules({ ...rules, ...backup.smsLearningRules });
     }
+    if (backup.recipientProfiles) {
+      const identities = (await import('./RecipientIdentityService')).default;
+      const profiles = await identities.getAll(); check();
+      await identities.saveAll(merge(profiles, backup.recipientProfiles));
+    }
     if (backup.settings) {
       const current = await loadStoredAppSettings(); check();
       const settings = { ...current, ...BackupService.safeSettings(backup.settings) };

@@ -9,6 +9,7 @@ import { StorageService } from '@/utils/storage';
 import { createSerialQueue } from '@/utils/asyncLock';
 import { findSelfTransferPairs } from '@/utils/transferPairing';
 import { SMSAICalibrationService } from './SMSAICalibrationService';
+import RecipientIdentityService from './RecipientIdentityService';
 
 export type { SMSReconciliationResult } from './DraftTransactionService';
 import type { SMSReconciliationResult } from './DraftTransactionService';
@@ -384,6 +385,9 @@ export class SMSSyncService {
           }
         }
 
+        const recipientProfile = await RecipientIdentityService.resolve(parsed.merchant, parsed.rawMessage);
+        const recipientDefaults = recipientProfile ? RecipientIdentityService.learnedDefaults(recipientProfile, existingTransactions) : undefined;
+        if (!isTransfer && !rule && recipientDefaults?.category) category = recipientDefaults.category;
         const draft: Omit<DraftTransaction, 'id' | 'created_at'> = {
           account_id: account.id,
           type: parsed.type,
@@ -394,7 +398,7 @@ export class SMSSyncService {
           date: parsed.date,
           sms_id: parsed.smsId,
           sms_sender: sms.address,
-          sender_receiver: parsed.merchant,
+          sender_receiver: recipientProfile?.displayName || parsed.merchant,
           reference_number: parsed.referenceNumber,
           fees: parsed.fees,
           tax: parsed.tax,

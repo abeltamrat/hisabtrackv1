@@ -2,7 +2,7 @@
 
 Updated: 2026-10-08 (Africa/Nairobi)
 
-Status: Phase 1 complete in code and automated validation; later phases remain planned. This document merges the smart-feature proposals with the existing project capabilities. Priority is based on user value, correctness, dependencies, and implementation effort.
+Status: Phases 1 and 2 complete in code and automated validation; later phases remain planned. This document merges the smart-feature proposals with the existing project capabilities. Priority is based on user value, correctness, dependencies, and implementation effort.
 
 ## Existing foundation
 
@@ -85,42 +85,42 @@ Done when: users can inspect every deduction behind the estimate and edit the ho
 
 ### 6. Unusual charges and likely double debits — high value, medium effort
 
-- [ ] Build per-bank/transaction-kind charge baselines, separating service charge, VAT, disaster-recovery charge, and transfer size bands.
-- [ ] Flag fee changes and recipient payments outside a robust historical range only with sufficient samples.
-- [ ] Suggest possible duplicate debits using amount, normalized recipient, time, account, and reference evidence.
-- [ ] Distinguish repeated notifications for one payment from two real payments; never delete a transaction automatically.
-- [ ] Offer "Expected"/dismiss feedback and link the supporting records.
-- [ ] Verify refunds, reversals, fees that scale with amount, and legitimate repeated payments.
+- [x] Build per-bank/transaction-kind charge baselines, separating service charge, VAT, disaster-recovery charge, and transfer size bands.
+- [x] Flag fee changes and recipient payments outside a robust historical range only with sufficient samples.
+- [x] Suggest possible duplicate debits using amount, normalized recipient, time, account, and reference evidence.
+- [x] Distinguish repeated notifications for one payment from two real payments; never delete a transaction automatically.
+- [x] Offer "Expected"/dismiss feedback and link the supporting records.
+- [x] Verify refunds, reversals, fees that scale with amount, and legitimate repeated payments.
 
 Done when: a flagged charge shows its baseline and why it differs, with no silent ledger mutation.
 
 ### 7. Missing or changed recurring payments — high value, medium effort
 
-- [ ] Match observed SMS/transactions to expected recurring occurrences with identity, account, amount tolerance, and date grace windows.
-- [ ] Warn about changed amounts and overdue expected income or bills.
-- [ ] Distinguish "not recorded yet" from "not received"; an absent SMS cannot prove a missing payment.
-- [ ] Let users confirm a new amount, skip one occurrence, pause a rule, or move its expected date.
-- [ ] Keep expected events distinct from bank-confirmed cash postings; reconcile scheduled/manual/SMS occurrences without posting twice.
-- [ ] Verify variable bills, late salary, missed imports, weekends, and overdue rules.
+- [x] Match observed SMS/transactions to expected recurring occurrences with identity, account, amount tolerance, and date grace windows.
+- [x] Warn about changed amounts and overdue expected income or bills.
+- [x] Distinguish "not recorded yet" from "not received"; an absent SMS cannot prove a missing payment.
+- [x] Let users confirm a new amount, skip one occurrence, pause a rule, or move its expected date.
+- [x] Keep expected events distinct from bank-confirmed cash postings; reconcile scheduled/manual/SMS occurrences without posting twice.
+- [x] Verify variable bills, late salary, missed imports, weekends, and overdue rules.
 
 Done when: "Salary has not been recorded; it usually arrives by the 5th" and "Rent changed from ETB 8,000 to ETB 9,500" are supported by evidence and do not fabricate postings.
 
 ### 8. Recipient identities and aliases — medium value, medium effort
 
-- [ ] Create user-scoped recipient profiles with explicit aliases and verified phone/account hints.
-- [ ] Suggest merging "ABEBE K", "Abebe Kebede", and a matching identifier; require confirmation and allow unmerge.
-- [ ] Keep owned-account aliases separate from payee identities and handle shared names or phone numbers.
-- [ ] Link a unified recipient history and learned category/tag defaults without rewriting raw SMS evidence.
-- [ ] Verify ambiguous identities and same-day identical transfers; use stronger identity evidence to improve transfer suggestions.
+- [x] Create user-scoped recipient profiles with explicit aliases and verified phone/account hints.
+- [x] Suggest merging "ABEBE K", "Abebe Kebede", and a matching identifier; require confirmation and allow unmerge.
+- [x] Keep owned-account aliases separate from payee identities and handle shared names or phone numbers.
+- [x] Link a unified recipient history and learned category/tag defaults without rewriting raw SMS evidence.
+- [x] Verify ambiguous identities and same-day identical transfers; use stronger identity evidence to improve transfer suggestions.
 
 Done when: confirmed aliases share history and suggestions, while ambiguous names remain separate until reviewed.
 
 ### 9. Bank/mobile-money coverage expansion — medium value, ongoing effort
 
-- [ ] Inventory existing parser coverage, including Telebirr, CBE, and other configured banks.
-- [ ] Collect redacted fixtures for missing formats: cash-in/out, merchant payment, reversal, bank-wallet transfer, charges, and masked accounts.
-- [ ] Add missing parsers and sender identification without routing an SMS to an unrelated owned account.
-- [ ] Verify principal, gross amount, balance, recipient, reference, charges, receipt, and duplicate handling for each supported format.
+- [x] Inventory existing parser coverage, including Telebirr, CBE, and other configured banks.
+- [x] Collect redacted fixtures for missing formats: cash-in/out, merchant payment, reversal, bank-wallet transfer, charges, and masked accounts.
+- [x] Add missing parsers and sender identification without routing an SMS to an unrelated owned account.
+- [x] Verify principal, gross amount, balance, recipient, reference, charges, receipt, and duplicate handling for each supported format.
 
 Done when: a documented coverage matrix identifies supported formats and their regression fixtures; no claim of support is based only on a bank name.
 

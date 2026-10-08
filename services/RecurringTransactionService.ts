@@ -3,6 +3,7 @@ import { NotificationService } from '@/services/NotificationService';
 import type { RecurringFrequency, RecurringTransaction, TransactionSplit, TransactionType } from '@/types/database';
 import { advanceDate, money } from '@/utils/finance';
 import { generateUUID } from '@/utils/uuid';
+import { createSerialQueue } from '@/utils/asyncLock';
 import { Platform } from 'react-native';
 
 const STORAGE_KEY = Platform.OS === 'web' ? 'recurring_transactions' : '@hisabtrack_recurring_transactions';
@@ -13,6 +14,7 @@ const read = () => Platform.OS === 'web'
 const write = (value: string) => Platform.OS === 'web'
   ? Promise.resolve(sessionLocalStorage.setItem(STORAGE_KEY, value))
   : AsyncStorage.setItem(STORAGE_KEY, value);
+const mutate = createSerialQueue();
 
 export interface CreateRecurringInput {
   name: string;
@@ -39,6 +41,19 @@ export interface CreateRecurringInput {
 }
 
 export class RecurringTransactionService {
+  private static async replaceReminders(rule: RecurringTransaction): Promise<RecurringTransaction> {
+    await Promise.all([...new Set([...(rule.notificationIds || []), ...(rule.notificationId ? [rule.notificationId] : [])])].map(id => NotificationService.cancelNotification(id)));
+    if (!rule.isActive || !rule.reminderEnabled) return this.update(rule.id, { notificationId: undefined, notificationIds: undefined });
+    const reminder = rule.reminderTime ? new Date(rule.reminderTime) : new Date(rule.nextDate);
+    const days = rule.reminderDaysBeforeList?.length ? rule.reminderDaysBeforeList : [rule.reminderDaysBefore];
+    const ids = (await Promise.all(days.map(daysBefore => {
+      const trigger = new Date(rule.nextDate);
+      trigger.setDate(trigger.getDate() - daysBefore);
+      trigger.setHours(reminder.getHours(), reminder.getMinutes(), 0, 0);
+      return NotificationService.scheduleRecurringReminder(rule.id, rule.name, rule.amount, rule.type, trigger, rule.frequency);
+    }))).filter((id): id is string => !!id);
+    return this.update(rule.id, { notificationId: ids[0], notificationIds: ids });
+  }
   static async getAll(): Promise<RecurringTransaction[]> {
     const stored = await read();
     return stored ? JSON.parse(stored) : [];
@@ -111,5 +126,72 @@ export class RecurringTransactionService {
     const item = all.find(rule => rule.id === id);
     await Promise.all([...new Set([...(item?.notificationIds || []), ...(item?.notificationId ? [item.notificationId] : [])])].map(notificationId => NotificationService.cancelNotification(notificationId)));
     await write(JSON.stringify(all.filter(rule => rule.id !== id)));
+  }
+
+  /** Update one expected rule without creating a cash posting. */
+  static async update(id: string, patch: Partial<RecurringTransaction>): Promise<RecurringTransaction> {
+    return mutate(async () => {
+      const all = await this.getAll();
+      const index = all.findIndex(item => item.id === id);
+      if (index < 0) throw new Error('Recurring rule not found');
+      const next = { ...all[index], ...patch, id: all[index].id };
+      if (money(next.amount) <= 0 || !Number.isFinite(next.nextDate)) throw new Error('Invalid recurring rule update');
+      all[index] = next;
+      await write(JSON.stringify(all));
+      return next;
+    });
+  }
+
+  static async pause(id: string): Promise<RecurringTransaction> {
+    const updated = await this.update(id, { isActive: false });
+    return this.replaceReminders(updated);
+  }
+
+  /** Skip advances only the expectation; it deliberately does not post money. */
+  static async skipOccurrence(id: string): Promise<RecurringTransaction> {
+    const rule = (await this.getAll()).find(item => item.id === id);
+    if (!rule) throw new Error('Recurring rule not found');
+    const nextDate = advanceDate(rule.frequency, rule.nextDate, rule.startDate);
+    const completedRepetitions = rule.completedRepetitions + 1;
+    const updated = await this.update(id, {
+      nextDate,
+      completedRepetitions,
+      isActive: (!rule.totalRepetitions || completedRepetitions < rule.totalRepetitions) && (!rule.endDate || nextDate <= rule.endDate),
+    });
+    return this.replaceReminders(updated);
+  }
+
+  static async moveExpectedDate(id: string, nextDate: number): Promise<RecurringTransaction> {
+    if (!Number.isFinite(nextDate)) return Promise.reject(new Error('Enter a valid expected date'));
+    const updated = await this.update(id, { nextDate });
+    return this.replaceReminders(updated);
+  }
+
+  static acceptNewAmount(id: string, amount: number): Promise<RecurringTransaction> {
+    if (money(amount) <= 0) return Promise.reject(new Error('Amount must be greater than zero'));
+    return this.update(id, { amount: money(amount) });
+  }
+
+  /** Reconcile one observed occurrence and advance its expectation once. */
+  static async settleObservedOccurrence(id: string, expectedDate: number, newAmount?: number): Promise<RecurringTransaction | undefined> {
+    const updated = await mutate(async () => {
+      const all = await this.getAll();
+      const index = all.findIndex(item => item.id === id);
+      if (index < 0 || all[index].nextDate !== expectedDate) return undefined;
+      const rule = all[index];
+      const nextDate = advanceDate(rule.frequency, rule.nextDate, rule.startDate);
+      const completedRepetitions = rule.completedRepetitions + 1;
+      const updated: RecurringTransaction = {
+        ...rule,
+        ...(newAmount === undefined ? {} : { amount: money(newAmount) }),
+        nextDate,
+        completedRepetitions,
+        isActive: (!rule.totalRepetitions || completedRepetitions < rule.totalRepetitions) && (!rule.endDate || nextDate <= rule.endDate),
+      };
+      all[index] = updated;
+      await write(JSON.stringify(all));
+      return updated;
+    });
+    return updated ? this.replaceReminders(updated) : undefined;
   }
 }

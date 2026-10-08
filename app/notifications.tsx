@@ -102,6 +102,8 @@ export default function NotificationsScreen() {
       router.push('/recurring');
     } else if (notification.actionType === 'view_drafts') {
       router.push('/draft-transactions');
+    } else if (notification.actionType === 'view_smart_review') {
+      router.push('/smart-review' as any);
     }
   };
 

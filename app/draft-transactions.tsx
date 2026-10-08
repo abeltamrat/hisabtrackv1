@@ -30,6 +30,7 @@ import { detectRecurringPattern } from '@/utils/recurringDetection';
 import { useI18n } from '@/contexts/I18nContext';
 import { rankTagSuggestions } from '@/utils/tagSuggestions';
 import ReconciliationService, { type BalanceGapAnalysis } from '@/services/ReconciliationService';
+import RecipientIdentityService from '@/services/RecipientIdentityService';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -58,6 +59,7 @@ export default function DraftTransactionsScreen() {
   const params = useLocalSearchParams();
   const accountId = typeof params.accountId === 'string' ? params.accountId : undefined;
   const draftIdParam = typeof params.draftId === 'string' ? params.draftId : undefined;
+  const evidenceIdsParam = typeof params.evidenceIds === 'string' ? params.evidenceIds : undefined;
   const shouldRecalibrate = params.recalibrate === '1';
   const recalibrationStarted = useRef(false);
 
@@ -70,7 +72,7 @@ export default function DraftTransactionsScreen() {
   const [drafts, setDrafts] = useState<DraftTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'unrecorded' | 'recorded'>('unrecorded');
+  const [filter, setFilter] = useState<'all' | 'unrecorded' | 'recorded'>(evidenceIdsParam ? 'all' : 'unrecorded');
 
   // Preview & Confirm Modal States
   const [selectedDraft, setSelectedDraft] = useState<DraftTransaction | null>(null);
@@ -137,12 +139,14 @@ export default function DraftTransactionsScreen() {
   } as any, transactions) : null, [editedCategory, editedDescription, editedRecipient, editedType, selectedDraft, transactions]);
 
   const filteredDrafts = useMemo(() => {
+    const evidenceIds = new Set((evidenceIdsParam || '').split(',').filter(Boolean));
     return drafts.filter(d => {
+      if (evidenceIds.size && !evidenceIds.has(d.id)) return false;
       if (typeFilter === 'income') return d.type === 'INCOME';
       if (typeFilter === 'expense') return d.type === 'EXPENSE';
       return true;
     });
-  }, [drafts, typeFilter]);
+  }, [drafts, evidenceIdsParam, typeFilter]);
 
   const groupedDrafts = useMemo(() => {
     if (groupingMode === 'none') return [{ title: '', data: filteredDrafts }];
@@ -216,6 +220,7 @@ export default function DraftTransactionsScreen() {
       setDismissedRecurringSuggestion(false);
       setNote('');
       setTagsInput('');
+      void applyRecipientDefaults(target);
       setShowConfirmModal(true);
     }
   }, [draftIdParam, loading, drafts]);
@@ -379,6 +384,15 @@ export default function DraftTransactionsScreen() {
     setTagsInput(newTags.join(', '));
   };
 
+  const applyRecipientDefaults = async (draft: DraftTransaction) => {
+    const profile = await RecipientIdentityService.resolve(draft.sender_receiver, draft.raw_sms);
+    if (!profile) return;
+    const defaults = RecipientIdentityService.learnedDefaults(profile, transactions);
+    setEditedRecipient(profile.displayName);
+    if (defaults.category && !draft.is_transfer) setEditedCategory(defaults.category);
+    if (defaults.tags.length) setTagsInput(defaults.tags.join(', '));
+  };
+
   const openConfirmModal = (draft: DraftTransaction) => {
     setSelectedDraft(draft);
     setEditedRecipient(draft.sender_receiver || '');
@@ -402,6 +416,7 @@ export default function DraftTransactionsScreen() {
     setDismissedRecurringSuggestion(false);
     setNote('');
     setTagsInput('');
+    void applyRecipientDefaults(draft);
     setRecordAsLoan(!!draft.is_loan_disbursement);
     setLoanCounterparty(draft.sender_receiver || 'SMS loan');
     const defaultDue = new Date(draft.date + 30 * 24 * 60 * 60 * 1000);

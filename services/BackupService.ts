@@ -16,6 +16,7 @@ export interface BackupData {
   recurringTransactions?: any[];
   settings?: any;
   smsLearningRules?: any;
+  recipientProfiles?: any[];
 }
 
 export class BackupService {
@@ -32,7 +33,8 @@ export class BackupService {
     categories?: any[],
     recurringTransactions?: any[],
     settings?: any,
-    smsLearningRules?: any
+    smsLearningRules?: any,
+    recipientProfiles?: any[]
   ): BackupData {
     return {
       version: this.BACKUP_VERSION,
@@ -45,6 +47,7 @@ export class BackupService {
       recurringTransactions,
       settings: this.safeSettings(settings),
       smsLearningRules,
+      recipientProfiles,
     };
   }
 
@@ -101,6 +104,13 @@ export class BackupService {
       console.warn('[BackupService] Failed to fetch SMS learning rules for backup:', e);
     }
 
+    let recipientProfiles: any[] = [];
+    try {
+      recipientProfiles = await (await import('@/services/RecipientIdentityService')).default.getAll();
+    } catch (e) {
+      console.warn('[BackupService] Failed to fetch recipient profiles for backup:', e);
+    }
+
     const backup = this.createBackup(
       accounts,
       transactions,
@@ -109,7 +119,8 @@ export class BackupService {
       categories,
       recurringTransactions,
       settings,
-      smsLearningRules
+      smsLearningRules,
+      recipientProfiles
     );
     const rawGoals = await (await import('./SessionStorage')).default.getItem('financial_goals');
     backup.goals = rawGoals ? JSON.parse(rawGoals) : [];
@@ -153,6 +164,12 @@ export class BackupService {
           if (!item || typeof item.id !== 'string' || !item.id || ids.has(item.id)) return false;
           ids.add(item.id);
         }
+      }
+      if (data.recipientProfiles !== undefined && (!Array.isArray(data.recipientProfiles) || data.recipientProfiles.length > 10000)) return false;
+      for (const profile of data.recipientProfiles || []) {
+        if (!profile || typeof profile.id !== 'string' || typeof profile.displayName !== 'string' || !profile.displayName.trim()) return false;
+        if (!Array.isArray(profile.aliases) || profile.aliases.length < 1 || profile.aliases.length > 100 || profile.aliases.some((alias: unknown) => typeof alias !== 'string' || !alias.trim() || alias.length > 160)) return false;
+        if (!Array.isArray(profile.verifiedHints) || profile.verifiedHints.length > 100 || profile.verifiedHints.some((hint: unknown) => typeof hint !== 'string' || !/^(phone|account):[\d*]{4,20}$/.test(hint))) return false;
       }
       for (const category of data.categories || []) {
         if (typeof category.name !== 'string' || !category.name.trim()) return false;
@@ -278,6 +295,7 @@ export class BackupService {
       recurringTransactions: newBackup.recurringTransactions || existingData.recurringTransactions,
       settings: newBackup.settings || existingData.settings,
       smsLearningRules: newBackup.smsLearningRules || existingData.smsLearningRules,
+      recipientProfiles: newBackup.recipientProfiles || existingData.recipientProfiles,
     };
   }
 

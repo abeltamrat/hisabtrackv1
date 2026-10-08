@@ -105,6 +105,7 @@ export default function AppShell({ children }: AppShellProps) {
     else if (n.actionType === 'view_recurring') router.push('/recurring' as any);
     else if (n.actionType === 'view_reports') router.push('/reports' as any);
     else if (n.actionType === 'view_drafts') router.push('/draft-transactions' as any);
+    else if (n.actionType === 'view_smart_review') router.push('/smart-review' as any);
     else router.push('/notifications' as any);
   };
 
