@@ -7,6 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { AppNotificationService } from '@/services/AppNotificationService';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
+import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { Animated, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -35,7 +36,7 @@ interface MenuItem {
 export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const router = useRouter();
   const { user, signOut } = useAuth();
-  const { actualTheme } = useTheme();
+  const { actualTheme, isAurora } = useTheme();
   const dispatch = useDispatch<AppDispatch>();
   const slideAnim = React.useRef(new Animated.Value(-300)).current;
   const { formatCurrency, fontSize } = useAppSettings();
@@ -341,14 +342,18 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
             bottom: 0,
             width: drawerWidth,
             transform: [{ translateX: slideAnim }],
-            backgroundColor: actualTheme === 'dark' ? '#0f172a' : '#ffffff',
+            backgroundColor: isAurora ? 'rgba(15,23,42,0.6)' : actualTheme === 'dark' ? '#0f172a' : '#ffffff',
             shadowColor: '#000',
             shadowOffset: { width: 2, height: 0 },
             shadowOpacity: 0.25,
             shadowRadius: 8,
             elevation: 8,
+            overflow: 'hidden',
           }}
         >
+          {isAurora && (
+            <BlurView intensity={36} tint="dark" pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+          )}
           {/* Close Button */}
           <TouchableOpacity
             accessibilityRole="button"
