@@ -24,6 +24,8 @@ export interface Account {
   /** Names seen in SMS that identify this owned account. */
   aliases?: string[];
   logo?: string;
+  /** Set on the cash account that holds a shared fund (owner mirror or custodian float). */
+  fund_id?: string;
 }
 
 interface TransactionBase {
@@ -52,6 +54,11 @@ interface TransactionBase {
   disaster_recovery_fee?: number;
   receipt_url?: string;
   updated_at?: number;
+  /** Shared fund this movement belongs to. Rows with fund_entry_id are managed from the fund screen. */
+  fund_id?: string;
+  fund_entry_id?: string;
+  /** Owner side: derived from the custodian's entry and rebuilt by FundLedgerService. */
+  fund_mirror?: boolean;
 }
 
 export interface TransactionSplit {
@@ -168,6 +175,105 @@ export interface LinkedChangelogEntry {
   action: string;
   before?: Record<string, any>;
   after?: Record<string, any>;
+}
+
+export type FundType = 'PETTY_CASH' | 'REVOLVING' | 'HELD_FOR_ME';
+export type FundRole = 'OWNER' | 'CUSTODIAN';
+export type FundEntryKind = 'DEPOSIT' | 'SPEND' | 'RETURN';
+export type FundDepositSource = 'OWNER' | 'THIRD_PARTY' | 'OWNER_UNRECORDED';
+export type FundEntryStatus = 'PENDING' | 'ACTIVE' | 'VOIDED';
+
+export interface FundCategory {
+  name: string;
+  parentName?: string;
+  icon: string;
+  color: string;
+  type: 'income' | 'expense';
+}
+
+/** Firestore sharedFunds/{id}. Written only by the mutateSharedFund callable. */
+export interface SharedFund {
+  id: string;
+  ownerUid: string;
+  ownerName: string;
+  custodianUid: string | null;
+  custodianName: string | null;
+  members: string[];
+  invitedUid: string | null;
+  inviteEmailHint: string | null;
+  inviteCode: string | null;
+  inviteExpiresAt?: number;
+  name: string;
+  fundType: FundType;
+  currency: string;
+  floatTarget: number | null;
+  lowBalancePct: number;
+  linkStatus: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';
+  status: 'ACTIVE' | 'CLOSED';
+  balance: number;
+  totalIn: number;
+  totalSpent: number;
+  totalReturned: number;
+  pendingIn: number;
+  entryVersion: number;
+  categories: FundCategory[];
+  createdAt: number;
+  updatedAt: number;
+  acceptedAt?: number;
+  closedAt?: number;
+}
+
+export interface FundEntryFlag {
+  byUid: string;
+  note: string;
+  at: number;
+  reply?: string;
+  repliedAt?: number;
+  resolved: boolean;
+  resolvedAt?: number;
+}
+
+/** Firestore sharedFunds/{id}/entries/{entryId}. Never hard-deleted; voided instead. */
+export interface FundEntry {
+  id: string;
+  kind: FundEntryKind;
+  source?: FundDepositSource;
+  amount: number;
+  date: number;
+  description: string;
+  note?: string;
+  payerName?: string;
+  recipient?: string;
+  reference_number?: string;
+  receipt_url?: string;
+  sms_linked?: boolean;
+  category?: string;
+  splits?: TransactionSplit[];
+  tags?: string[];
+  recordedByUid: string;
+  recordedByRole: FundRole;
+  createdAt: number;
+  status: FundEntryStatus;
+  voidReason?: string;
+  voidedAt?: number;
+  ackByUid?: string;
+  ackAt?: number;
+  /** The owner's say on how this entry counts in their own books. */
+  ownerCategory?: string | null;
+  ownerPurpose?: 'OPERATING' | 'FINANCING' | null;
+  ownerSplits?: TransactionSplit[] | null;
+  ownerAccountId?: string | null;
+  classifiedAt?: number;
+  flag?: FundEntryFlag;
+}
+
+export interface FundChangelogEntry {
+  id: string;
+  actorUid: string;
+  actorName: string;
+  timestamp: number;
+  action: string;
+  entryId?: string;
 }
 
 export interface IDatabase {

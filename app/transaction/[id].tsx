@@ -96,6 +96,16 @@ export default function TransactionDetail() {
           <FontAwesome name="arrow-left" size={16} color={theme.textMuted} />
         </TouchableOpacity>
         <Text className="text-slate-900 dark:text-white font-bold text-lg">Transaction Details</Text>
+        {transaction.fund_entry_id && transaction.fund_id ? (
+          // Fund rows mirror a shared entry; they change only from the fund screen.
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open fund"
+            onPress={() => router.push(`/fund/${transaction.fund_id}` as any)}
+            className="h-10 px-3 bg-teal-50 dark:bg-teal-900/30 rounded-xl justify-center items-center flex-row"
+          >
+            <FontAwesome name="briefcase" size={14} color="#0d9488" />
+            <Text className="text-teal-700 dark:text-teal-300 text-xs font-bold ml-2">Open fund</Text>
+          </TouchableOpacity>
+        ) : (
         <View className="flex-row gap-2">
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit"
             onPress={() => router.push({ pathname: '/modal', params: { edit: transaction.id } })}
@@ -110,6 +120,7 @@ export default function TransactionDetail() {
             <FontAwesome name="trash" size={18} color="#ef4444" />
           </TouchableOpacity>
         </View>
+        )}
       </View>
 
       <ScrollView className="px-6" showsVerticalScrollIndicator={false}>
@@ -211,6 +222,17 @@ export default function TransactionDetail() {
 
             {transaction.gross_amount !== undefined ? (
               <DetailRow label="Total account debit" value={formatCurrency(transaction.gross_amount)} />
+            ) : null}
+
+            {transaction.fund_entry_id ? (
+              <View className="bg-teal-50 dark:bg-teal-900/20 rounded-2xl p-3 mb-3 border border-teal-100 dark:border-teal-900/40">
+                <Text className="text-teal-800 dark:text-teal-200 text-xs font-bold">{transaction.fund_mirror ? 'Recorded in a shared fund' : 'Money held for someone else'}</Text>
+                <Text className="text-teal-700 dark:text-teal-300 text-xs mt-1">
+                  {transaction.fund_mirror
+                    ? 'This comes from a fund someone holds for you. Change or void it from the fund screen.'
+                    : "This moved money in your account, but it belongs to the fund's owner, so it is left out of your own reports and budgets."}
+                </Text>
+              </View>
             ) : null}
 
             {transaction.splits?.length ? (

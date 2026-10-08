@@ -119,6 +119,8 @@ export const BackgroundService = {
   },
   async doMaintenance(source: MaintenanceSource, options?: { force?: boolean }): Promise<boolean> {
     await (await import('./LinkedPaymentService')).default.retryPending();
+    // Fund entries saved offline; a failure here must never stop maintenance.
+    try { await (await import('./FundPostingService')).default.retryPending(); } catch { /* retried next run */ }
     if (Platform.OS === 'web') return false;
 
     const appSettings = await loadStoredAppSettings();

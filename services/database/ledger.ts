@@ -86,6 +86,7 @@ export class LedgerDatabase implements IDatabase {
   }); }
   getAccounts() { return this.run(() => this.raw.getAccounts()); }
   getTransactions(filters?: Parameters<IDatabase['getTransactions']>[0]) { return this.run(() => this.raw.getTransactions(filters)); }
+  getTransactionById(id: string) { return this.run(() => this.transactionById(id)); }
   getBudgets() { return this.run(() => this.raw.getBudgets()); }
   getLoans() { return this.run(() => this.raw.getLoans()); }
   readMeta(id: string) { return this.run(() => this.raw.readMeta(id)); }
@@ -121,6 +122,7 @@ export class LedgerDatabase implements IDatabase {
       const old = await this.transactionById(id);
       if (!old) throw new Error('Transaction not found');
       if (old.loan_id || old.operation_id?.startsWith('repayment-')) throw new Error('Loan postings must be corrected through the loan workflow');
+      if (old.fund_entry_id) throw new Error('Fund entries are changed from the fund screen');
       const tx = { ...old, ...updates, id, updated_at: Date.now() } as Transaction;
       validateTransaction(tx, await this.raw.getAccounts());
       tx.amount = money(tx.amount);
@@ -133,6 +135,7 @@ export class LedgerDatabase implements IDatabase {
     return this.run(async () => {
       const old = await this.transactionById(id);
       if (old?.loan_id && !silent) throw new Error('Loan postings must be corrected through the loan workflow');
+      if (old?.fund_entry_id && !silent) throw new Error('Fund entries are changed from the fund screen');
       await this.commit([{ table: 'transactions', id }], old ? await this.balances(old) : []);
     });
   }

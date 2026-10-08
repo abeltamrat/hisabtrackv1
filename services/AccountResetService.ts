@@ -31,6 +31,7 @@ export class AccountResetService {
     await (await import('./BackgroundService')).BackgroundService.suspend();
     await (await import('./SMSSyncService')).SMSSyncService.suspend();
     await (await import('./LinkedPaymentService')).default.suspend();
+    try { await (await import('./FundPostingService')).default.suspend(); (await import('./FundSyncService')).default.stop(); } catch { /* funds must not block this */ }
     await DraftTransactionService.settle();
     try { await httpsCallable(getFunctions(), 'deleteMyAccount', { timeout: 540000 })({}); }
     catch (error) { await this.resumeServices(); throw error; }
@@ -93,6 +94,7 @@ export class AccountResetService {
     await (await import('./BackgroundService')).BackgroundService.suspend();
     await (await import('./SMSSyncService')).SMSSyncService.suspend();
     await (await import('./LinkedPaymentService')).default.suspend();
+    try { await (await import('./FundPostingService')).default.suspend(); (await import('./FundSyncService')).default.stop(); } catch { /* funds must not block this */ }
     await DraftTransactionService.settle();
     if (currentUser.uid) {
       // Propagate Firestore deletion errors — silent failure means data returns on next sign-in.
@@ -150,6 +152,7 @@ export class AccountResetService {
     (await import('./BackgroundService')).BackgroundService.resume();
     (await import('./SMSSyncService')).SMSSyncService.resume();
     (await import('./LinkedPaymentService')).default.resume();
+    try { (await import('./FundPostingService')).default.resume(); } catch { /* funds must not block this */ }
     if ((await (await import('@/contexts/AppSettingsContext')).loadStoredAppSettings()).cloudSyncEnabled) SyncService.startAutoSync(getAuth().currentUser!.uid);
   }
 }

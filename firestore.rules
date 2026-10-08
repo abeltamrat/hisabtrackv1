@@ -109,6 +109,16 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+    // Shared funds: both people read, only the mutateSharedFund callable writes,
+    // so balances, role rules and the audit log cannot be bypassed.
+    match /sharedFunds/{fundId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
+      allow write: if false;
+      match /{document=**} {
+        allow read: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/sharedFunds/$(fundId)).data.members;
+        allow write: if false;
+      }
+    }
     match /pushDevices/{id} { allow read, write: if false; }
   }
 }

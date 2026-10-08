@@ -91,6 +91,7 @@ export class NotificationService {
       color: this.getDefaultColor(data),
       isAI: !!data?.isAI,
       actionType: data?.actionType,
+      fundId: typeof data?.fundId === 'string' ? data.fundId : undefined,
     });
   }
 

@@ -43,6 +43,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await SMSSyncService.suspend();
         await SyncService.settle();
         await (await import('@/services/LinkedPaymentService')).default.suspend();
+        // Funds are optional: a problem there must never block signing in or out.
+        try { await (await import('@/services/FundPostingService')).default.suspend(); (await import('@/services/FundSyncService')).default.stop(); } catch { /* ignore */ }
         await NotificationService.cancelAllNotifications().catch(() => undefined);
         await DraftTransactionService.settle();
         AIFinancialAssistant.clearChatHistory(); DraftTransactionService.invalidateCache();
@@ -61,6 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (firebaseUser) {
           SMSSyncService.resume(); BackgroundService.resume();
           void import('@/services/LinkedPaymentService').then(m => { if (disposed || currentGeneration !== generation) return; m.default.resume(); return m.default.retryPending(); }).catch(() => undefined);
+          void import('@/services/FundPostingService').then(m => { if (disposed || currentGeneration !== generation) return; m.default.resume(); return m.default.retryPending(); }).catch(() => undefined);
+          void import('@/services/FundSyncService').then(m => { if (disposed || currentGeneration !== generation) return; m.default.start(firebaseUser.uid); }).catch(() => undefined);
           const settings = await loadStoredAppSettings();
           if (disposed || currentGeneration !== generation) return;
           if (settings.cloudSyncEnabled) SyncService.startAutoSync(firebaseUser.uid);
