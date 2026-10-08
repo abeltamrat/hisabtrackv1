@@ -7,6 +7,7 @@ import BudgetService from '@/services/BudgetService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 import ForecastService from '@/services/ForecastService';
+import { reconcileForecastWarnings } from '@/utils/forecastWarnings';
 
 export interface AppNotification {
   id: string;
@@ -26,6 +27,18 @@ const STORAGE_KEY = 'app_notifications';
 const MAX_NOTIFICATIONS = 50;
 
 export class AppNotificationService {
+  static async syncForecastNotifications(
+    active: Array<Omit<AppNotification, 'id' | 'timestamp' | 'read'>>,
+  ): Promise<void> {
+    const existing = await this.getNotifications();
+    const now = Date.now();
+    const retained = reconcileForecastWarnings(existing, active, now);
+    const next = retained.slice(0, MAX_NOTIFICATIONS);
+    if (JSON.stringify(next) !== JSON.stringify(existing.slice(0, MAX_NOTIFICATIONS))) {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      LocalChangeEmitter.emit();
+    }
+  }
   /**
    * Get all notifications
    */
@@ -201,7 +214,10 @@ export class AppNotificationService {
       }
       
       // 3. Generate Insights
-      await this.generateSmartNotifications(transactions, loans, recurring, budgets, accounts[0]?.currency || 'ETB', accounts);
+      const categories = await (await import('@/utils/storage')).StorageService.loadCategories();
+      const effectiveCategories = categories.length ? categories : (await import('@/constants/MockData')).CATEGORIES;
+      const categoryScopes = (await import('@/utils/categoryHierarchy')).buildCategoryScopes(effectiveCategories);
+      await this.generateSmartNotifications(transactions, loans, recurring, budgets, accounts[0]?.currency || 'ETB', accounts, categoryScopes);
       
     } catch (error) {
       console.error('Error in checkAll:', error);
@@ -217,9 +233,10 @@ export class AppNotificationService {
     recurring: RecurringTransaction[] = [],
     budgets: Budget[] = [],
     currency = 'ETB',
-    accounts: Account[] = []
+    accounts: Account[] = [],
+    categoryScopes: Record<string, string[]> = {},
   ): Promise<void> {
-    if (transactions.length === 0 && loans.length === 0 && recurring.length === 0) return;
+    if (transactions.length === 0 && loans.length === 0 && recurring.length === 0 && accounts.length === 0) return;
 
     const notifications: Array<Omit<AppNotification, 'id' | 'timestamp' | 'read'>> = [];
     const now = Date.now();
@@ -230,15 +247,15 @@ export class AppNotificationService {
     const formatMoney = (amount: number) => `${currency} ${amount.toFixed(2)}`;
 
     if (accounts.length > 0) {
-      const forecast = ForecastService.generateForecast({ accounts, recurring, loans, days: 30 });
+      const forecast = ForecastService.generateForecast({ accounts, recurring, loans, days: 30, transactions });
+      const forecastNotifications: Array<Omit<AppNotification, 'id' | 'timestamp' | 'read'>> = [];
       for (const warning of forecast.lowBalanceWarnings) {
         const causes = warning.causingEvents
           .filter(event => event.type !== 'INCOME')
           .map(event => event.title)
           .slice(0, 2);
-        const dateKey = new Date(warning.crossingDate).toISOString().slice(0, 10);
-        notifications.push({
-          sourceKey: `low-balance:${warning.accountId}:${dateKey}:${warning.reserveAmount}`,
+        forecastNotifications.push({
+          sourceKey: `forecast:low:${warning.accountId}`,
           title: `Low-balance forecast: ${warning.accountName}`,
           message: `${warning.accountName} may fall below ${formatMoney(warning.reserveAmount)} on ${new Date(warning.crossingDate).toLocaleDateString()}${causes.length ? ` after ${causes.join(' and ')}` : ''}.`,
           type: 'warning',
@@ -248,6 +265,7 @@ export class AppNotificationService {
           actionType: 'view_reports',
         });
       }
+      await this.syncForecastNotifications(forecastNotifications);
     }
 
     // -- Transaction Metrics --
@@ -370,7 +388,9 @@ export class AppNotificationService {
     budgets
       .filter((budget) => budget.start_date <= now && budget.end_date >= now)
       .forEach(budget => {
-       const metrics = BudgetService.calculateBudgetMetrics(budget, budgets, transactions);
+       const metrics = BudgetService.calculateBudgetMetrics(budget, budgets, transactions, {
+         includedCategories: categoryScopes[budget.category] || [budget.category],
+       });
        const pace = BudgetService.calculatePace(metrics, now);
        const spent = metrics.spent;
        const limit = metrics.effectiveLimit;
@@ -396,9 +416,10 @@ export class AppNotificationService {
           const exhaustion = pace.exhaustionDate
             ? ` It may run out on ${new Date(pace.exhaustionDate).toLocaleDateString()}.`
             : '';
+          const period = `${new Date(budget.start_date).toLocaleDateString()}–${new Date(budget.end_date).toLocaleDateString()}`;
           notifications.push({
              title: `📈 Budget Forecast: ${budget.category}`,
-             message: `At this rate, you'll exceed your budget by ${formatMoney(pace.projectedSpend - limit)}.${exhaustion}`,
+             message: `${formatMoney(spent)} spent from a ${formatMoney(limit)} limit for ${period}. At this rate, you'll exceed it by ${formatMoney(pace.projectedSpend - limit)}.${exhaustion}`,
              type: 'tip',
              icon: 'line-chart',
              color: '#6366f1',

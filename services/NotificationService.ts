@@ -445,10 +445,10 @@ export class NotificationService {
     title: string,
     body: string,
     data?: NotificationMetadata
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const hasPermission = await this.requestPermissions();
-      if (!hasPermission) return;
+      if (!hasPermission) return false;
 
       const metadata = this.resolveMetadata({
         ...data,
@@ -475,8 +475,10 @@ export class NotificationService {
         content,
         trigger: null,
       });
+      return true;
     } catch (error) {
       console.error('Error showing immediate notification:', error);
+      return false;
     }
   }
 

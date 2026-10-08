@@ -2,7 +2,7 @@
 
 Updated: 2026-10-08 (Africa/Nairobi)
 
-Status: Phase 1 in progress; unchecked items are not implemented or verified complete. This document merges the smart-feature proposals with the existing project capabilities. Priority is based on user value, correctness, dependencies, and implementation effort.
+Status: Phase 1 complete in code and automated validation; later phases remain planned. This document merges the smart-feature proposals with the existing project capabilities. Priority is based on user value, correctness, dependencies, and implementation effort.
 
 ## Existing foundation
 
@@ -32,21 +32,21 @@ Status: Phase 1 in progress; unchecked items are not implemented or verified com
 - [x] Add a configurable reserve threshold per account and a forecast horizon.
 - [x] Extend forecasts with per-account daily balances; the existing forecast has total daily snapshots and final account projections.
 - [x] Check for the first projected threshold crossing using `ForecastService`, `SmartReminderService`, and existing background maintenance.
-- [ ] Include confirmed upcoming income; show inferred salary dates separately with confidence and a tolerance window.
-- [ ] Send one actionable warning per account/crossing, with cooldowns and withdrawal of obsolete warnings.
+- [x] Include confirmed upcoming income; show inferred salary dates separately with confidence and a tolerance window.
+- [x] Send one actionable warning per account/crossing, with cooldowns and withdrawal of obsolete warnings.
 - [x] Open the forecast from the warning and explain the scheduled outflows causing the risk.
-- [ ] Verify transfers with fees, locked balances, missing accounts, overdue obligations, and unreliable salary history.
+- [x] Verify transfers with fees, locked balances, missing accounts, overdue obligations, and unreliable salary history.
 
 Done when: a scheduled obligation crossing a reserve triggers a deduplicated warning and the displayed account/date agrees with the ledger forecast. Example: "CBE may fall below ETB 500 on the 24th based on your planned payments."
 
 ### 2. Budget pace and suggested budgets — high value, medium effort
 
 - [x] Amend existing pace warnings to use each budget's actual date range and effective rollover limit, rather than assuming the current calendar month.
-- [ ] Include split expenses and descendants in parent categories without overlapping totals.
+- [x] Include split expenses and descendants in parent categories without overlapping totals.
 - [x] Estimate the exhaustion date with elapsed-day and minimum-history safeguards.
 - [x] Suggest category limits from the median of the last three complete periods; distinguish zero-spend periods from incomplete tracking.
-- [ ] Let users review proposed limits before saving; parent allocations must reconcile with children. (Review is implemented; parent/child reconciliation remains.)
-- [ ] Verify weekly/monthly periods, period boundaries, zero limits, refunds, splits, and rollover.
+- [x] Let users review proposed limits before saving; parent allocations must reconcile with children.
+- [x] Verify weekly/monthly periods, period boundaries, zero limits, refunds, splits, and rollover.
 
 Done when: "At this pace, Groceries may run out on the 19th" links to the exact period and spending used in the calculation; budget suggestions require confirmation.
 
@@ -62,22 +62,22 @@ Done when: selecting Transport can rank a frequently associated #work tag first 
 
 ### 4. Smart reconciliation and balance-gap suggestions — high value, medium/high effort
 
-- [ ] Compare consecutive authoritative SMS balances with transactions in the intervening account/date window.
+- [x] Compare consecutive authoritative SMS balances with transactions in the intervening account/date window.
 - [x] Fix discrepancy calculations to use gross debits, transfer destination credits, fees, and chronology rather than applying an old SMS to today's balance.
-- [ ] Offer possible explanations: an unrecorded draft, duplicate, omitted fee, opening-balance issue, or unexplained adjustment.
-- [ ] Show supporting SMS/transactions and exact gap; never infer cash withdrawal, recipient, or category as fact from a balance alone. (Exact gap and safe wording are implemented; the supporting-record list remains.)
-- [ ] Prefer recording/linking an existing draft over creating a new transaction; allow an explicit balance adjustment as a separate choice.
+- [x] Offer possible explanations: an unrecorded draft, duplicate, omitted fee, opening-balance issue, or unexplained adjustment.
+- [x] Show supporting SMS/transactions and exact gap; never infer cash withdrawal, recipient, or category as fact from a balance alone.
+- [x] Prefer recording/linking an existing draft over creating a new transaction; allow an explicit balance adjustment as a separate choice.
 - [x] Confirm once, preserve the source evidence, and support Undo without creating duplicate cash movements.
-- [ ] Verify historical imports, out-of-order SMS, paired transfers, reversals, equal-value payments, and repeated confirmation.
+- [x] Verify historical imports, out-of-order SMS, paired transfers, reversals, equal-value payments, and repeated confirmation.
 
 Done when: each proposed fix explains the gap, changes the balance only after confirmation, and reconciles to the bank balance at that historical point.
 
 ### 5. Safe-to-spend estimate — high value, medium effort; depends on 1 and 4
 
 - [x] Show money available through a chosen payday/date after locked amounts, reserve, and planned commitments.
-- [ ] Avoid counting the same money twice when a loan payment, recurring rule, budget allocation, or savings commitment overlap.
-- [ ] Show a deduction breakdown, uncertain income separately, and unresolved balance gaps as a confidence limitation. (The reserve/locked/schedule/loan breakdown is implemented; inferred income and live unresolved-gap counts remain.)
-- [ ] Verify that account totals, reserve deductions, and internal transfers reconcile.
+- [x] Avoid counting the same money twice when a loan payment, recurring rule, budget allocation, or savings commitment overlap.
+- [x] Show a deduction breakdown, uncertain income separately, and unresolved balance gaps as a confidence limitation.
+- [x] Verify that account totals, reserve deductions, and internal transfers reconcile.
 
 Done when: users can inspect every deduction behind the estimate and edit the horizon or reserve.
 

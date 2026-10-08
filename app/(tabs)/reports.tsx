@@ -12,6 +12,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import ExportService from '@/services/ExportService';
 import ForecastService, { ForecastEvent } from '@/services/ForecastService';
 import SafeToSpendService from '@/services/SafeToSpendService';
+import ReconciliationService from '@/services/ReconciliationService';
+import { DraftTransactionService, type DraftTransaction } from '@/services/DraftTransactionService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import SyncService from '@/services/SyncService';
@@ -86,6 +88,7 @@ export default function ReportsScreen() {
   const loans = useSelector((s: RootState) => s.loans.items);
   const accounts = useSelector((s: RootState) => s.accounts.items);
   const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
+  const [smsDrafts, setSmsDrafts] = useState<DraftTransaction[]>([]);
   const [forecastDays, setForecastDays] = useState<7 | 30 | 90>(30);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isExportModalVisible, setExportModalVisible] = useState(false);
@@ -120,6 +123,7 @@ export default function ReportsScreen() {
         ? sessionLocalStorage.getItem('recurring_transactions')
         : await AsyncStorage.getItem('@hisabtrack_recurring_transactions');
       if (stored) setRecurring(JSON.parse(stored));
+      setSmsDrafts(await DraftTransactionService.getAll());
     } catch (e) {
       console.error('Error loading recurring in reports:', e);
     }
@@ -379,8 +383,9 @@ export default function ReportsScreen() {
         recurring,
         loans,
         days: forecastDays,
+        transactions,
       }),
-    [accounts, recurring, loans, forecastDays]
+    [accounts, recurring, loans, forecastDays, transactions]
   );
 
   const forecastChart = useMemo(() => {
@@ -419,9 +424,13 @@ export default function ReportsScreen() {
     () => forecastResult.events.slice(0, 6),
     [forecastResult.events]
   );
+  const unresolvedBalanceGaps = useMemo(
+    () => ReconciliationService.unresolvedCount(accounts, smsDrafts, transactions),
+    [accounts, smsDrafts, transactions]
+  );
   const safeToSpend = useMemo(
-    () => SafeToSpendService.calculate(accounts, forecastResult),
-    [accounts, forecastResult]
+    () => SafeToSpendService.calculate(accounts, forecastResult, unresolvedBalanceGaps),
+    [accounts, forecastResult, unresolvedBalanceGaps]
   );
 
   // Category-wise breakdown
@@ -834,6 +843,13 @@ export default function ReportsScreen() {
                   <Text className="text-amber-700 dark:text-amber-300 text-xs font-bold">−{formatCurrency(safeToSpend.unassignedCommitments)}</Text>
                 </View>
               )}
+              <View className="py-3 border-t border-slate-100 dark:border-slate-700">
+                <View className="flex-row justify-between"><Text className="text-slate-500 dark:text-slate-400 text-xs">{t('confirmedScheduledIncome')}</Text><Text className="text-emerald-600 text-xs font-bold">+{formatCurrency(safeToSpend.confirmedUpcomingIncome)}</Text></View>
+                <View className="flex-row justify-between mt-1"><Text className="text-slate-500 dark:text-slate-400 text-xs">{t('scheduledOutflows')}</Text><Text className="text-red-600 text-xs font-bold">−{formatCurrency(safeToSpend.scheduledOutflows)}</Text></View>
+                {safeToSpend.uncertainIncome > 0 && <View className="flex-row justify-between mt-1"><Text className="text-slate-500 dark:text-slate-400 text-xs">Inferred income (not counted)</Text><Text className="text-amber-600 text-xs font-bold">{formatCurrency(safeToSpend.uncertainIncome)}</Text></View>}
+                <Text className={`text-[10px] font-bold mt-2 ${safeToSpend.confidence === 'HIGH' ? 'text-emerald-600' : safeToSpend.confidence === 'MEDIUM' ? 'text-amber-600' : 'text-red-600'}`}>Confidence: {safeToSpend.confidence.toLowerCase()}</Text>
+                {safeToSpend.limitations.map(limitation => <Text key={limitation} className="text-amber-600 dark:text-amber-400 text-[10px] mt-1">• {limitation}</Text>)}
+              </View>
               <Text className="text-amber-600 dark:text-amber-400 text-[10px] mt-2">
                 Based on confirmed balances and saved schedules. Unrecorded SMS and unscheduled spending are not included.
               </Text>
@@ -848,6 +864,14 @@ export default function ReportsScreen() {
                 {warning.causingEvents.length > 0 && <Text className="text-red-600/80 dark:text-red-300/80 text-[11px] mt-2">Caused by: {warning.causingEvents.map(event => event.title).join(', ')}</Text>}
               </View>
             ))}
+
+            {forecastResult.inferredIncome.length > 0 && (
+              <View className="bg-amber-50 dark:bg-amber-950/20 rounded-2xl p-4 mb-6 border border-amber-200 dark:border-amber-900/40">
+                <Text className="text-amber-800 dark:text-amber-200 font-bold">{t('possibleUpcomingIncome')}</Text>
+                <Text className="text-amber-700/80 dark:text-amber-300/80 text-xs mt-1 mb-2">Learned from repeated income history. These amounts are uncertain and are excluded from projected balances and safe-to-spend.</Text>
+                {forecastResult.inferredIncome.map(item => <View key={item.id} className="py-2 border-t border-amber-200 dark:border-amber-900/40"><View className="flex-row justify-between"><Text className="text-amber-900 dark:text-amber-100 font-semibold flex-1">{item.label}</Text><Text className="text-amber-800 dark:text-amber-200 font-bold">{formatCurrency(item.amount)}</Text></View><Text className="text-amber-700 dark:text-amber-300 text-[10px] mt-1">Expected around {new Date(item.expectedDate).toLocaleDateString()} ±{item.toleranceDays} day{item.toleranceDays === 1 ? '' : 's'} · {item.confidence.toLowerCase()} confidence from {item.sampleCount} payments</Text></View>)}
+              </View>
+            )}
 
             {forecastResult.upcomingLoanPayments > 0 && (
               <View className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-4 mb-6 border border-amber-200 dark:border-amber-800">

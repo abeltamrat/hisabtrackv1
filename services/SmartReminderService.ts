@@ -6,6 +6,8 @@ import { createSerialQueue } from '@/utils/asyncLock';
 import { getDatabase } from './database';
 import { NotificationService } from './NotificationService';
 import { operatingExpense, operatingIncome, operatingTransactions, sumMoney } from '@/utils/finance';
+import ForecastService from '@/services/ForecastService';
+import { RecurringTransactionService } from '@/services/RecurringTransactionService';
 
 const STORAGE_KEY = '@hisabtrack_smart_reminders';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -18,6 +20,7 @@ interface SmartReminderState {
   scheduledHabitMinute?: number;
   lastSmartInsightDay?: string;
   lastTransactionGapReminderAt?: number;
+  forecastWarnings?: Record<string, { signature: string; lastSentAt: number }>;
 }
 
 async function loadState(): Promise<SmartReminderState> {
@@ -92,9 +95,41 @@ export class SmartReminderService {
     const state = await loadState();
     const todayKey = new Date(now).toISOString().slice(0, 10);
     const db = await getDatabase();
-    const transactions = await db.getTransactions();
+    const [transactions, accounts, loans, recurring] = await Promise.all([
+      db.getTransactions(), db.getAccounts(), db.getLoans(), RecurringTransactionService.getAll(),
+    ]);
     const latestTransactionDate = transactions.reduce((max, transaction) => Math.max(max, transaction.date), 0);
     const lastRecordedAt = state.lastRecordedTransactionAt ?? latestTransactionDate;
+
+    if (flags.dailySummaryAlertsEnabled && accounts.length > 0) {
+      const forecast = ForecastService.generateForecast({ accounts, loans, recurring, transactions, days: 30, startDate: now });
+      const current = state.forecastWarnings || {};
+      const activeIds = new Set(forecast.lowBalanceWarnings.map(warning => warning.accountId));
+      for (const accountId of Object.keys(current)) if (!activeIds.has(accountId)) delete current[accountId];
+      let sent = 0;
+      for (const warning of forecast.lowBalanceWarnings) {
+        const day = new Date(warning.crossingDate).toISOString().slice(0, 10);
+        const signature = `${day}:${warning.reserveAmount}:${warning.projectedBalance}`;
+        const previous = current[warning.accountId];
+        if (previous?.signature === signature || sent >= 2) continue;
+        if (previous && now - previous.lastSentAt < DAY_MS) continue;
+        const cause = warning.causingEvents.filter(event => event.type !== 'INCOME').map(event => event.title).slice(0, 2).join(' and ');
+        const body = settings.balancesHidden
+          ? `${warning.accountName} may fall below its reserve on ${new Date(warning.crossingDate).toLocaleDateString()}. Open HisabTrack for the private details.`
+          : `${warning.accountName} may fall below ${settings.currency} ${warning.reserveAmount.toFixed(2)} on ${new Date(warning.crossingDate).toLocaleDateString()}${cause ? ` after ${cause}` : ''}.`;
+        const didSend = await NotificationService.showImmediateNotification(
+          'Low-balance forecast', body,
+          { actionType: 'view_reports', channelId: 'finance_alerts', inAppType: 'warning', icon: 'line-chart', color: '#dc2626', sourceKey: `forecast:system:${warning.accountId}:${signature}` }
+        );
+        if (didSend) {
+          current[warning.accountId] = { signature, lastSentAt: now };
+          sent += 1;
+        }
+      }
+      state.forecastWarnings = current;
+      await saveState(state);
+      if (sent > 0) return true;
+    }
 
     if (
       flags.inactivityAlertsEnabled && lastRecordedAt > 0 && now - lastRecordedAt >= 4 * DAY_MS &&

@@ -14,6 +14,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableO
 import { Alert } from '@/utils/alert';
 import { useFormErrors } from '@/hooks/useFormErrors';
 import { useDispatch, useSelector } from 'react-redux';
+import { buildCategoryScopes } from '@/utils/categoryHierarchy';
 
 export default function AddBudgetScreen() {
   const router = useRouter();
@@ -77,6 +78,25 @@ export default function AddBudgetScreen() {
     })) return;
 
     const periodRange = BudgetService.getCurrentPeriodRange(period);
+    const selected = expenseCategories.find(category => category.name === selectedCategory);
+    const parent = selected?.parentId ? expenseCategories.find(category => category.id === selected.parentId) : undefined;
+    const scopes = buildCategoryScopes(expenseCategories);
+    const allocationIssue = BudgetService.hierarchyAllocationIssue({
+      category: selectedCategory,
+      amount: numericAmount,
+      period,
+      range: periodRange,
+      budgets,
+      excludeId: isEdit ? id.toString() : undefined,
+      parentCategory: parent?.name,
+      descendantCategories: parent
+        ? (scopes[parent.name] || []).filter(name => name !== parent.name)
+        : (scopes[selectedCategory] || []).filter(name => name !== selectedCategory),
+    });
+    if (allocationIssue) {
+      validate({ amount: allocationIssue });
+      return;
+    }
 
     const budgetData = {
       category: selectedCategory,

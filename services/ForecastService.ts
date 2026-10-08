@@ -1,5 +1,6 @@
 import { advanceDate, money, sumMoney } from '@/utils/finance';
-import { Account, Loan, RecurringFrequency, RecurringTransaction } from '@/types/database';
+import { Account, Loan, RecurringFrequency, RecurringTransaction, Transaction } from '@/types/database';
+import IncomeInferenceService, { type InferredIncome } from '@/services/IncomeInferenceService';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_FORECAST_OCCURRENCES = 730;
@@ -58,6 +59,7 @@ export interface ForecastResult {
   largeExpenses: ForecastEvent[];
   accountProjections: ForecastAccountProjection[];
   lowBalanceWarnings: ForecastLowBalanceWarning[];
+  inferredIncome: InferredIncome[];
 }
 
 interface ForecastOptions {
@@ -66,6 +68,7 @@ interface ForecastOptions {
   loans: Loan[];
   days: number;
   startDate?: number;
+  transactions?: Transaction[];
 }
 
 export class ForecastService {
@@ -75,7 +78,9 @@ export class ForecastService {
   static generateForecast(options: ForecastOptions): ForecastResult {
     const startDate = this.startOfDay(options.startDate ?? Date.now());
     const safeDays = Number.isFinite(options.days) ? Math.max(1, Math.min(730, Math.floor(options.days))) : 30;
-    const endDate = this.endOfDay(startDate + (safeDays - 1) * DAY_MS);
+    const endCursor = new Date(startDate);
+    endCursor.setDate(endCursor.getDate() + safeDays - 1);
+    const endDate = this.endOfDay(endCursor.getTime());
 
     const accountNames = new Map(options.accounts.map((account) => [account.id, account.name]));
     const currentBalances = new Map(options.accounts.map((account) => [account.id, money(account.balance - (account.locked_amount || 0))]));
@@ -86,15 +91,23 @@ export class ForecastService {
     let lowestBalance = startingBalance;
     let lowestBalanceDate: number | null = startDate;
 
-    const events = [
-      ...this.generateRecurringEvents(options.recurring.filter(r => options.accounts.some(a => a.id === r.accountId) && (r.type !== 'TRANSFER' || (r.accountId !== r.toAccountId && options.accounts.some(a => a.id === r.toAccountId)))), startDate, endDate),
-      ...this.generateLoanEvents(options.loans, startDate, endDate),
-    ].sort((left, right) => left.date - right.date || left.amount - right.amount);
+    const recurringEvents = this.generateRecurringEvents(options.recurring.filter(r => options.accounts.some(a => a.id === r.accountId) && (r.type !== 'TRANSFER' || (r.accountId !== r.toAccountId && options.accounts.some(a => a.id === r.toAccountId)))), startDate, endDate);
+    const loanEvents = this.generateLoanEvents(options.loans, startDate, endDate).filter(loanEvent =>
+      !recurringEvents.some(recurringEvent =>
+        recurringEvent.type === 'EXPENSE' &&
+        Math.abs(recurringEvent.amount - loanEvent.amount) < 0.01 &&
+        Math.abs(recurringEvent.date - loanEvent.date) <= DAY_MS &&
+        /loan|repayment|debt/i.test(`${recurringEvent.category} ${recurringEvent.title}`)
+      )
+    );
+    const events = [...recurringEvents, ...loanEvents]
+      .sort((left, right) => left.date - right.date || left.amount - right.amount);
+    const inferredIncome = IncomeInferenceService.infer(options.transactions || [], options.accounts, startDate, endDate);
 
     const snapshots: ForecastSnapshot[] = [];
     let eventIndex = 0;
 
-    for (let currentDay = startDate; currentDay <= endDate; currentDay += DAY_MS) {
+    for (let currentDay = startDate; currentDay <= endDate;) {
       while (eventIndex < events.length && this.isSameDay(events[eventIndex].date, currentDay)) {
         const event = events[eventIndex];
 
@@ -185,6 +198,9 @@ export class ForecastService {
         lowestBalance = runningBalance;
         lowestBalanceDate = currentDay;
       }
+      const nextDay = new Date(currentDay);
+      nextDay.setDate(nextDay.getDate() + 1);
+      currentDay = nextDay.getTime();
     }
 
     const accountProjections = [...projectedBalances.entries()].map(([accountId, projectedBalance]) => {
@@ -248,6 +264,7 @@ export class ForecastService {
       largeExpenses,
       accountProjections,
       lowBalanceWarnings,
+      inferredIncome,
     };
   }
 

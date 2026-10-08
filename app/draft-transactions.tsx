@@ -1073,9 +1073,10 @@ export default function DraftTransactionsScreen() {
 
             const draftAccount = accounts.find((a: any) => a.id === draft.account_id);
             const balanceAnalysis = draftAccount
-              ? ReconciliationService.analyzeDraft(draftAccount, draft, transactions)
+              ? ReconciliationService.analyzeDraft(draftAccount, draft, transactions, drafts)
               : null;
             const hasDiscrepancy = !!balanceAnalysis?.hasDiscrepancy;
+            const hasPendingExplanation = balanceAnalysis?.reason === 'UNRECORDED_DRAFT';
 
             return (
               <TouchableOpacity
@@ -1206,9 +1207,22 @@ export default function DraftTransactionsScreen() {
                         Balance gap {formatCurrency(Math.abs(balanceAnalysis?.gap || 0))}: bank states {formatCurrency(balanceAnalysis?.bankBalance || 0)}, while the historical ledger reconstructs {formatCurrency(balanceAnalysis?.expectedBalance || 0)}. {balanceAnalysis?.explanation}
                       </Text>
                     </View>
+                    {balanceAnalysis && (balanceAnalysis.evidence.transactions.length > 0 || balanceAnalysis.evidence.previousAnchor) && (
+                      <View className="mt-2 border-t border-red-200 dark:border-red-900/40 pt-2">
+                        {balanceAnalysis.evidence.previousAnchor && <Text className="text-red-600/80 dark:text-red-300/80 text-[10px]">Previous bank balance: {formatCurrency(balanceAnalysis.evidence.previousAnchor.suggested_balance || 0)} on {formatDate(balanceAnalysis.evidence.previousAnchor.date)}</Text>}
+                        {balanceAnalysis.evidence.transactions.slice(0, 3).map(transaction => <Text key={transaction.id} className="text-red-600/80 dark:text-red-300/80 text-[10px] mt-1">• {formatDate(transaction.date)} · {transaction.description} · {formatCurrency(transaction.gross_amount ?? transaction.amount)}</Text>)}
+                      </View>
+                    )}
                     {balanceAnalysis && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Review balance adjustment" onPress={() => handleBalanceAdjustment(draft, balanceAnalysis)} className="self-start mt-2 px-3 py-2 rounded-lg bg-red-600">
                       <Text className="text-white text-[10px] font-bold">Review adjustment</Text>
                     </TouchableOpacity>}
+                  </View>
+                )}
+
+                {hasPendingExplanation && balanceAnalysis?.suggestedDraft && (
+                  <View className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-xl mb-3 border border-indigo-200 dark:border-indigo-900/40">
+                    <Text className="text-indigo-700 dark:text-indigo-300 text-xs font-semibold">{balanceAnalysis.explanation}</Text>
+                    {balanceAnalysis.suggestedDraft.id !== draft.id && <TouchableOpacity onPress={() => openConfirmModal(balanceAnalysis.suggestedDraft!)} className="self-start mt-2 px-3 py-2 rounded-lg bg-indigo-600"><Text className="text-white text-[10px] font-bold">Review matching draft</Text></TouchableOpacity>}
                   </View>
                 )}
 

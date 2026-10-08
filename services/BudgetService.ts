@@ -1,8 +1,6 @@
 import { money, operatingTransactions, sumMoney } from '@/utils/finance';
 import { Budget, BudgetPeriod, BudgetRolloverMode, Transaction } from '@/types/database';
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
 export interface BudgetMetrics {
   budget: Budget;
   baseLimit: number;
@@ -32,11 +30,42 @@ export interface BudgetSuggestion {
   periodSpending: number[];
 }
 
-interface BudgetMetricOptions {
+export interface BudgetMetricOptions {
   excludeTransactionId?: string;
+  includedCategories?: string[];
 }
 
 export class BudgetService {
+  static hierarchyAllocationIssue(options: {
+    category: string;
+    amount: number;
+    period: BudgetPeriod;
+    range: { start: number; end: number };
+    budgets: Budget[];
+    excludeId?: string;
+    parentCategory?: string;
+    descendantCategories?: string[];
+  }): string | null {
+    const active = options.budgets.filter(budget =>
+      budget.id !== options.excludeId && budget.period === options.period &&
+      budget.start_date <= options.range.end && budget.end_date >= options.range.start
+    );
+    if (options.parentCategory) {
+      const parent = active.find(budget => budget.category === options.parentCategory);
+      if (parent) {
+        const siblingTotal = sumMoney(active
+          .filter(budget => budget.category !== options.parentCategory && (options.descendantCategories || []).includes(budget.category))
+          .map(budget => this.getBaseLimit(budget)));
+        if (money(siblingTotal + options.amount) > this.getBaseLimit(parent)) {
+          return `Child budgets would total ${money(siblingTotal + options.amount).toFixed(2)}, above the ${this.getBaseLimit(parent).toFixed(2)} ${options.parentCategory} budget.`;
+        }
+      }
+    } else if (options.descendantCategories?.length) {
+      const childTotal = sumMoney(active.filter(budget => options.descendantCategories!.includes(budget.category)).map(budget => this.getBaseLimit(budget)));
+      if (options.amount < childTotal) return `This parent limit cannot be below its ${childTotal.toFixed(2)} of child budgets.`;
+    }
+    return null;
+  }
   static calculatePace(metrics: BudgetMetrics, now = Date.now()): BudgetPace {
     const start = new Date(metrics.budget.start_date);
     start.setHours(0, 0, 0, 0);
@@ -81,8 +110,10 @@ export class BudgetService {
     for (let index = 0; index < 3; index += 1) {
       if (period === 'WEEKLY') {
         const end = cursor - 1;
-        ranges.unshift({ start: end - WEEK_MS + 1, end });
-        cursor = end - WEEK_MS + 1;
+        const startDate = new Date(cursor);
+        startDate.setDate(startDate.getDate() - 7);
+        ranges.unshift({ start: startDate.getTime(), end });
+        cursor = startDate.getTime();
       } else {
         const date = new Date(cursor);
         const start = new Date(date.getFullYear(), date.getMonth() - 1, 1);
@@ -128,7 +159,7 @@ export class BudgetService {
       .filter(
         (transaction) =>
           transaction.type === 'EXPENSE' &&
-          transaction.category === budget.category &&
+          (options?.includedCategories || [budget.category]).includes(transaction.category) &&
           transaction.date >= budget.start_date &&
           transaction.date <= Math.min(budget.end_date, Date.now()) &&
           (!options?.excludeTransactionId || transaction.id !== options.excludeTransactionId)
@@ -154,11 +185,14 @@ export class BudgetService {
   static calculateBudgetCollectionMetrics(
     budgets: Budget[],
     allBudgets: Budget[],
-    transactions: Transaction[]
+    transactions: Transaction[],
+    categoryScopes: Record<string, string[]> = {},
   ) {
     const cache = new Map<string, BudgetMetrics>();
     return budgets.map((budget) =>
-      this.calculateBudgetMetricsInternal(budget, allBudgets, transactions, cache)
+      this.calculateBudgetMetricsInternal(budget, allBudgets, transactions, cache, {
+        includedCategories: categoryScopes[budget.category] || [budget.category],
+      })
     );
   }
 
@@ -173,7 +207,8 @@ export class BudgetService {
       start.setHours(0, 0, 0, 0);
 
       const end = new Date(start);
-      end.setTime(start.getTime() + WEEK_MS - 1);
+      end.setDate(end.getDate() + 7);
+      end.setTime(end.getTime() - 1);
       return {
         start: start.getTime(),
         end: end.getTime(),
@@ -196,7 +231,11 @@ export class BudgetService {
     // period's end and the next one's start, so the next period must begin on
     // that millisecond or the rollover chain silently breaks.
     const start = end + 1;
-    if (period === 'WEEKLY') return { start, end: start + WEEK_MS - 1 };
+    if (period === 'WEEKLY') {
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+      return { start, end: end.getTime() - 1 };
+    }
     const date = new Date(start);
     const last = new Date(date.getFullYear(), date.getMonth() + 1, 0);
     last.setHours(23, 59, 59, 999);
@@ -293,7 +332,8 @@ export class BudgetService {
         previousBudget,
         allBudgets,
         transactions,
-        cache
+        cache,
+        options
       );
 
       if (rolloverMode === 'CARRY_UNUSED' && previousMetrics.remaining > 0) {

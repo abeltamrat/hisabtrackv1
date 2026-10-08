@@ -16,6 +16,7 @@ import { Platform, ScrollView, Text, TouchableOpacity, useColorScheme, View } fr
 import { Alert } from '@/utils/alert';
 
 import { useDispatch, useSelector } from 'react-redux';
+import { buildCategoryScopes, nonOverlappingCategoryNames } from '@/utils/categoryHierarchy';
 
 export default function BudgetScreen() {
   const { formatCurrency } = useAppSettings();
@@ -97,18 +98,20 @@ export default function BudgetScreen() {
     },
     [budgets, categoryByName, ledgerNow]
   );
+  const categoryScopes = useMemo(() => buildCategoryScopes(categories), [categories]);
 
   const budgetSuggestions = useMemo(() => {
     const activeNames = new Set(activeBudgets.map(budget => budget.category));
     const expenseNames = categories
       .filter(category => category.type === 'expense' && !activeNames.has(category.name))
       .map(category => category.name);
-    return BudgetService.suggestLimits(transactions, expenseNames, 'MONTHLY', ledgerNow).slice(0, 3);
-  }, [activeBudgets, categories, ledgerNow, transactions]);
+    const leafNames = expenseNames.filter(name => (categoryScopes[name] || [name]).length === 1);
+    return BudgetService.suggestLimits(transactions, leafNames, 'MONTHLY', ledgerNow).slice(0, 3);
+  }, [activeBudgets, categories, categoryScopes, ledgerNow, transactions]);
 
   const budgetData = useMemo(
     () =>
-      BudgetService.calculateBudgetCollectionMetrics(activeBudgets, budgets, transactions).map((metrics) => ({
+      BudgetService.calculateBudgetCollectionMetrics(activeBudgets, budgets, transactions, categoryScopes).map((metrics) => ({
         ...metrics.budget,
         spent: metrics.spent,
         effectiveLimit: metrics.effectiveLimit,
@@ -117,7 +120,7 @@ export default function BudgetScreen() {
         rolloverMode: metrics.rolloverMode,
         remaining: metrics.remaining,
       })),
-    [activeBudgets, budgets, transactions]
+    [activeBudgets, budgets, categoryScopes, transactions]
   );
 
   // Grouping Logic
@@ -140,18 +143,25 @@ export default function BudgetScreen() {
       }
 
       groups[groupName].items.push(budget);
-      groups[groupName].totalLimit += budget.effectiveLimit;
-      groups[groupName].totalSpent += budget.spent;
     });
 
+    for (const group of Object.values(groups)) {
+      const names = new Set(nonOverlappingCategoryNames(group.items.map(item => item.category), categoryScopes));
+      const summary = group.items.filter(item => names.has(item.category));
+      group.totalLimit = summary.reduce((sum, item) => sum + item.effectiveLimit, 0);
+      group.totalSpent = summary.reduce((sum, item) => sum + item.spent, 0);
+    }
+
     return groups;
-  }, [budgetData, categories, categoryByName]);
+  }, [budgetData, categories, categoryByName, categoryScopes]);
 
   const groupNames = Object.keys(groupedBudgets).sort();
 
   const displayedBudgets = selectedGroup ? groupedBudgets[selectedGroup].items : budgetData;
-  const totalBudget = displayedBudgets.reduce((sum, b) => sum + b.effectiveLimit, 0);
-  const totalSpent = displayedBudgets.reduce((sum, b) => sum + b.spent, 0);
+  const nonOverlappingNames = new Set(nonOverlappingCategoryNames(displayedBudgets.map(item => item.category), categoryScopes));
+  const summaryBudgets = displayedBudgets.filter(item => nonOverlappingNames.has(item.category));
+  const totalBudget = summaryBudgets.reduce((sum, b) => sum + b.effectiveLimit, 0);
+  const totalSpent = summaryBudgets.reduce((sum, b) => sum + b.spent, 0);
   const totalRemaining = totalBudget - totalSpent;
   const totalProgress = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 

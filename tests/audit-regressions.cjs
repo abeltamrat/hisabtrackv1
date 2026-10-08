@@ -34,6 +34,9 @@ const { BudgetService } = load('./services/BudgetService.ts');
 const { SafeToSpendService } = load('./services/SafeToSpendService.ts');
 const { ReconciliationService } = load('./services/ReconciliationService.ts');
 const { rankTagSuggestions } = load('./utils/tagSuggestions.ts');
+const { IncomeInferenceService } = load('./services/IncomeInferenceService.ts');
+const { buildCategoryScopes, nonOverlappingCategoryNames } = load('./utils/categoryHierarchy.ts');
+const { reconcileForecastWarnings } = load('./utils/forecastWarnings.ts');
 const { BackupService } = load('./services/BackupService.ts');
 const { findSelfTransferPairs, findTransferCandidates } = load('./utils/transferPairing.ts');
 const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
@@ -109,6 +112,34 @@ test('historical SMS reconciliation rewinds later ledger activity and uses gross
  const result=ReconciliationService.analyzeDraft(a,draft,[later]);
  assert.equal(result.expectedBalance,596.4);assert.equal(result.gap,0);assert.equal(result.transactionsAfter,1);
 });
+test('consecutive bank balances reconcile pending drafts and explain duplicates',()=>{
+ const base=new Date(2026,9,1,9).getTime();const a={...account('CBE',800),id:'a',created_at:1};
+ const first={id:'d1',sms_id:'s1',account_id:'a',type:'INCOME',amount:100,category:'Income',description:'Anchor',date:base,suggested_balance:1000,raw_sms:'x',status:'RECORDED',is_recorded:true,created_at:base};
+ const pending={id:'d2',sms_id:'s2',account_id:'a',type:'EXPENSE',amount:200,category:'Food',description:'Pending',date:base+1000,suggested_balance:800,raw_sms:'x',status:'PENDING',is_recorded:false,created_at:base+1000};
+ const pendingResult=ReconciliationService.analyzeDraft(a,pending,[],[first,pending]);
+ assert.equal(pendingResult.reason,'UNRECORDED_DRAFT');assert.equal(pendingResult.hasDiscrepancy,false);assert.equal(pendingResult.suggestedDraft.id,'d2');
+ const tx1={...transaction('a',100),id:'t1',date:base+1000},tx2={...transaction('a',100),id:'t2',date:base+2000};
+ const last={...pending,id:'d3',sms_id:'s3',date:base+3000,suggested_balance:900,status:'RECORDED',is_recorded:true};
+ const duplicate=ReconciliationService.analyzeDraft(a,last,[tx1,tx2],[first,last]);
+ assert.equal(duplicate.reason,'POSSIBLE_DUPLICATE');assert.equal(duplicate.duplicateTransaction.id,'t2');
+});
+test('reconciliation handles out-of-order anchors, omitted fees, reversals, and paired transfer legs',()=>{
+ const base=new Date(2026,9,1,9).getTime(),source={...account('Source',994),id:'a',created_at:1},destination={...account('Destination',1000),id:'b',created_at:1};
+ const sourceStart={id:'a0',sms_id:'a0',account_id:'a',type:'INCOME',amount:1,category:'Anchor',description:'Anchor',date:base,suggested_balance:2000,raw_sms:'x',status:'RECORDED',is_recorded:true,created_at:base};
+ const destinationStart={...sourceStart,id:'b0',sms_id:'b0',account_id:'b',suggested_balance:0};
+ const transfer={...transaction('a',1006,'TRANSFER'),id:'move',to_account_id:'b',fees:6,date:base+1000};
+ const sourceEnd={...sourceStart,id:'a1',sms_id:'a1',date:base+2000,suggested_balance:994};
+ const destinationEnd={...destinationStart,id:'b1',sms_id:'b1',date:base+2000,suggested_balance:1000};
+ assert.equal(ReconciliationService.analyzeDraft(source,sourceEnd,[transfer],[sourceEnd,sourceStart]).gap,0);
+ assert.equal(ReconciliationService.analyzeDraft(destination,destinationEnd,[transfer],[destinationEnd,destinationStart]).gap,0);
+ const feeStart={...sourceStart,id:'fee-start',date:base+2500,suggested_balance:1000};
+ const expense={...transaction('a',100),id:'fee-missing',sms_id:'fee-sms',date:base+3000};
+ const feeDraft={...sourceEnd,id:'fee',sms_id:'fee-sms',type:'EXPENSE',date:base+3000,amount:100,gross_amount:103,suggested_balance:897};
+ const omitted=ReconciliationService.analyzeDraft(source,feeDraft,[expense],[feeStart,feeDraft]);assert.equal(omitted.reason,'OMITTED_FEE');
+ const reversal={...transaction('a',100,'INCOME'),id:'reversal',date:base+4000};
+ const reversalEnd={...sourceEnd,id:'rev',date:base+5000,suggested_balance:1000};
+ assert.equal(ReconciliationService.analyzeDraft(source,reversalEnd,[expense,reversal],[feeStart,reversalEnd]).gap,0);
+});
 test('per-account forecast detects reserve crossing and safe-to-spend preserves the cushion',()=>{
  const now=new Date(2026,9,8,9).getTime();
  const a={...account('CBE',1000),id:'a',created_at:1,reserve_amount:300};
@@ -127,6 +158,15 @@ test('safe-to-spend deducts loan obligations that have no payment account',()=>{
  const safe=SafeToSpendService.calculate([a],forecast);
  assert.equal(safe.unassignedCommitments,400);assert.equal(safe.total,600);
 });
+test('safe-to-spend reconciles internal transfers and separates uncertain income',()=>{
+ const now=new Date(2026,9,8,9).getTime();
+ const a={...account('A',1000),id:'a',created_at:1,reserve_amount:100},b={...account('B',0),id:'b',created_at:1};
+ const recurring={id:'move',name:'Move',amount:500,type:'TRANSFER',category:'Transfer',frequency:'MONTHLY',startDate:now,nextDate:now,isActive:true,completedRepetitions:0,accountId:'a',toAccountId:'b',fees:5,tax:0};
+ const history=[0,1,2].map(index=>({...transaction('a',1000,'INCOME'),id:`salary-${index}`,category:'Salary',description:'Salary',sender_receiver:'Employer',date:new Date(2026,6+index,5).getTime()}));
+ const forecast=ForecastService.generateForecast({accounts:[a,b],recurring:[recurring],loans:[],transactions:history,days:31,startDate:now});
+ const safe=SafeToSpendService.calculate([a,b],forecast,1);
+ assert.equal(forecast.projectedBalance,995);assert.equal(safe.uncertainIncome,1000);assert.equal(safe.unresolvedBalanceGaps,1);assert.equal(safe.confidence,'LOW');
+});
 test('budget pace uses its actual period and suggestions use a three-period median',()=>{
  const start=new Date(2026,9,1).getTime(),end=new Date(2026,9,31,23,59,59,999).getTime();
  const budget={id:'b',category:'Food',limit_amount:3100,period:'MONTHLY',start_date:start,end_date:end};
@@ -139,6 +179,57 @@ test('budget pace uses its actual period and suggestions use a three-period medi
  ];
  const suggestions=BudgetService.suggestLimits(txs,['Food'],'MONTHLY',new Date(2026,10,2).getTime());
  assert.equal(suggestions[0].suggestedLimit,200);
+});
+test('parent budgets include split descendants once and summary scopes do not overlap',()=>{
+ const categories=[{id:'food',name:'Food'},{id:'g',name:'Groceries',parentId:'food'},{id:'r',name:'Restaurants',parentId:'food'}];
+ const scopes=buildCategoryScopes(categories);assert.deepEqual(scopes.Food,['Food','Groceries','Restaurants']);
+ const now=Date.now(),budget={id:'parent',category:'Food',limit_amount:1000,period:'MONTHLY',start_date:now-1000,end_date:now+1000};
+ const tx={...transaction('a',300),id:'split',date:now,splits:[{id:'g',category:'Groceries',amount:200},{id:'r',category:'Restaurants',amount:100}]};
+ const metrics=BudgetService.calculateBudgetCollectionMetrics([budget],[budget],[tx],scopes)[0];assert.equal(metrics.spent,300);
+ assert.deepEqual(nonOverlappingCategoryNames(['Food','Groceries'],scopes),['Food']);
+ const range={start:now-1000,end:now+1000},parent={...budget,id:'parent',limit_amount:500};
+ const child={...budget,id:'child',category:'Groceries',limit_amount:300};
+ assert.match(BudgetService.hierarchyAllocationIssue({category:'Restaurants',amount:250,period:'MONTHLY',range,budgets:[parent,child],parentCategory:'Food',descendantCategories:['Groceries','Restaurants']}),/above/);
+ assert.equal(BudgetService.hierarchyAllocationIssue({category:'Restaurants',amount:200,period:'MONTHLY',range,budgets:[parent,child],parentCategory:'Food',descendantCategories:['Groceries','Restaurants']}),null);
+});
+test('salary inference needs stable monthly evidence and never enters confirmed forecast cash',()=>{
+ const a={...account('CBE',0),id:'a',created_at:1};
+ const stable=[0,1,2,3,4].map(index=>({...transaction('a',5000,'INCOME'),id:`s${index}`,category:'Salary',description:'Payroll',sender_receiver:'Employer',date:new Date(2026,3+index,5).getTime()}));
+ const inferred=IncomeInferenceService.infer(stable,[a],new Date(2026,8,1).getTime(),new Date(2026,8,30).getTime());
+ assert.equal(inferred.length,1);assert.equal(inferred[0].confidence,'HIGH');assert.equal(inferred[0].toleranceDays,1);
+ const unreliable=stable.map((row,index)=>({...row,amount:index===3?9000:row.amount,date:new Date(2026,3+index,index===2?17:5).getTime()}));
+ assert.equal(IncomeInferenceService.infer(unreliable,[a],new Date(2026,8,1).getTime(),new Date(2026,8,30).getTime()).length,0);
+ const forecast=ForecastService.generateForecast({accounts:[a],recurring:[],loans:[],transactions:stable,days:30,startDate:new Date(2026,8,1).getTime()});
+ assert.equal(forecast.inferredIncome.length,1);assert.equal(forecast.projectedBalance,0);
+});
+test('a loan and matching recurring repayment are forecast once',()=>{
+ const now=new Date(2026,9,8,9).getTime(),a={...account('Cash',1000),id:'a',created_at:1};
+ const recurring={id:'loan-rule',name:'Loan repayment',amount:400,type:'EXPENSE',category:'Loan Repayment',frequency:'MONTHLY',startDate:now,nextDate:now,isActive:true,completedRepetitions:0,accountId:'a'};
+ const loan={id:'loan',type:'BORROWED',principal_amount:400,interest_rate:0,start_date:now-1000,due_date:now,status:'ACTIVE',remaining_balance:400,lender_borrower_name:'Lender'};
+ const result=ForecastService.generateForecast({accounts:[a],recurring:[recurring],loans:[loan],days:2,startDate:now});
+ assert.equal(result.events.length,1);assert.equal(result.projectedBalance,600);assert.equal(result.upcomingLoanPayments,0);
+});
+test('forecast warnings update per account and obsolete risks are withdrawn',()=>{
+ const old={id:'old',timestamp:1,read:false,sourceKey:'forecast:low:a',title:'Old'};
+ const unrelated={id:'other',timestamp:1,read:false,sourceKey:'smart:daily',title:'Keep'};
+ const active={sourceKey:'forecast:low:a',title:'Updated'};
+ const updated=reconcileForecastWarnings([old,unrelated],[active],2);
+ assert.equal(updated.filter(item=>item.sourceKey==='forecast:low:a').length,1);assert.equal(updated.find(item=>item.sourceKey==='forecast:low:a').title,'Updated');
+ const cleared=reconcileForecastWarnings(updated,[],3);assert.equal(cleared.some(item=>item.sourceKey?.startsWith('forecast:low:')),false);assert.equal(cleared[0].title,'Keep');
+});
+test('forecast ignores missing-account schedules and moves overdue debt to today',()=>{
+ const now=new Date(2026,9,8,9).getTime(),a={...account('Cash',1000),id:'a',created_at:1};
+ const missing={id:'missing',name:'Missing',amount:100,type:'EXPENSE',category:'Bill',frequency:'MONTHLY',startDate:now,nextDate:now,isActive:true,completedRepetitions:0,accountId:'gone'};
+ const loan={id:'overdue',type:'BORROWED',principal_amount:200,interest_rate:0,start_date:now-10000,due_date:now-5000,status:'ACTIVE',remaining_balance:200,lender_borrower_name:'Lender'};
+ const result=ForecastService.generateForecast({accounts:[a],recurring:[missing],loans:[loan],days:2,startDate:now});
+ assert.equal(result.events.length,1);assert.equal(result.events[0].type,'LOAN_DUE');assert.equal(new Date(result.events[0].date).toDateString(),new Date(now).toDateString());assert.equal(result.projectedBalance,800);
+});
+test('budget boundaries include splits, ignore income refunds, and preserve zero-limit state',()=>{
+ const now=Date.now(),budget={id:'b',category:'Food',limit_amount:0,period:'WEEKLY',start_date:now-1000,end_date:now+1000};
+ const expense={...transaction('a',100),id:'e',date:now,splits:[{id:'f',category:'Food',amount:60},{id:'t',category:'Transport',amount:40}]};
+ const refund={...transaction('a',60,'INCOME'),id:'r',category:'Food',date:now};
+ const metrics=BudgetService.calculateBudgetMetrics(budget,[budget],[expense,refund]);
+ assert.equal(metrics.spent,60);assert.equal(metrics.progress,100);assert.equal(metrics.remaining,-60);
 });
 test('tag ranking uses split category context and counts a repeated tag once per transaction',()=>{
  const now=Date.now();
