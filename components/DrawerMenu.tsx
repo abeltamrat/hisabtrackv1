@@ -342,7 +342,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
             bottom: 0,
             width: drawerWidth,
             transform: [{ translateX: slideAnim }],
-            backgroundColor: isAurora ? 'rgba(15,23,42,0.6)' : actualTheme === 'dark' ? '#0f172a' : '#ffffff',
+            backgroundColor: isAurora ? 'rgba(15,23,42,0.94)' : actualTheme === 'dark' ? '#0f172a' : '#ffffff',
             shadowColor: '#000',
             shadowOffset: { width: 2, height: 0 },
             shadowOpacity: 0.25,

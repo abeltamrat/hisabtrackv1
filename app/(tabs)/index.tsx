@@ -53,6 +53,11 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The Aurora "More" tile is two-stage: the first tap reveals a second row
+  // of less-frequent actions in place; only once those are visible does a
+  // second tap hand off to the full side menu.
+  const [quickActionsExpanded, setQuickActionsExpanded] = useState(false);
+
   // SMS drafts awaiting review (Aurora quick-action badge). Refreshed on the
   // same local-change signal the rest of the dashboard already listens to.
   const [pendingDraftCount, setPendingDraftCount] = useState(0);
@@ -228,11 +233,13 @@ export default function DashboardScreen() {
     quickActionLabelClass: `text-slate-900 dark:text-white ${isVerySmall ? 'text-[10px]' : 'text-[10px]'} font-bold`,
   }), [fontSize, isVerySmall]);
 
-  // Aurora's 8 quick actions: same destinations as the classic grid, plus
+  type AuroraAction = { key: string; label: string; icon: string; color: string; badge?: number; onPress: () => void };
+
+  // Aurora's quick actions: same destinations as the classic grid, plus
   // Funds and Equb, and an SMS tile carrying the pending-draft badge. Each
   // gets its own Icon3D accent colour, echoing the classic grid's per-tile
   // gradient colours so the two themes feel like the same app.
-  const auroraActions: Array<{ key: string; label: string; icon: string; color: string; badge?: number; onPress: () => void }> = [
+  const auroraPrimaryActions: AuroraAction[] = [
     { key: 'add', label: t('addNew'), icon: 'plus', color: '#0d9488', onPress: () => router.push('/modal') },
     { key: 'transfer', label: t('transferAction'), icon: 'exchange', color: '#ea580c', onPress: () => router.push('/transfer') },
     { key: 'sms', label: t('smsAction'), icon: 'comment', color: '#e11d48', badge: pendingDraftCount, onPress: () => router.push('/draft-transactions') },
@@ -240,8 +247,34 @@ export default function DashboardScreen() {
     { key: 'budget', label: t('budget'), icon: 'pie-chart', color: '#9333ea', onPress: () => router.push('/budget') },
     { key: 'reports', label: t('reports'), icon: 'bar-chart', color: '#4f46e5', onPress: () => router.push('/(tabs)/reports') },
     { key: 'equb', label: t('equbAction'), icon: 'users', color: '#d97706', onPress: () => router.push('/community' as any) },
-    { key: 'more', label: t('moreAction'), icon: 'ellipsis-h', color: '#475569', onPress: () => drawerBus.open() },
   ];
+
+  // Less-frequent actions, revealed only once "More" is tapped once — the
+  // same destinations the classic grid exposes directly, kept out of the
+  // first row so the everyday actions above stay the fastest to reach.
+  const auroraMoreActions: AuroraAction[] = [
+    { key: 'loans', label: t('loans'), icon: 'line-chart', color: '#ef4444', onPress: () => router.push('/loans') },
+    { key: 'recurring', label: t('recurring'), icon: 'refresh', color: '#14b8a6', onPress: () => router.push('/recurring') },
+    { key: 'calculator', label: t('calculator'), icon: 'calculator', color: '#f97316', onPress: () => router.push('/calculator') },
+    { key: 'accounts', label: t('accounts'), icon: 'bank', color: '#6366f1', onPress: () => router.push('/accounts') },
+  ];
+
+  // Tapping "More" the first time reveals auroraMoreActions in place; the
+  // tile then switches to a menu glyph, and a second tap opens the full
+  // side drawer — the same two-stage reveal the classic grid doesn't need
+  // since it already shows every one of these directly.
+  const moreTile: AuroraAction = quickActionsExpanded
+    ? { key: 'more', label: t('moreAction'), icon: 'bars', color: '#475569', onPress: () => drawerBus.open() }
+    : { key: 'more', label: t('moreAction'), icon: 'ellipsis-h', color: '#475569', onPress: () => setQuickActionsExpanded(true) };
+
+  const auroraActions: AuroraAction[] = quickActionsExpanded
+    ? [...auroraPrimaryActions, ...auroraMoreActions, moreTile]
+    : [...auroraPrimaryActions, moreTile];
+
+  const auroraActionRows: AuroraAction[][] = [];
+  for (let i = 0; i < auroraActions.length; i += 4) {
+    auroraActionRows.push(auroraActions.slice(i, i + 4));
+  }
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
@@ -341,7 +374,7 @@ export default function DashboardScreen() {
               // the grid a row taller than intended and pushing it into the
               // floating assistant button.
               <View style={{ gap: 10 }}>
-                {[auroraActions.slice(0, 4), auroraActions.slice(4, 8)].map((row, rowIndex) => (
+                {auroraActionRows.map((row, rowIndex) => (
                   <View key={rowIndex} className="flex-row justify-between">
                     {row.map(action => (
                       <TouchableOpacity

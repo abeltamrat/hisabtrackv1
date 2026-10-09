@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { vars } from 'nativewind';
 import React from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 import AuroraBackground from '@/components/aurora/AuroraBackground';
 import CustomTabBar from '@/components/CustomTabBar';
@@ -18,6 +18,7 @@ import Target3D from '@/components/three-d/Target3D';
 import Icon3D from '@/components/three-d/Icon3D';
 import FormSheet from '@/components/FormSheet';
 import FormField from '@/components/FormField';
+import DrawerMenu from '@/components/DrawerMenu';
 
 /**
  * Developer-only lab for the Aurora theme: real shared components rendered
@@ -58,6 +59,7 @@ function Sample({ label }: { label: string }) {
 export default function AuroraLab() {
   if (!__DEV__) return null;
   const [sheetOpen, setSheetOpen] = React.useState(true);
+  const [drawerOpen, setDrawerOpen] = React.useState(true);
   return (
     <View className="flex-1">
       <Stack.Screen options={{ headerShown: false }} />
@@ -109,6 +111,11 @@ export default function AuroraLab() {
             ]}
             onSeeAll={() => {}}
           />
+        </View>
+
+        <View style={{ gap: 12 }}>
+          <Text className="text-white text-base font-bold">Real quick-actions grid (two-stage More)</Text>
+          <QuickActionsDemo />
         </View>
 
         <View style={{ gap: 12 }}>
@@ -178,6 +185,7 @@ export default function AuroraLab() {
           </View>
         </View>
       </ScrollView>
+      <DrawerMenu visible={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <FormSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} accessibilityLabel="Demo form">
         <Text className="text-white text-lg font-bold mb-4">New account</Text>
         <FormField label="Name" placeholder="e.g. CBE" />
@@ -193,6 +201,52 @@ export default function AuroraLab() {
           insets: { top: 0, bottom: 0, left: 0, right: 0 },
         } as any)}
       />
+    </View>
+  );
+}
+
+// Reproduces Home's Aurora quick-actions grid (app/(tabs)/index.tsx) so its
+// two-stage "More" reveal — tap once to show the second row, tap again to
+// open the drawer — can be checked without a signed-in session.
+function QuickActionsDemo() {
+  const [expanded, setExpanded] = React.useState(false);
+  const [drawerHint, setDrawerHint] = React.useState(false);
+  type Action = { key: string; label: string; icon: string; color: string; onPress: () => void };
+  const primary: Action[] = [
+    { key: 'add', label: 'Add', icon: 'plus', color: '#0d9488', onPress: () => {} },
+    { key: 'transfer', label: 'Transfer', icon: 'exchange', color: '#ea580c', onPress: () => {} },
+    { key: 'sms', label: 'SMS', icon: 'comment', color: '#e11d48', onPress: () => {} },
+    { key: 'funds', label: 'Funds', icon: 'briefcase', color: '#0891b2', onPress: () => {} },
+    { key: 'budget', label: 'Budget', icon: 'pie-chart', color: '#9333ea', onPress: () => {} },
+    { key: 'reports', label: 'Reports', icon: 'bar-chart', color: '#4f46e5', onPress: () => {} },
+    { key: 'equb', label: 'Equb', icon: 'users', color: '#d97706', onPress: () => {} },
+  ];
+  const more: Action[] = [
+    { key: 'loans', label: 'Loans', icon: 'line-chart', color: '#ef4444', onPress: () => {} },
+    { key: 'recurring', label: 'Recurring', icon: 'refresh', color: '#14b8a6', onPress: () => {} },
+    { key: 'calculator', label: 'Calculator', icon: 'calculator', color: '#f97316', onPress: () => {} },
+    { key: 'accounts', label: 'Accounts', icon: 'bank', color: '#6366f1', onPress: () => {} },
+  ];
+  const moreTile: Action = expanded
+    ? { key: 'more', label: 'More', icon: 'bars', color: '#475569', onPress: () => setDrawerHint(true) }
+    : { key: 'more', label: 'More', icon: 'ellipsis-h', color: '#475569', onPress: () => setExpanded(true) };
+  const actions = expanded ? [...primary, ...more, moreTile] : [...primary, moreTile];
+  const rows: Action[][] = [];
+  for (let i = 0; i < actions.length; i += 4) rows.push(actions.slice(i, i + 4));
+
+  return (
+    <View style={{ gap: 10 }}>
+      {rows.map((row, i) => (
+        <View key={i} className="flex-row justify-between">
+          {row.map(a => (
+            <TouchableOpacity key={a.key} style={{ flex: 1, alignItems: 'center', paddingVertical: 4 }} onPress={a.onPress}>
+              <Icon3D icon={a.icon as any} color={a.color} size={54} iconSize={20} />
+              <Text className="text-white text-[11px] font-semibold mt-1.5">{a.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ))}
+      {drawerHint && <Text className="text-cyan-300 text-xs mt-2">Second tap on More would now open the side drawer.</Text>}
     </View>
   );
 }
