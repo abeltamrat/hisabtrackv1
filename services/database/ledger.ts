@@ -59,6 +59,14 @@ export class LedgerDatabase implements IDatabase {
   }
   deactivate() { this.active = false; }
   drain() { return this.queue(async () => undefined); }
+  /** Releases the native handle (Android only) ahead of an OTA reload. See AndroidDatabase.close(). */
+  close() {
+    this.active = false;
+    return this.queue(async () => {
+      const closable = this.raw as Adapter & { close?: () => Promise<void> };
+      if (typeof closable.close === 'function') await closable.close();
+    });
+  }
   private run<T>(fn: () => Promise<T>): Promise<T> {
     return this.queue(async () => { if (!this.active) throw new Error('Session changed. Reopen this screen.'); return fn(); });
   }

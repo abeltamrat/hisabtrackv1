@@ -428,6 +428,15 @@ export const UpdateService = {
         message: 'Installing the update...',
         progress: 1,
       });
+      // The JS context resets on reload, but a native SQLite handle left
+      // open can hold the file lock across it, making the next cold
+      // start's init fail with "database is locked". Close it first.
+      try {
+        const { closeDatabase } = await import('@/services/database');
+        await closeDatabase();
+      } catch (e) {
+        console.warn('UpdateService: failed to close database before reload', e);
+      }
       await Updates.reloadAsync();
       return;
     }

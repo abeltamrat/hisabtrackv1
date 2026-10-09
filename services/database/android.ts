@@ -41,6 +41,10 @@ export class AndroidDatabase implements IDatabase {
       let dbHandle: SQLite.SQLiteDatabase | null = null;
       try {
         dbHandle = await SQLite.openDatabaseAsync(this.name);
+        // Lets SQLite itself wait out a transient lock (e.g. a connection
+        // from before an OTA reload that hasn't fully released yet) instead
+        // of failing BEGIN IMMEDIATE immediately with "database is locked".
+        await dbHandle.execAsync('PRAGMA busy_timeout = 5000');
 
         await dbHandle.execAsync('BEGIN IMMEDIATE');
         await dbHandle.runAsync('CREATE TABLE IF NOT EXISTS metadata (id TEXT PRIMARY KEY, data TEXT NOT NULL)');
@@ -111,6 +115,22 @@ export class AndroidDatabase implements IDatabase {
         msg.includes('error code')) return false;
     return msg.includes('nullpointerexception') || msg.includes('prepareasync') ||
            msg.includes('execasync') || msg.includes('nativedatabase');
+  }
+
+  /**
+   * Cleanly release the native SQLite handle. Called before an OTA reload
+   * (Updates.reloadAsync()) — the JS context resets but the native module
+   * does not, so a connection left open here can hold the file lock across
+   * the reload and make the next cold start's BEGIN IMMEDIATE fail with
+   * "database is locked".
+   */
+  async close(): Promise<void> {
+    if (this.db) {
+      try { await this.db.closeAsync(); } catch (e) { console.warn('AndroidDatabase: close failed', e); }
+    }
+    this.db = null;
+    this.initialized = false;
+    this.initPromise = null;
   }
 
   private async reinit(): Promise<void> {

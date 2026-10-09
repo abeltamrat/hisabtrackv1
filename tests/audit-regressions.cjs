@@ -45,8 +45,9 @@ const { detectRecurringPattern } = load('./utils/recurringDetection.ts');
 const { SMSLearningService } = load('./services/SMSLearningService.ts');
 class Adapter {
   rows = { accounts: new Map(), transactions: new Map(), budgets: new Map(), loans: new Map() };
-  meta = {}; fail = false;
+  meta = {}; fail = false; closed = false;
   async init() {}
+  async close() { this.closed = true; }
   async getAccounts() { return structuredClone([...this.rows.accounts.values()]); }
   async getTransactions(f) { return structuredClone([...this.rows.transactions.values()].filter(t => !f?.account_id || t.account_id===f.account_id || t.to_account_id===f.account_id)); }
   async getBudgets() { return structuredClone([...this.rows.budgets.values()]); }
@@ -61,6 +62,14 @@ class Adapter {
 const account = (name,balance=0) => ({name,balance,type:'BANK',currency:'ETB',is_locked:false,locked_amount:0});
 const transaction = (id,amount,type='EXPENSE') => ({account_id:id,amount,type,category:'Food',description:'Meal',date:Date.now()});
 const make = () => {const raw=new Adapter();return {raw,db:new LedgerDatabase(raw,'alice')};};
+test('closing the ledger releases the native handle and blocks further writes', async () => {
+  const { raw, db } = make();
+  await db.init();
+  await db.createAccount(account('Cash', 100));
+  await db.close();
+  assert.equal(raw.closed, true, 'the adapter\'s close() was called');
+  await assert.rejects(db.createAccount(account('Late', 1)), /Session changed/);
+});
 test('zero-interest and rounded flat schedule conserve principal and row totals',()=>{
  assert.equal(finance.periodicPayment(1200,0,12,12),100);
  for(const row of finance.flatLoanSchedule(1200,10,12)) assert.equal(finance.minor(row.payment),finance.minor(row.principal)+finance.minor(row.interest));
@@ -507,6 +516,7 @@ test('sync retries a lost acknowledgement and surfaces stale-device edits withou
  mocks['@/store']={store:{dispatch:()=>({unwrap:async()=>undefined})}};
  for(const [name,action] of [['accounts','fetchAccounts'],['transactions','fetchTransactions'],['budgets','fetchBudgets'],['loans','fetchLoans']])mocks[`@/store/slices/${name}Slice`]={[action]:()=>({})};
  mocks['@/contexts/AppSettingsContext']={loadStoredAppSettings:async()=>({cloudSyncEnabled:true})};
+ mocks['@/services/AuxiliarySyncService']={default:{sync:async()=>({completedAt:Date.now(),rows:[]})}};
  mocks['./NativeErrorReporter']={default:{reset(){}}};
  mocks['firebase/auth']={getAuth:()=>({currentUser:{uid:'alice'}})};
  mocks['firebase/firestore']={getFirestore:()=>({}),doc:(_,path)=>({path}),collection:(_,path)=>({path}),serverTimestamp:()=>1,onSnapshot:()=>()=>{},getDocs:async ref=>({docs:[...remote.entries()].filter(([path])=>path.startsWith(ref.path+'/')).map(([path,value])=>({id:path.split('/').at(-1),data:()=>structuredClone(value)}))}),runTransaction:async(_,fn)=>{

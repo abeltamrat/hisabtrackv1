@@ -22,3 +22,9 @@ export async function getDatabase(): Promise<LedgerDatabase> {
   await selected.init();
   return selected;
 }
+/** Cleanly releases the native handle before an OTA reload. See LedgerDatabase.close(). */
+export async function closeDatabase() {
+  if (!database) return;
+  await database.close();
+  database = null;
+}
