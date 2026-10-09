@@ -10,6 +10,7 @@ import { createSerialQueue } from '@/utils/asyncLock';
 import { findSelfTransferPairs } from '@/utils/transferPairing';
 import { SMSAICalibrationService } from './SMSAICalibrationService';
 import RecipientIdentityService from './RecipientIdentityService';
+import { findLatestSmsBalance, type LatestSmsBalance } from '@/utils/latestSmsBalance';
 
 export type { SMSReconciliationResult } from './DraftTransactionService';
 import type { SMSReconciliationResult } from './DraftTransactionService';
@@ -85,6 +86,18 @@ export class SMSSyncService {
     }
   }
 
+  /** READ_SMS alone is enough for a one-time, user-initiated inbox lookup. */
+  static async hasInboxReadPermission(): Promise<boolean> {
+    if (Platform.OS !== 'android') return false;
+    try {
+      const { PermissionsAndroid } = require('react-native');
+      return await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS);
+    } catch (error) {
+      console.warn('Error checking inbox read permission:', error);
+      return false;
+    }
+  }
+
   /**
    * Read SMS messages from specific sender
    */
@@ -92,7 +105,8 @@ export class SMSSyncService {
     sender: string,
     sinceTimestamp?: number,
     indexFrom = 0,
-    maxDate = Date.now()
+    maxDate = Date.now(),
+    maxMessages?: number,
   ): Promise<SMSMessage[]> {
     // Mock messages are a dev-only convenience; production web must not
     // fabricate drafts.
@@ -105,11 +119,12 @@ export class SMSSyncService {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         const SmsAndroid = require('react-native-get-sms-android');
+        const pageSize = Math.min(200, maxMessages ?? 200);
         const filter = {
           box: 'inbox',
           address: sender,
           minDate: sinceTimestamp || 0,
-          maxCount: 200,
+          maxCount: pageSize,
           indexFrom,
           maxDate,
         };
@@ -143,7 +158,10 @@ export class SMSSyncService {
           )
         ]);
 
-        if (result.length === 200) return [...result, ...await this.readSMSFromSender(sender, sinceTimestamp, indexFrom + result.length, maxDate)];
+        const remaining = maxMessages === undefined ? undefined : maxMessages - result.length;
+        if (result.length === pageSize && (remaining === undefined || remaining > 0)) {
+          return [...result, ...await this.readSMSFromSender(sender, sinceTimestamp, indexFrom + result.length, maxDate, remaining)];
+        }
         return result;
       } catch (error) {
         console.warn(`[SMS] Read attempt ${attempt} failed:`, error);
@@ -156,6 +174,17 @@ export class SMSSyncService {
       }
     }
     return [];
+  }
+
+  /** Reads locally and returns only balance metadata; the raw SMS is not stored. */
+  static async findLatestBalance(
+    senderList: string,
+    accountNumber?: string,
+  ): Promise<LatestSmsBalance | null> {
+    const senders = senderList.split(',').map(sender => sender.trim()).filter(Boolean);
+    if (!senders.length) return null;
+    const messages = (await Promise.all(senders.map(sender => this.readSMSFromSender(sender, undefined, 0, Date.now(), 200)))).flat();
+    return findLatestSmsBalance(messages, accountNumber);
   }
 
   /**
@@ -204,6 +233,12 @@ export class SMSSyncService {
         const lastSync = await this.getLastSuccessfulSync(account.id);
         // Default to 30 days back on first sync so users get recent history
         sinceTimestamp = lastSync ?? (Date.now() - 30 * 24 * 60 * 60 * 1000);
+      }
+
+      // An SMS-derived opening balance already includes every posting through
+      // this timestamp. Re-importing those messages would count them twice.
+      if (account.balance_source === 'SMS' && account.balance_as_of) {
+        sinceTimestamp = Math.max(sinceTimestamp, account.balance_as_of + 1);
       }
 
       for (const sender of senders) {

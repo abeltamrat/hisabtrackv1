@@ -158,6 +158,9 @@ export class LedgerDatabase implements IDatabase {
   private validateAccount(a: Partial<Account>) {
     if (!a.name?.trim() || !/^[A-Z]{3}$/.test(a.currency || '') || !['BANK', 'MOBILE_MONEY', 'CASH', 'CARD', 'SAVINGS'].includes(a.type || '')) throw new Error('Invalid account');
     if (a.aliases !== undefined && (a.aliases.length > 50 || a.aliases.some(alias => typeof alias !== 'string' || !alias.trim() || alias.length > 120))) throw new Error('Invalid account aliases');
+    if (a.balance_source !== undefined && !['MANUAL', 'SMS'].includes(a.balance_source)) throw new Error('Invalid balance source');
+    if (a.balance_as_of !== undefined && (!Number.isFinite(a.balance_as_of) || a.balance_as_of <= 0)) throw new Error('Invalid balance timestamp');
+    if (a.balance_source === 'SMS' && a.balance_as_of === undefined) throw new Error('SMS balance requires a timestamp');
     money(a.balance!); if (money(a.locked_amount ?? 0) < 0) throw new Error('Invalid locked amount');
     if (money(a.reserve_amount ?? 0) < 0) throw new Error('Invalid reserve amount');
   }

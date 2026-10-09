@@ -21,6 +21,10 @@ export interface Account {
   updated_at?: number; // Timestamp of last update
   account_number?: string;
   sms_number?: string;
+  /** How the opening balance was established. */
+  balance_source?: 'MANUAL' | 'SMS';
+  /** Latest SMS timestamp already represented by an SMS-derived opening balance. */
+  balance_as_of?: number;
   /** Names seen in SMS that identify this owned account. */
   aliases?: string[];
   logo?: string;

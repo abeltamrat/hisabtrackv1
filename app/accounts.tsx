@@ -12,7 +12,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Keyboard, Modal, PermissionsAndroid, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
@@ -26,6 +26,7 @@ import { DraftTransactionService } from '@/services/DraftTransactionService';
 import SMSSyncOnboardingModal from '@/components/SMSSyncOnboardingModal';
 import ScreenInfoCard from '@/components/ScreenInfoCard';
 import Wallet3D from '@/components/three-d/Wallet3D';
+import type { LatestSmsBalance } from '@/utils/latestSmsBalance';
 
 export default function Accounts() {
   const router = useRouter();
@@ -49,6 +50,12 @@ export default function Accounts() {
   const [reserveAmount, setReserveAmount] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [smsNumber, setSmsNumber] = useState('');
+  const [smsBalanceLookup, setSmsBalanceLookup] = useState<{
+    status: 'idle' | 'loading' | 'permission' | 'not_found' | 'found' | 'error';
+    candidate?: LatestSmsBalance;
+  }>({ status: 'idle' });
+  const balanceEntrySource = useRef<'EMPTY' | 'MANUAL' | 'SMS'>('EMPTY');
+  const balanceLookupSequence = useRef(0);
   const [fetchedSmsNumbers, setFetchedSmsNumbers] = useState<Array<{ sender: string; preview: string }>>([]);
   const [loadingSms, setLoadingSms] = useState(false);
   const [showSmsList, setShowSmsList] = useState(false);
@@ -100,6 +107,72 @@ export default function Accounts() {
       return a.sender.localeCompare(b.sender);
     });
   }, [fetchedSmsNumbers, smsSearchQuery, smsFilterShortcodes, accountName]);
+
+  const invalidateImportedBalance = () => {
+    balanceLookupSequence.current += 1;
+    setSmsBalanceLookup({ status: 'idle' });
+    if (balanceEntrySource.current === 'SMS') {
+      balanceEntrySource.current = 'EMPTY';
+      setInitialBalance('');
+    }
+  };
+
+  const handleSmsNumberChange = (value: string) => {
+    invalidateImportedBalance();
+    setSmsNumber(value);
+    setShowSmsList(false);
+  };
+
+  const handleAccountNumberChange = (value: string) => {
+    invalidateImportedBalance();
+    setAccountNumber(value);
+  };
+
+  const lookupLatestSmsBalance = async (requestPermission = false) => {
+    if (Platform.OS !== 'android' || editingId || accountType !== 'BANK' || !smsNumber.trim()) return;
+    const sequence = ++balanceLookupSequence.current;
+    setSmsBalanceLookup({ status: 'loading' });
+
+    try {
+      const { SMSSyncService } = await import('@/services/SMSSyncService');
+      let allowed = await SMSSyncService.hasInboxReadPermission();
+      if (!allowed && requestPermission) {
+        await SMSSyncService.requestPermissions();
+        allowed = await SMSSyncService.hasInboxReadPermission();
+      }
+      if (sequence !== balanceLookupSequence.current) return;
+      if (!allowed) {
+        setSmsBalanceLookup({ status: 'permission' });
+        return;
+      }
+
+      const candidate = await SMSSyncService.findLatestBalance(smsNumber, accountNumber || undefined);
+      if (sequence !== balanceLookupSequence.current) return;
+      if (!candidate) {
+        setSmsBalanceLookup({ status: 'not_found' });
+        return;
+      }
+
+      setSmsBalanceLookup({ status: 'found', candidate });
+      if (balanceEntrySource.current !== 'MANUAL') {
+        balanceEntrySource.current = 'SMS';
+        setInitialBalance(candidate.balance.toFixed(2));
+        clearError('balance');
+      }
+    } catch (error) {
+      if (sequence !== balanceLookupSequence.current) return;
+      console.warn('Latest SMS balance lookup failed:', error);
+      setSmsBalanceLookup({ status: 'error' });
+    }
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || editingId || accountType !== 'BANK' || !smsNumber.trim()) return;
+    const timer = setTimeout(() => { void lookupLatestSmsBalance(false); }, 650);
+    return () => clearTimeout(timer);
+    // The lookup intentionally reruns when either identifier changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smsNumber, accountNumber, accountType, editingId]);
 
   useEffect(() => {
     let cleanup: (() => void) | null = null;
@@ -415,6 +488,9 @@ export default function Accounts() {
   }, [accounts]);
 
   const resetForm = () => {
+    balanceLookupSequence.current += 1;
+    balanceEntrySource.current = 'EMPTY';
+    setSmsBalanceLookup({ status: 'idle' });
     resetErrors();
     setAccountName('');
     setInitialBalance('');
@@ -491,6 +567,9 @@ export default function Accounts() {
   };
 
   const handleEdit = (account: Account) => {
+    balanceLookupSequence.current += 1;
+    balanceEntrySource.current = 'MANUAL';
+    setSmsBalanceLookup({ status: 'idle' });
     setEditingId(account.id);
     setAccountName(account.name);
     setAccountType(account.type);
@@ -537,6 +616,9 @@ export default function Accounts() {
 
   const handleSaveAccount = async () => {
     const balance = initialBalance.trim() === '' ? 0 : parseFloat(initialBalance);
+    const importedBalance = balanceEntrySource.current === 'SMS' && smsBalanceLookup.status === 'found'
+      ? smsBalanceLookup.candidate
+      : undefined;
     const reserve = reserveAmount.trim() === '' ? 0 : parseFloat(reserveAmount);
     // Both problems surface at once, next to the field they belong to, instead
     // of one blocking dialog at a time that named no field.
@@ -632,6 +714,8 @@ export default function Accounts() {
           reserve_amount: reserve,
           account_number: accountNumber || undefined,
           sms_number: smsNumber || undefined,
+          balance_source: importedBalance ? 'SMS' : 'MANUAL',
+          balance_as_of: importedBalance?.date,
           logo: finalLogo || undefined,
         }));
         if (addAccount.rejected.match(addResult)) {
@@ -640,11 +724,16 @@ export default function Accounts() {
           return;
         }
         // Prompt SMS onboarding if account has an SMS number (Android only)
-        if (smsNumber && Platform.OS === 'android' && addResult.payload) {
+        if (smsNumber && Platform.OS === 'android' && addResult.payload && !importedBalance) {
           setSmsOnboardingAccount(addResult.payload as Account);
           setShowSmsOnboarding(true);
         } else {
-          Alert.alert('Success', 'Account created');
+          Alert.alert(
+            'Success',
+            importedBalance
+              ? 'Account created from the latest bank balance. Older SMS are treated as already included, and future messages can sync normally.'
+              : 'Account created',
+          );
         }
       }
 
@@ -724,10 +813,10 @@ export default function Accounts() {
     const currentSenders = smsNumber ? smsNumber.split(',').map(s => s.trim()).filter(Boolean) : [];
     if (currentSenders.includes(num)) {
       const updated = currentSenders.filter(s => s !== num);
-      setSmsNumber(updated.join(', '));
+      handleSmsNumberChange(updated.join(', '));
     } else {
       const updated = [...currentSenders, num];
-      setSmsNumber(updated.join(', '));
+      handleSmsNumberChange(updated.join(', '));
     }
   };
 
@@ -1258,7 +1347,10 @@ export default function Accounts() {
                   {accountTypes.map((type) => (
                     <TouchableOpacity
                       key={type.value}
-                      onPress={() => setAccountType(type.value)}
+                      onPress={() => {
+                        if (type.value !== accountType) invalidateImportedBalance();
+                        setAccountType(type.value);
+                      }}
                       className={`px-4 py-3 rounded-xl border-2 ${accountType === type.value ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
                     >
                       <Text
@@ -1269,6 +1361,91 @@ export default function Accounts() {
                     </TouchableOpacity>
                   ))}
                 </View>
+              </View>
+
+              {/* Account Number */}
+              <View className="mb-4">
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Account Number (optional)</Text>
+                <TextInput
+                  className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
+                  placeholder="e.g. 0123456789"
+                  placeholderTextColor="#94a3b8"
+                  value={accountNumber}
+                  onChangeText={handleAccountNumberChange}
+                  keyboardType="default"
+                />
+              </View>
+
+              {/* SMS Number */}
+              <View className="mb-6">
+                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Bank SMS sender / number (optional)</Text>
+                <View className="flex-row items-center">
+                  <TextInput
+                    className="flex-1 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
+                    placeholder="e.g. CBE or 8899"
+                    placeholderTextColor="#94a3b8"
+                    value={smsNumber}
+                    onChangeText={handleSmsNumberChange}
+                    keyboardType="default"
+                    autoCapitalize="none"
+                    accessibilityLabel="Bank SMS sender or number"
+                  />
+                  <TouchableOpacity onPress={fetchSmsNumbers} className="ml-3 px-3 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl">
+                    <Text className="text-slate-700 dark:text-slate-200 text-sm">{loadingSms ? 'Loading...' : 'Fetch'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2">Tap Fetch to choose a bank sender ID. For a new bank account, HisabTrack can read the newest matching balance locally and does not save the message text.</Text>
+
+                {!editingId && accountType === 'BANK' && smsNumber.trim() ? (
+                  <View className="mt-3 rounded-xl bg-slate-50 dark:bg-slate-900 p-3">
+                    {smsBalanceLookup.status === 'loading' ? (
+                      <View className="flex-row items-center">
+                        <CoinLoader size="small" color="#059669" />
+                        <Text className="text-slate-600 dark:text-slate-300 text-xs ml-2">Finding the latest stated balance...</Text>
+                      </View>
+                    ) : null}
+                    {smsBalanceLookup.status === 'permission' ? (
+                      <View className="flex-row items-center justify-between gap-3">
+                        <Text className="text-slate-600 dark:text-slate-300 text-xs flex-1">Allow SMS access to import the latest balance, or enter it manually.</Text>
+                        <TouchableOpacity onPress={() => { void lookupLatestSmsBalance(true); }} className="bg-emerald-500 px-3 py-2 rounded-lg">
+                          <Text className="text-white text-xs font-bold">Allow & import</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                    {smsBalanceLookup.status === 'found' && smsBalanceLookup.candidate ? (
+                      <View className="flex-row items-center justify-between gap-3">
+                        <View className="flex-1">
+                          <Text className="text-emerald-700 dark:text-emerald-300 text-xs font-bold">Latest SMS balance: {formatCurrency(smsBalanceLookup.candidate.balance)}</Text>
+                          <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">{smsBalanceLookup.candidate.sender} · {new Date(smsBalanceLookup.candidate.date).toLocaleString()}</Text>
+                        </View>
+                        {balanceEntrySource.current !== 'SMS' ? (
+                          <TouchableOpacity
+                            onPress={() => {
+                              balanceEntrySource.current = 'SMS';
+                              setInitialBalance(smsBalanceLookup.candidate!.balance.toFixed(2));
+                              clearError('balance');
+                            }}
+                            className="bg-emerald-500 px-3 py-2 rounded-lg"
+                          >
+                            <Text className="text-white text-xs font-bold">Use balance</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {smsBalanceLookup.status === 'not_found' ? (
+                      <Text className="text-amber-700 dark:text-amber-300 text-xs">No matching stated balance was found. Check the sender and account number, or enter the balance manually.</Text>
+                    ) : null}
+                    {smsBalanceLookup.status === 'error' ? (
+                      <View className="flex-row items-center justify-between gap-3">
+                        <Text className="text-red-600 dark:text-red-400 text-xs flex-1">The SMS could not be read. Manual entry is still available.</Text>
+                        <TouchableOpacity onPress={() => { void lookupLatestSmsBalance(false); }} className="bg-slate-200 dark:bg-slate-700 px-3 py-2 rounded-lg">
+                          <Text className="text-slate-700 dark:text-slate-200 text-xs font-bold">Retry</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
 
               {/* Initial Balance */}
@@ -1282,10 +1459,17 @@ export default function Accounts() {
                   placeholderTextColor="#94a3b8"
                   keyboardType="decimal-pad"
                   value={initialBalance}
-                  onChangeText={(value) => { clearError('balance'); setInitialBalance(value); }}
+                  onChangeText={(value) => {
+                    clearError('balance');
+                    balanceEntrySource.current = value.trim() ? 'MANUAL' : 'EMPTY';
+                    setInitialBalance(value);
+                  }}
                   accessibilityLabel={editingId ? 'Current balance' : 'Initial balance'}
                   aria-invalid={!!errors.balance}
                 />
+                {balanceEntrySource.current === 'SMS' && smsBalanceLookup.status === 'found' ? (
+                  <Text className="text-emerald-600 dark:text-emerald-400 text-xs mt-1.5">Imported from the latest matching bank SMS. You can replace it by typing another amount.</Text>
+                ) : null}
                 {errors.balance ? (
                   <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.balance}</Text>
                 ) : null}
@@ -1304,39 +1488,6 @@ export default function Accounts() {
                 />
                 <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1.5">HisabTrack warns when planned payments may take this account below the reserve.</Text>
                 {errors.reserve ? <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.reserve}</Text> : null}
-              </View>
-
-              {/* Account Number */}
-              <View className="mb-4">
-                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Account Number (optional)</Text>
-                <TextInput
-                  className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
-                  placeholder="e.g. 0123456789"
-                  placeholderTextColor="#94a3b8"
-                  value={accountNumber}
-                  onChangeText={setAccountNumber}
-                  keyboardType="default"
-                />
-              </View>
-
-              {/* SMS Number */}
-              <View className="mb-6">
-                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">SMS Number (optional)</Text>
-                <View className="flex-row items-center">
-                  <TextInput
-                    className="flex-1 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white p-4 rounded-xl text-base"
-                    placeholder="e.g. +1234567890"
-                    placeholderTextColor="#94a3b8"
-                    value={smsNumber}
-                    onChangeText={(v) => { setSmsNumber(v); setShowSmsList(false); }}
-                    keyboardType="phone-pad"
-                  />
-                  <TouchableOpacity onPress={fetchSmsNumbers} className="ml-3 px-3 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl">
-                    <Text className="text-slate-700 dark:text-slate-200 text-sm">{loadingSms ? 'Loading...' : 'Fetch'}</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2">Tap Fetch to scan your inbox for bank sender IDs. You can select multiple senders or type them manually.</Text>
               </View>
 
               {/* Buttons */}
