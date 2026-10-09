@@ -276,7 +276,7 @@ export class SMSSyncService {
         let parsed = EnhancedSMSParser.parseTransaction(sms.body, sms.address, sms.id, sms.date);
         
         // AI Fallback parsing if regex failed and a Gemini API key (or fallback provider) is configured
-        if (!parsed && appSettings?.aiSharingEnabled && (appSettings.geminiApiKey || appSettings.groqApiKey || appSettings.openRouterApiKey)) {
+        if (!parsed && appSettings?.aiSharingEnabled && (appSettings.topToolsApiKey || appSettings.geminiApiKey || appSettings.groqApiKey || appSettings.openRouterApiKey)) {
           const hasFinancialKeywords = /(?:birr|etb|br|usd|amt|amount|debited|credited|spent|paid|received|deposited|transfer|send|sent|transferred|ref)/i.test(sms.body);
           if (hasFinancialKeywords) {
             try {
@@ -284,6 +284,7 @@ export class SMSSyncService {
               const aiParsed = await AIFinancialAssistant.parseSMS(sms.body, {
                 geminiApiKey: appSettings.geminiApiKey,
                 groqApiKey: appSettings.groqApiKey,
+                topToolsApiKey: appSettings.topToolsApiKey,
                 openRouterApiKey: appSettings.openRouterApiKey
               }, calibrationExamples);
               if (aiParsed && aiParsed.amount) {

@@ -23,7 +23,7 @@ export default function AIAssistantScreen() {
     const dispatch = useDispatch<AppDispatch>();
     const { categories } = useTransactions();
     const scrollViewRef = useRef<ScrollView>(null);
-    const { geminiApiKey, groqApiKey, openRouterApiKey, puterJsEnabled } = useAppSettings();
+    const { geminiApiKey, groqApiKey, openRouterApiKey, topToolsApiKey, puterJsEnabled } = useAppSettings();
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
@@ -68,9 +68,11 @@ export default function AIAssistantScreen() {
         geminiApiKey: geminiApiKey?.trim(),
         groqApiKey: groqApiKey?.trim(),
         openRouterApiKey: openRouterApiKey?.trim(),
+        topToolsApiKey: topToolsApiKey?.trim(),
         usePuterJs: !!puterJsEnabled,
     };
     const hasAnyCloudProvider = !!(
+        providerKeys.topToolsApiKey ||
         providerKeys.geminiApiKey ||
         providerKeys.groqApiKey ||
         providerKeys.openRouterApiKey ||
@@ -214,7 +216,7 @@ export default function AIAssistantScreen() {
                         </TouchableOpacity>
                         <View className="flex-1">
                             <Text className="text-white text-2xl font-bold">AI Financial Assistant</Text>
-                            <Text className="text-indigo-200 text-sm">Powered by Gemini / Groq / OpenRouter / Puter.js</Text>
+                            <Text className="text-indigo-200 text-sm">Powered by Top Tools AI / Gemini / Groq / OpenRouter / Puter.js</Text>
                         </View>
                     </View>
                     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete" onPress={handleClearChat} className="ml-2">
@@ -236,7 +238,7 @@ export default function AIAssistantScreen() {
                             <Text className="text-amber-800 dark:text-amber-400 font-bold ml-2">Cloud AI Optional</Text>
                         </View>
                         <Text className="text-amber-700 dark:text-amber-300 text-sm mb-4 leading-5">
-                            Add Gemini, Groq, or OpenRouter API key, or enable Puter.js on web. Without cloud AI, the assistant still gives local offline guidance.
+                            Add a Top Tools AI, Gemini, Groq, or OpenRouter API key, or enable Puter.js on web. Without cloud AI, the assistant still gives local offline guidance.
                         </Text>
                         <TouchableOpacity
                             onPress={() => router.push('/settings')}
@@ -374,6 +376,7 @@ function getProviderBadgeLabel(provider?: AssistantProvider): string | null {
     if (!provider || provider === 'none') return null;
     if (provider === 'gemini') return 'Gemini';
     if (provider === 'groq') return 'Groq';
+    if (provider === 'toptools') return 'Top Tools AI';
     if (provider === 'openrouter') return 'OpenRouter';
     if (provider === 'puter') return 'Puter.js';
     if (provider === 'local') return 'Local';

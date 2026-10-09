@@ -1,5 +1,6 @@
 import { operatingTransactions, sumMoney } from '@/utils/finance';
 import { Platform } from 'react-native';
+import { topToolsChatCompletion } from '@/services/TopToolsAIClient';
 
 export interface FinancialData {
     totalIncome: number;
@@ -28,10 +29,11 @@ export interface AssistantApiKeys {
     geminiApiKey?: string;
     groqApiKey?: string;
     openRouterApiKey?: string;
+    topToolsApiKey?: string;
     usePuterJs?: boolean;
 }
 
-export type AssistantProvider = 'gemini' | 'groq' | 'openrouter' | 'puter' | 'local' | 'none';
+export type AssistantProvider = 'toptools' | 'gemini' | 'groq' | 'openrouter' | 'puter' | 'local' | 'none';
 type LocalIntent = 'summary' | 'budget' | 'savings' | 'spending' | 'debt' | 'forecast' | 'health' | 'help';
 
 interface LocalCategorySummary {
@@ -138,6 +140,7 @@ export class AIFinancialAssistant {
             geminiApiKey: apiKeys.geminiApiKey?.trim(),
             groqApiKey: apiKeys.groqApiKey?.trim(),
             openRouterApiKey: apiKeys.openRouterApiKey?.trim(),
+            topToolsApiKey: apiKeys.topToolsApiKey?.trim(),
             usePuterJs: apiKeys.usePuterJs !== false,
         };
     }
@@ -1128,6 +1131,10 @@ export class AIFinancialAssistant {
         return this.extractPuterText(payload);
     }
 
+    private static async generateWithTopTools(apiKey: string, prompt: string): Promise<string> {
+        return topToolsChatCompletion(apiKey, [{ role: 'user', content: prompt }]);
+    }
+
     private static toErrorSummary(error: unknown) {
         const message = String((error as any)?.message || error || 'Unknown error');
         return message.length > 220 ? `${message.slice(0, 220)}...` : message;
@@ -1140,9 +1147,20 @@ export class AIFinancialAssistant {
         if (generation !== this.chatGeneration) throw new Error('Session changed');
         const apiKeys = this.normalizeApiKeys(apiKeysInput);
         const errors: string[] = [];
-        const hasKeyProvider = !!(apiKeys.geminiApiKey || apiKeys.groqApiKey || apiKeys.openRouterApiKey);
+        const hasKeyProvider = !!(apiKeys.topToolsApiKey || apiKeys.geminiApiKey || apiKeys.groqApiKey || apiKeys.openRouterApiKey);
         const shouldTryPuter = this.shouldUsePuter(apiKeys);
         this.lastProviderUsed = 'none';
+
+        if (apiKeys.topToolsApiKey) {
+            if (generation !== this.chatGeneration || !(await loadStoredAppSettings()).aiSharingEnabled) throw new Error('AI sharing stopped');
+            try {
+                const result = await this.generateWithTopTools(apiKeys.topToolsApiKey, prompt);
+                this.lastProviderUsed = 'toptools';
+                return result;
+            } catch (error) {
+                errors.push(`Top Tools AI: ${this.toErrorSummary(error)}`);
+            }
+        }
 
         if (apiKeys.geminiApiKey) {
             if (generation !== this.chatGeneration || !(await loadStoredAppSettings()).aiSharingEnabled) throw new Error('AI sharing stopped');
@@ -1189,7 +1207,7 @@ export class AIFinancialAssistant {
         }
 
         if (!hasKeyProvider && !shouldTryPuter) {
-            throw new Error('No AI provider configured. Add Gemini, Groq, OpenRouter, or enable Puter.js (web).');
+            throw new Error('No AI provider configured. Add Top Tools AI, Gemini, Groq, OpenRouter, or enable Puter.js (web).');
         }
 
         throw new Error(`All AI providers failed. ${errors.join(' | ')}`);
@@ -1384,7 +1402,7 @@ Provide a helpful, concise, and actionable response. Be encouraging and supporti
         } catch (error) {
             if (generation !== this.chatGeneration) throw new Error("Session changed");
             this.lastProviderUsed = 'local';
-            const hasKey = !!(normalizedKeys.geminiApiKey || normalizedKeys.groqApiKey || normalizedKeys.openRouterApiKey);
+            const hasKey = !!(normalizedKeys.topToolsApiKey || normalizedKeys.geminiApiKey || normalizedKeys.groqApiKey || normalizedKeys.openRouterApiKey);
             const errMsg = (error as any)?.message || String(error);
 
             if (this.isMissingKeyError(error)) {

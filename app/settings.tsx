@@ -517,6 +517,8 @@ export default function SettingsScreen() {
     setGeminiApiKey,
     groqApiKey,
     setGroqApiKey,
+    topToolsApiKey,
+    setTopToolsApiKey,
     openRouterApiKey,
     setOpenRouterApiKey,
     puterJsEnabled,
@@ -1275,6 +1277,21 @@ export default function SettingsScreen() {
           </View>
 
           <View className="gap-4">
+            <View>
+              <View className="flex-row justify-between items-center mb-2">
+                <Text className="text-slate-700 dark:text-slate-300 font-bold">Top Tools AI API Key</Text>
+                <TouchableOpacity accessibilityLabel="Open Top Tools AI API documentation" onPress={() => Linking.openURL('https://top-tools-ai.com/docs')}>
+                  <Text className="text-indigo-500 text-xs font-bold">Get Key</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput value={topToolsApiKey} onChangeText={setTopToolsApiKey}
+                accessibilityLabel="Top Tools AI API Key" placeholder="Enter your Top Tools AI API key"
+                placeholderTextColor="#94a3b8" secureTextEntry autoCapitalize="none" autoCorrect={false}
+                className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white" />
+              <Text className="text-slate-500 text-[10px] mt-2 leading-4 dark:text-slate-400">
+                Uses the Top-Tools-Ai model first when configured. Enable AI data sharing to send financial questions, unrecognized bank SMS, and receipt images to this provider.
+              </Text>
+            </View>
             <View>
               <View className="flex-row justify-between items-center mb-2">
                 <Text className="text-slate-700 dark:text-slate-300 font-bold">Gemini API Key</Text>

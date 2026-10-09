@@ -332,6 +332,79 @@ test('no dead `t(key) || fallback` expressions remain', () => {
   assert.deepEqual(offenders, []);
 });
 
+// ── Top Tools AI client ────────────────────────────────────────────────────
+test('topToolsChatCompletion parses a successful response and sends the free model by default', async () => {
+  const { topToolsChatCompletion, TOP_TOOLS_DEFAULT_MODEL } = load('./services/TopToolsAIClient.ts');
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: ' Paris ' } }] }) };
+  };
+  try {
+    const result = await topToolsChatCompletion('sk-test', [{ role: 'user', content: 'capital of France?' }]);
+    assert.equal(result, 'Paris');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://top-tools-ai.com/api/v1/chat/completions');
+    assert.equal(calls[0].body.model, TOP_TOOLS_DEFAULT_MODEL);
+    assert.equal(TOP_TOOLS_DEFAULT_MODEL, 'Top-Tools-Ai');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('topToolsChatCompletion turns documented error codes into specific messages', async () => {
+  const { topToolsChatCompletion } = load('./services/TopToolsAIClient.ts');
+  const originalFetch = globalThis.fetch;
+  const cases = [
+    [401, 'invalid or missing API key'],
+    [403, 'no active access to this model'],
+    [429, 'rate limit exceeded'],
+  ];
+  try {
+    for (const [status, expected] of cases) {
+      globalThis.fetch = async () => ({ ok: false, status, json: async () => ({ error: { message: 'detail' } }) });
+      await assert.rejects(
+        topToolsChatCompletion('sk-test', [{ role: 'user', content: 'hi' }]),
+        new RegExp(expected)
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('topToolsChatCompletion retries once on a transient 502 and succeeds', async () => {
+  const { topToolsChatCompletion } = load('./services/TopToolsAIClient.ts');
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) return { ok: false, status: 502, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'recovered' } }] }) };
+  };
+  try {
+    const result = await topToolsChatCompletion('sk-test', [{ role: 'user', content: 'hi' }]);
+    assert.equal(result, 'recovered');
+    assert.equal(attempts, 2, 'exactly one retry on a 502');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('topToolsChatCompletion gives up after a second 502, never looping forever', async () => {
+  const { topToolsChatCompletion } = load('./services/TopToolsAIClient.ts');
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => { attempts += 1; return { ok: false, status: 502, json: async () => ({}) }; };
+  try {
+    await assert.rejects(topToolsChatCompletion('sk-test', [{ role: 'user', content: 'hi' }]), /temporarily unavailable/);
+    assert.equal(attempts, 2, 'retries exactly once, not repeatedly');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ── Assistant currency ────────────────────────────────────────────────────
 test('the assistant reports the ledger currency, never a hardcoded $', () => {
   mocks['react-native'] = { Platform: { OS: 'android' } };
@@ -1333,7 +1406,7 @@ const HARDCODED_BASELINE = {
   'app/(tabs)/reports.tsx': 16,
   'app/(tabs)/transactions.tsx': 6,
   'app/loans.tsx': 5,
-  'app/settings.tsx': 60,
+  'app/settings.tsx': 61,
 };
 
 function hardcodedJsxText(src) {

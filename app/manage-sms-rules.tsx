@@ -281,8 +281,8 @@ export default function ManageSMSRulesScreen() {
     }
 
     const settings = await loadStoredAppSettings();
-    if (!settings.geminiApiKey && !settings.groqApiKey && !settings.openRouterApiKey) {
-      Alert.alert('Set up AI first', 'Add a Gemini, Groq, or OpenRouter API key in Settings, then return here.', [
+    if (!settings.topToolsApiKey && !settings.geminiApiKey && !settings.groqApiKey && !settings.openRouterApiKey) {
+      Alert.alert('Set up AI first', 'Add a Top Tools AI, Gemini, Groq, or OpenRouter API key in Settings, then return here.', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Open Settings', onPress: () => router.push('/settings' as any) },
       ]);
@@ -325,6 +325,7 @@ export default function ManageSMSRulesScreen() {
         geminiApiKey: settings.geminiApiKey,
         groqApiKey: settings.groqApiKey,
         openRouterApiKey: settings.openRouterApiKey,
+        topToolsApiKey: settings.topToolsApiKey,
       }, previous);
       if (!parsed) {
         Alert.alert('Could not parse this SMS', 'Try another sample or check your AI provider key in Settings.');
