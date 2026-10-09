@@ -62,6 +62,24 @@ class Adapter {
 const account = (name,balance=0) => ({name,balance,type:'BANK',currency:'ETB',is_locked:false,locked_amount:0});
 const transaction = (id,amount,type='EXPENSE') => ({account_id:id,amount,type,category:'Food',description:'Meal',date:Date.now()});
 const make = () => {const raw=new Adapter();return {raw,db:new LedgerDatabase(raw,'alice')};};
+test('one malformed cloud loan no longer aborts the whole pull', async () => {
+  const { raw, db } = make();
+  await db.init();
+  const now = Date.now();
+  await db.applyRemote([
+    { table: 'accounts', id: 'acc1', revision: 1, value: { id: 'acc1', ...account('CBE', 0), created_at: now } },
+    // Repairable: missing rate, due before start, numbers stored as strings.
+    { table: 'loans', id: 'fixable', revision: 1, value: { id: 'fixable', name: 'Old', type: 'borrowed', status: 'ACTIVE', principal_amount: '500', remaining_balance: '200', start_date: now, due_date: now - 1000 } },
+    // Not repairable: no positive principal.
+    { table: 'loans', id: 'broken', revision: 1, value: { id: 'broken', name: 'Bad', type: 'LENT', status: 'ACTIVE', principal_amount: 0, remaining_balance: 0, interest_rate: 0, start_date: now, due_date: now } },
+  ]);
+  assert.ok(raw.rows.accounts.has('acc1'), 'the account still synced');
+  const fixed = raw.rows.loans.get('fixable');
+  assert.equal(fixed.interest_rate, 0); assert.equal(fixed.type, 'BORROWED'); assert.equal(fixed.due_date, fixed.start_date);
+  assert.ok(!raw.rows.loans.has('broken'));
+  assert.match(raw.meta.sync_rejected['loans/broken'].reason, /Invalid loan/);
+  assert.equal(raw.meta.revisions['loans/broken'], undefined, 'a corrected cloud copy can still apply later');
+});
 test('closing the ledger releases the native handle and blocks further writes', async () => {
   const { raw, db } = make();
   await db.init();

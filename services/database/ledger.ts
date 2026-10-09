@@ -25,6 +25,27 @@ function loanReminderAt(loan: Pick<Loan, 'due_date' | 'reminderDaysBefore' | 're
   return reminder.getTime();
 }
 
+/**
+ * Fills the gaps older/other builds left in cloud loan records (missing rate,
+ * due date before start, numeric fields stored as strings). Anything that
+ * can't be inferred safely — type, status, a non-positive principal — is left
+ * for validation to reject.
+ */
+export function repairRemoteLoan(loan: any) {
+  const num = (v: any) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v);
+  const fixed = { ...loan };
+  for (const field of ['principal_amount', 'remaining_balance', 'interest_rate', 'start_date', 'due_date']) fixed[field] = num(fixed[field]);
+  if (!Number.isFinite(fixed.interest_rate) || fixed.interest_rate < 0) fixed.interest_rate = 0;
+  if (!Number.isFinite(fixed.start_date)) fixed.start_date = Number.isFinite(fixed.created_at) ? fixed.created_at : fixed.due_date;
+  if (!Number.isFinite(fixed.due_date) || fixed.due_date < fixed.start_date) fixed.due_date = fixed.start_date;
+  if (!Number.isFinite(fixed.remaining_balance)) fixed.remaining_balance = fixed.principal_amount;
+  if (Number.isFinite(fixed.remaining_balance) && fixed.remaining_balance < 0) fixed.remaining_balance = 0;
+  if (typeof fixed.type === 'string') fixed.type = fixed.type.toUpperCase();
+  if (typeof fixed.status === 'string') fixed.status = fixed.status.toUpperCase();
+  if (Number.isFinite(fixed.due_date) && !Number.isFinite(fixed.reminder_at)) fixed.reminder_at = loanReminderAt(fixed);
+  return fixed;
+}
+
 /** One writer, atomic compound operations, and an outbox committed with the data. */
 export class LedgerDatabase implements IDatabase {
   private queue = createSerialQueue();
@@ -433,6 +454,7 @@ export class LedgerDatabase implements IDatabase {
   applyRemote(changes: Array<Row & { revision: number }>) {
     return this.run(async () => {
       const outbox = await this.raw.readMeta('outbox') || {}, revisions = await this.raw.readMeta('revisions') || {};
+      const rejected: Record<string, { table: string; id: string; reason: string; at: number }> = await this.raw.readMeta('sync_rejected') || {};
       const rows: Row[] = [];
       for (const change of changes) {
         const k = key(change);
@@ -445,7 +467,18 @@ export class LedgerDatabase implements IDatabase {
           // loans created by builds that predate reminder_at.
           outbox[k] = { ...row, token: generateUUID(), base: change.revision };
         }
-        if (row.value) this.validateEntity(row.table, row.value);
+        if (row.value && (row.table === 'loans' || row.table === 'budgets')) {
+          // Loans and budgets don't feed account balances, so one malformed
+          // cloud record must not abort the whole pull (on-device: "Invalid
+          // loan" left every balance at 0). Repair what's derivable; set
+          // aside the rest without recording its revision, so a corrected
+          // cloud copy still applies on a later sync.
+          const value = row.table === 'loans' ? repairRemoteLoan(row.value) : row.value;
+          try { this.validateEntity(row.table, value); }
+          catch (error) { rejected[k] = { table: row.table, id: row.id, reason: (error as Error).message, at: Date.now() }; continue; }
+          row = { ...row, value };
+        } else if (row.value) this.validateEntity(row.table, row.value);
+        delete rejected[k];
         rows.push(row); revisions[k] = change.revision;
       }
       // Derived balances are rebuilt from the combined ledger in the same commit.
@@ -471,7 +504,7 @@ export class LedgerDatabase implements IDatabase {
       if (new Set([...accounts.values()].map(a => a.currency)).size > 1) throw new Error('Cloud records contain multiple ledger currencies; resolve them before merging');
       for (const tx of txs.values()) validateTransaction(tx, [...accounts.values()]);
       for (const a of accounts.values()) rows.push({ table: 'accounts', id: a.id, value: { ...a, balance: sumMoney([...txs.values()].map(t => accountDelta(t, a.id))) } });
-      await this.rawCommit(rows, { revisions, outbox });
+      await this.rawCommit(rows, { revisions, outbox, sync_rejected: rejected });
       if (changes.length) LocalChangeEmitter.emit();
     });
   }
