@@ -1014,12 +1014,22 @@ export default function Accounts() {
             <FontAwesome name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-xl font-bold">Accounts</Text>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
-            onPress={() => { resetForm(); setShowAddModal(true); }}
-            className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
-          >
-            <FontAwesome name="plus" size={18} color="#fff" />
-          </TouchableOpacity>
+          <View className="flex-row" style={{ gap: 8 }}>
+            {Platform.OS === 'android' && (
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Scan SMS for accounts"
+                onPress={() => router.push('/detect-accounts' as any)}
+                className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
+              >
+                <FontAwesome name="search" size={16} color="#fff" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add"
+              onPress={() => { resetForm(); setShowAddModal(true); }}
+              className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center"
+            >
+              <FontAwesome name="plus" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Total Balance */}

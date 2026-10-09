@@ -11,6 +11,7 @@ import { findSelfTransferPairs } from '@/utils/transferPairing';
 import { SMSAICalibrationService } from './SMSAICalibrationService';
 import RecipientIdentityService from './RecipientIdentityService';
 import { findLatestSmsBalance, type LatestSmsBalance } from '@/utils/latestSmsBalance';
+import { detectAccountCandidates, type DetectedAccountCandidate } from '@/utils/smsAccountDetection';
 
 export type { SMSReconciliationResult } from './DraftTransactionService';
 import type { SMSReconciliationResult } from './DraftTransactionService';
@@ -185,6 +186,28 @@ export class SMSSyncService {
     if (!senders.length) return null;
     const messages = (await Promise.all(senders.map(sender => this.readSMSFromSender(sender, undefined, 0, Date.now(), 200)))).flat();
     return findLatestSmsBalance(messages, accountNumber);
+  }
+
+  /**
+   * Scans every real sender in the inbox (not a hardcoded list — only
+   * senders that actually texted this device) and groups each one's
+   * messages by the account they belong to, so a bank with two accounts
+   * (e.g. two CBE accounts) surfaces as two separate candidates.
+   */
+  static async detectAccounts(
+    existingAccounts: Array<{ sms_number?: string; account_number?: string }>,
+  ): Promise<DetectedAccountCandidate[]> {
+    if (Platform.OS !== 'android') return [];
+    const { getSmsWithPreview } = await import('@/services/sms');
+    const senders = (await getSmsWithPreview()).map(s => s.sender);
+    if (!senders.length) return [];
+
+    const messagesBySender: Record<string, SMSMessage[]> = {};
+    await Promise.all(senders.map(async sender => {
+      messagesBySender[sender] = await this.readSMSFromSender(sender, undefined, 0, Date.now(), 200);
+    }));
+
+    return detectAccountCandidates(messagesBySender, existingAccounts);
   }
 
   /**

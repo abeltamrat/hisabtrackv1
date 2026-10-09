@@ -80,6 +80,55 @@ test('SMS-derived opening balance prevents older messages being counted again', 
   assert.match(source, /Math\.max\(sinceTimestamp, account\.balance_as_of \+ 1\)/);
 });
 
+const { detectAccountCandidates } = load('./utils/smsAccountDetection.ts');
+
+test('two accounts at the same bank are detected as two separate candidates', () => {
+  const messagesBySender = {
+    CBE: [
+      { id: 'a1', address: 'CBE', date: 100, body: 'You have transferred ETB100.00 from account 1*4191. Current balance is ETB 1,200.00.' },
+      { id: 'a2', address: 'CBE', date: 200, body: 'You have transferred ETB50.00 from account 1*2073. Current balance is ETB 9,999.00.' },
+      { id: 'a3', address: 'CBE', date: 300, body: 'You have transferred ETB200.00 from account 1*4191. Current balance is ETB 1,000.00.' },
+    ],
+  };
+
+  const candidates = detectAccountCandidates(messagesBySender, []);
+  assert.equal(candidates.length, 2);
+  const byTail = Object.fromEntries(candidates.map(c => [c.accountTail, c]));
+  assert.equal(byTail['4191'].balance, 1000);
+  assert.equal(byTail['4191'].bankName, 'Commercial Bank Of Ethiopia');
+  assert.equal(byTail['2073'].balance, 9999);
+});
+
+test('a short, partially-masked tail merges into its matching longer tail instead of duplicating', () => {
+  const messagesBySender = {
+    CBE: [
+      { id: 'b1', address: 'CBE', date: 100, body: 'You have transferred ETB100.00 from account 1*4191. Current balance is ETB 1,200.00.' },
+      // Exposes only 2 digits, but they're a suffix of the account above — same account, newer balance.
+      { id: 'b2', address: 'CBE', date: 200, body: 'You have transferred ETB50.00 from account **91. Current balance is ETB 1,150.00.' },
+    ],
+  };
+
+  const candidates = detectAccountCandidates(messagesBySender, []);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].accountTail, '4191');
+  assert.equal(candidates[0].balance, 1150, 'the newer (2-digit) message updates the balance in place');
+});
+
+test('an existing account is marked already-linked and an unrecognized sender still surfaces', () => {
+  const messagesBySender = {
+    CBE: [{ id: 'c1', address: 'CBE', date: 100, body: 'You have transferred ETB10.00 from account 1*4191. Current balance is ETB 500.00.' }],
+    MysteryBank: [{ id: 'c2', address: 'MysteryBank', date: 100, body: 'Account 7788 balance: ETB 300.00' }],
+  };
+  const existingAccounts = [{ sms_number: 'CBE', account_number: '1000004191' }];
+
+  const candidates = detectAccountCandidates(messagesBySender, existingAccounts);
+  const cbe = candidates.find(c => c.sender === 'CBE');
+  const mystery = candidates.find(c => c.sender === 'MysteryBank');
+  assert.equal(cbe.alreadyLinked, true);
+  assert.equal(mystery.alreadyLinked, false);
+  assert.equal(mystery.bankName, null, 'an unrecognized sender is still scanned, just unnamed');
+});
+
 test('database and backup validation reject malformed SMS balance metadata', () => {
   const ledger = fs.readFileSync(path.join(root, 'services/database/ledger.ts'), 'utf8');
   const backup = fs.readFileSync(path.join(root, 'services/BackupService.ts'), 'utf8');

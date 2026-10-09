@@ -19,7 +19,7 @@ function accountTail(value?: string): string {
   return (value ?? '').replace(/\D/g, '').slice(-4);
 }
 
-function statedBalance(message: string): number | undefined {
+export function statedBalance(message: string): number | undefined {
   const match = message.match(
     /(?:current\s+|available\s+|updated\s+)?(?:e-money\s+|telebirr\s+account\s+)?balance\s*(?:is|:)?\s*(?:now\s+)?(?:birr|etb|br|usd|rs\.?|inr|₹|\$)?\s*([\d,]+(?:\.\d+)?)/i,
   );
