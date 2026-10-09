@@ -57,6 +57,7 @@ export interface AppSettings {
   geminiApiKey?: string;
   groqApiKey?: string;
   openRouterApiKey?: string;
+  topToolsApiKey?: string;
   puterJsEnabled?: boolean;
   backgroundReminders: BackgroundReminderSettings;
   assistantOverlay: AssistantOverlaySettings;
@@ -74,6 +75,7 @@ interface AppSettingsContextType extends AppSettings {
   setGeminiApiKey: (k: string) => void;
   setGroqApiKey: (k: string) => void;
   setOpenRouterApiKey: (k: string) => void;
+  setTopToolsApiKey: (k: string) => void;
   setPuterJsEnabled: (v: boolean) => void;
   setBackgroundProcessingEnabled: (v: boolean) => void;
   setBackgroundSmsSyncEnabled: (v: boolean) => void;
@@ -128,6 +130,7 @@ const DEFAULTS: AppSettings = {
   geminiApiKey: '',
   groqApiKey: '',
   openRouterApiKey: '',
+  topToolsApiKey: '',
   puterJsEnabled: false,
   backgroundReminders: DEFAULT_BACKGROUND_REMINDERS,
   assistantOverlay: DEFAULT_ASSISTANT_OVERLAY,
@@ -242,6 +245,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const setCalendarSystem = (calendarSystem: CalendarSystem) => setSettings(prev => ({ ...prev, calendarSystem }));
   const setGeminiApiKey = (geminiApiKey: string) => setSettings(prev => ({ ...prev, geminiApiKey }));
   const setGroqApiKey = (groqApiKey: string) => setSettings(prev => ({ ...prev, groqApiKey }));
+  const setTopToolsApiKey = (topToolsApiKey: string) => setSettings(prev => ({ ...prev, topToolsApiKey }));
   const setOpenRouterApiKey = (openRouterApiKey: string) => setSettings(prev => ({ ...prev, openRouterApiKey }));
   const setPuterJsEnabled = (puterJsEnabled: boolean) => setSettings(prev => ({ ...prev, puterJsEnabled }));
   const setBackgroundProcessingEnabled = (backgroundProcessingEnabled: boolean) => setSettings(prev => ({
@@ -370,6 +374,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     setGeminiApiKey,
     setGroqApiKey,
     setOpenRouterApiKey,
+    setTopToolsApiKey,
     setPuterJsEnabled,
     setBackgroundProcessingEnabled,
     setBackgroundSmsSyncEnabled,
