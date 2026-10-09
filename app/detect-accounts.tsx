@@ -5,7 +5,7 @@ import { AppDispatch, RootState } from '@/store';
 import { addAccount } from '@/store/slices/accountsSlice';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -125,6 +125,7 @@ export default function DetectAccountsScreen() {
   return (
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
       <StatusBar style="auto" />
+      <Stack.Screen options={{ headerShown: false }} />
       <LinearGradient colors={['#059669', '#047857']} className="px-6 pt-6 pb-6 rounded-b-[32px]" style={{ elevation: 4 }}>
         <View className="flex-row justify-between items-center">
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-xl justify-center items-center">

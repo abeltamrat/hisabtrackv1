@@ -198,14 +198,32 @@ export class SMSSyncService {
     existingAccounts: Array<{ sms_number?: string; account_number?: string }>,
   ): Promise<DetectedAccountCandidate[]> {
     if (Platform.OS !== 'android') return [];
-    const { getSmsWithPreview } = await import('@/services/sms');
-    const senders = (await getSmsWithPreview()).map(s => s.sender);
-    if (!senders.length) return [];
+    // One inbox read, grouped here — a native query per sender fired all at
+    // once (dozens on a typical phone) overran readSMSFromSender's 10s
+    // timeout, and a single timeout failed the whole scan.
+    const SmsAndroid = require('react-native-get-sms-android');
+    const inbox = await Promise.race([
+      new Promise<SMSMessage[]>((resolve, reject) => {
+        SmsAndroid.list(
+          JSON.stringify({ box: 'inbox', maxCount: 5000 }),
+          (fail: string) => reject(new Error(fail)),
+          (_count: number, smsList: string) => {
+            try {
+              resolve((JSON.parse(smsList) as any[]).map(m => ({ id: String(m._id), address: m.address, body: m.body, date: m.date })));
+            } catch (e) { reject(e); }
+          },
+        );
+      }),
+      new Promise<SMSMessage[]>((_, reject) => setTimeout(() => reject(new Error('Reading the SMS inbox took too long. Try again.')), 60000)),
+    ]);
 
     const messagesBySender: Record<string, SMSMessage[]> = {};
-    await Promise.all(senders.map(async sender => {
-      messagesBySender[sender] = await this.readSMSFromSender(sender, undefined, 0, Date.now(), 200);
-    }));
+    for (const sms of inbox) {
+      // Only messages that state a balance can produce a candidate; skipping
+      // the rest up front keeps parsing cheap on a large inbox.
+      if (!sms.address || !sms.body || !/balance/i.test(sms.body)) continue;
+      (messagesBySender[sms.address] ??= []).push(sms);
+    }
 
     return detectAccountCandidates(messagesBySender, existingAccounts);
   }
