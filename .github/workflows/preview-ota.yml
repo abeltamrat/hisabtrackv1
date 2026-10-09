@@ -1,0 +1,52 @@
+name: Preview OTA on every commit
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: preview-ota
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: Publish Android preview OTA
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: EXPO_TOKEN is not configured
+        if: env.EXPO_TOKEN == ''
+        run: echo "Add the EXPO_TOKEN repository secret to enable automatic OTA publishing."
+
+      - name: Checkout repository
+        if: env.EXPO_TOKEN != ''
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        if: env.EXPO_TOKEN != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Expo and EAS
+        if: env.EXPO_TOKEN != ''
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        if: env.EXPO_TOKEN != ''
+        run: npm ci
+
+      - name: Validate app
+        if: env.EXPO_TOKEN != ''
+        run: npm run typecheck
+
+      - name: Publish preview OTA
+        if: env.EXPO_TOKEN != ''
+        run: eas update --branch preview --platform android --message "Commit $GITHUB_SHA" --non-interactive
