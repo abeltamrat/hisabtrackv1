@@ -63,6 +63,17 @@ test('account form keeps manual override and places SMS before initial balance',
   assert.match(source, /balance_source: importedBalance \? 'SMS' : 'MANUAL'/);
 });
 
+test('SMS balance lookup is not restricted to Bank-type accounts', () => {
+  // A card, savings, or mobile-money account can just as plausibly have a
+  // bank/telco SMS sender with balance info — gating the lookup to only
+  // accountType === 'BANK' meant picking a sender on any other type silently
+  // did nothing, with no error or hint shown to explain why.
+  const source = fs.readFileSync(path.join(root, 'app/accounts.tsx'), 'utf8');
+  assert.doesNotMatch(source, /accountType !== 'BANK'/);
+  assert.doesNotMatch(source, /accountType === 'BANK'/);
+  assert.match(source, /!editingId && smsNumber\.trim\(\)/);
+});
+
 test('SMS-derived opening balance prevents older messages being counted again', () => {
   const source = fs.readFileSync(path.join(root, 'services/SMSSyncService.ts'), 'utf8');
   assert.match(source, /account\.balance_source === 'SMS'/);

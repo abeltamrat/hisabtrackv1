@@ -129,7 +129,7 @@ export default function Accounts() {
   };
 
   const lookupLatestSmsBalance = async (requestPermission = false) => {
-    if (Platform.OS !== 'android' || editingId || accountType !== 'BANK' || !smsNumber.trim()) return;
+    if (Platform.OS !== 'android' || editingId || !smsNumber.trim()) return;
     const sequence = ++balanceLookupSequence.current;
     setSmsBalanceLookup({ status: 'loading' });
 
@@ -167,7 +167,7 @@ export default function Accounts() {
   };
 
   useEffect(() => {
-    if (Platform.OS !== 'android' || editingId || accountType !== 'BANK' || !smsNumber.trim()) return;
+    if (Platform.OS !== 'android' || editingId || !smsNumber.trim()) return;
     const timer = setTimeout(() => { void lookupLatestSmsBalance(false); }, 650);
     return () => clearTimeout(timer);
     // The lookup intentionally reruns when either identifier changes.
@@ -1397,7 +1397,7 @@ export default function Accounts() {
 
                 <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2">Tap Fetch to choose a bank sender ID. For a new bank account, HisabTrack can read the newest matching balance locally and does not save the message text.</Text>
 
-                {!editingId && accountType === 'BANK' && smsNumber.trim() ? (
+                {!editingId && smsNumber.trim() ? (
                   <View className="mt-3 rounded-xl bg-slate-50 dark:bg-slate-900 p-3">
                     {smsBalanceLookup.status === 'loading' ? (
                       <View className="flex-row items-center">
