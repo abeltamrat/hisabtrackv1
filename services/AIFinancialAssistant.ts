@@ -180,6 +180,23 @@ export class AIFinancialAssistant {
         );
     }
 
+    /**
+     * What to prepend to a local fallback reply, given why the cloud call
+     * failed. Without this, a key configured but blocked for some other
+     * reason (AI data sharing left off in Settings, a bad key, a quota) read
+     * as "the assistant always uses Local" with no clue why — this is what
+     * chat() already did; analyzeFinancialHealth/getSpendingInsights/
+     * getBudgetRecommendations silently returned local text instead.
+     */
+    private static describeFallbackReason(error: unknown, apiKeys: AssistantApiKeys): string {
+        if (this.isMissingKeyError(error)) return '';
+        if (this.isQuotaOrRateLimitError(error)) return '⚠️ AI quota reached. Local analysis:\n\n';
+        const hasKey = !!(apiKeys.topToolsApiKey || apiKeys.geminiApiKey || apiKeys.groqApiKey || apiKeys.openRouterApiKey);
+        if (!hasKey) return '';
+        const errMsg = (error as any)?.message || String(error);
+        return `⚠️ AI provider failed: ${errMsg}\n\nCheck your API key and AI data sharing setting in Settings, then try again. Local analysis:\n\n`;
+    }
+
     private static getLocalChatFallback(userMessage: string, data: FinancialData): string {
         this.useCurrency(data);
         const snapshot = this.buildLocalSnapshot(data);
@@ -1279,7 +1296,7 @@ Keep your response concise, friendly, and professional.`;
             if (!this.isMissingKeyError(error)) {
                 console.error('AI Analysis Error:', error);
             }
-            return this.getFallbackAnalysis(data);
+            return this.describeFallbackReason(error, this.normalizeApiKeys(apiKeys)) + this.getFallbackAnalysis(data);
         }
     }
 
@@ -1402,26 +1419,10 @@ Provide a helpful, concise, and actionable response. Be encouraging and supporti
         } catch (error) {
             if (generation !== this.chatGeneration) throw new Error("Session changed");
             this.lastProviderUsed = 'local';
-            const hasKey = !!(normalizedKeys.topToolsApiKey || normalizedKeys.geminiApiKey || normalizedKeys.groqApiKey || normalizedKeys.openRouterApiKey);
-            const errMsg = (error as any)?.message || String(error);
-
-            if (this.isMissingKeyError(error)) {
-                return this.getLocalChatFallback(userMessage, financialData);
+            if (!this.isMissingKeyError(error)) {
+                console.error('AI Chat Error:', error);
             }
-
-            if (this.isQuotaOrRateLimitError(error)) {
-                const local = this.getLocalChatFallback(userMessage, financialData);
-                return `⚠️ AI quota reached. Local analysis:\n\n${local}`;
-            }
-
-            console.error('AI Chat Error:', error);
-
-            if (hasKey) {
-                const local = this.getLocalChatFallback(userMessage, financialData);
-                return `⚠️ AI provider failed: ${errMsg}\n\nCheck your API key in Settings, then try again. Local analysis:\n\n${local}`;
-            }
-
-            return this.getLocalChatFallback(userMessage, financialData);
+            return this.describeFallbackReason(error, normalizedKeys) + this.getLocalChatFallback(userMessage, financialData);
         }
     }
 
@@ -1451,7 +1452,7 @@ Keep it brief and actionable (under 150 words).`;
             if (!this.isMissingKeyError(error)) {
                 console.error('AI Insights Error:', error);
             }
-            return this.buildLocalSpendingResponse(this.buildLocalSnapshot(data));
+            return this.describeFallbackReason(error, this.normalizeApiKeys(apiKeys)) + this.buildLocalSpendingResponse(this.buildLocalSnapshot(data));
         }
     }
 
@@ -1480,7 +1481,7 @@ Keep it practical and under 150 words.`;
             if (!this.isMissingKeyError(error)) {
                 console.error('AI Budget Error:', error);
             }
-            return this.getFallbackBudgetAdvice(data);
+            return this.describeFallbackReason(error, this.normalizeApiKeys(apiKeys)) + this.getFallbackBudgetAdvice(data);
         }
     }
 

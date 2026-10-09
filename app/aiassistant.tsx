@@ -23,7 +23,7 @@ export default function AIAssistantScreen() {
     const dispatch = useDispatch<AppDispatch>();
     const { categories } = useTransactions();
     const scrollViewRef = useRef<ScrollView>(null);
-    const { geminiApiKey, groqApiKey, openRouterApiKey, topToolsApiKey, puterJsEnabled } = useAppSettings();
+    const { geminiApiKey, groqApiKey, openRouterApiKey, topToolsApiKey, puterJsEnabled, aiSharingEnabled } = useAppSettings();
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
@@ -239,6 +239,23 @@ export default function AIAssistantScreen() {
                         </View>
                         <Text className="text-amber-700 dark:text-amber-300 text-sm mb-4 leading-5">
                             Add a Top Tools AI, Gemini, Groq, or OpenRouter API key, or enable Puter.js on web. Without cloud AI, the assistant still gives local offline guidance.
+                        </Text>
+                        <TouchableOpacity
+                            onPress={() => router.push('/settings')}
+                            className="bg-amber-500 py-3 rounded-xl items-center"
+                        >
+                            <Text className="text-white font-bold">Open AI Settings</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+                {hasAnyCloudProvider && !aiSharingEnabled && (
+                    <View className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-6 mb-6">
+                        <View className="flex-row items-center mb-3">
+                            <FontAwesome name="warning" size={20} color="#d97706" />
+                            <Text className="text-amber-800 dark:text-amber-400 font-bold ml-2">AI Data Sharing Is Off</Text>
+                        </View>
+                        <Text className="text-amber-700 dark:text-amber-300 text-sm mb-4 leading-5">
+                            An API key is configured, but every reply still comes from local offline guidance until you turn on AI data sharing in Settings — it's a separate switch from the API key field.
                         </Text>
                         <TouchableOpacity
                             onPress={() => router.push('/settings')}

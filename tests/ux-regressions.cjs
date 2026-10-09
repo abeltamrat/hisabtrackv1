@@ -443,6 +443,38 @@ test('the assistant reports the ledger currency, never a hardcoded $', () => {
   }
 });
 
+test('a configured key with AI data sharing off explains why every quick action still answers locally', async () => {
+  mocks['react-native'] = { Platform: { OS: 'android' } };
+  mocks['@/contexts/AppSettingsContext'] = { loadStoredAppSettings: async () => ({ aiSharingEnabled: false }) };
+  try {
+    const { AIFinancialAssistant } = load('./services/AIFinancialAssistant.ts');
+    const data = {
+      totalIncome: 1000, totalExpense: 400, balance: 600,
+      transactions: [], budgets: [], loans: [],
+      accounts: [{ id: 'a1', name: 'CBE', currency: 'ETB', balance: 600 }],
+      savingsRate: 60, monthlyAverage: 400,
+    };
+    const keys = { topToolsApiKey: 'sk-configured' };
+
+    // Previously these three silently returned local text with no hint that
+    // a key was configured but blocked — only chat() explained itself.
+    for (const call of [
+      () => AIFinancialAssistant.analyzeFinancialHealth(data, keys),
+      () => AIFinancialAssistant.getSpendingInsights(data, keys),
+      () => AIFinancialAssistant.getBudgetRecommendations(data, keys),
+      () => AIFinancialAssistant.chat('how am I doing?', data, keys),
+    ]) {
+      const reply = await call();
+      assert.match(reply, /AI provider failed/i, `expected an explanation, got:\n${reply}`);
+      assert.match(reply, /AI data sharing/i, `expected it to name the real blocker, got:\n${reply}`);
+    }
+  } finally {
+    delete mocks['react-native'];
+    delete mocks['@/contexts/AppSettingsContext'];
+    cache.clear();
+  }
+});
+
 // ── Text integrity ────────────────────────────────────────────────────────
 test('financial advisor insights use the selected ledger currency', () => {
   const { FinancialAdvisorService } = load('./services/FinancialAdvisorService.ts');
