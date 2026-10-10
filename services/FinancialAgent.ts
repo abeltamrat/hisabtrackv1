@@ -213,7 +213,7 @@ export function runAgentTool(name: string, args: Record<string, any>, scope: Age
     case 'get_loans':
       return {
         loans: scope.loans.map(l => ({
-          name: l.person_name_snapshot || l.lender_borrower_name, direction: l.type === 'BORROWED' ? 'I borrowed' : 'I lent', status: l.status,
+          name: l.lender_borrower_name, direction: l.type === 'BORROWED' ? 'I borrowed' : 'I lent', status: l.status,
           principal: money(l.principal_amount), remaining: money(l.remaining_balance), annual_rate_pct: l.interest_rate,
           start: iso(l.start_date), due: iso(l.due_date), days_until_due: Math.ceil((l.due_date - Date.now()) / DAY),
         })),
