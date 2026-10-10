@@ -12,6 +12,7 @@ import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 import { AssistantActionService, type AssistantProposal, type AssistantUndo } from '@/services/AssistantActionService';
 import { RecurringTransactionService } from '@/services/RecurringTransactionService';
+import FinancialAgent from '@/services/FinancialAgent';
 import type { RecurringTransaction } from '@/types/database';
 import { useTransactions } from '@/context/TransactionContext';
 import { useDispatch } from 'react-redux';
@@ -118,6 +119,27 @@ export default function AIAssistantScreen() {
         setShowQuickActions(false);
 
         try {
+            // Tool-calling agent first: it looks up exactly the records a question
+            // needs instead of answering from a fixed summary. Any failure falls
+            // through to the local intents and the summary-based chat below.
+            if (aiSharingEnabled && FinancialAgent.isAvailable(providerKeys)) {
+                try {
+                    const history = messages
+                        .filter(m => m.id !== 'welcome' && (m.role === 'user' || m.role === 'assistant'))
+                        .map(m => ({ role: m.role, content: m.content }));
+                    const result = await FinancialAgent.run(userMessage.content, history, {
+                        transactions, accounts, budgets, loans, recurring, goals,
+                        categories: categories.map(item => item.name),
+                        currency: accounts[0]?.currency || 'ETB',
+                    }, providerKeys);
+                    if (result.proposal) setProposal(result.proposal);
+                    setEvidenceIds(result.evidenceIds);
+                    setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: result.answer, timestamp: new Date(), provider: result.provider }]);
+                    return;
+                } catch (agentError) {
+                    console.warn('Financial agent unavailable, falling back:', agentError);
+                }
+            }
             const local = AssistantActionService.analyze(userMessage.content, { transactions, accounts, budgets, categories: categories.map(item => item.name), recurring, goals, currency: accounts[0]?.currency || 'ETB' });
             const response = local.handled
                 ? (local.error || local.answer || 'I could not prepare that safely.')
@@ -147,6 +169,27 @@ export default function AIAssistantScreen() {
         setIsLoading(true);
 
         try {
+            const agentQuestions: Record<string, string> = {
+                health: 'Give me a financial health check: compare this month with last month (income, spending, savings rate), check my budgets and loans due soon, and give 3 specific recommendations with numbers.',
+                insights: 'Analyze my spending over the last 3 months: top categories and merchants, month-over-month changes, any unusual or growing expenses, and where I could realistically save.',
+                budget: 'Recommend monthly budgets based on my actual spending in the last 3 months, compare with my existing budgets, and propose the single most useful budget change.',
+            };
+            if (aiSharingEnabled && FinancialAgent.isAvailable(providerKeys) && agentQuestions[action]) {
+                try {
+                    const result = await FinancialAgent.run(agentQuestions[action], [], {
+                        transactions, accounts, budgets, loans, recurring, goals,
+                        categories: categories.map(item => item.name),
+                        currency: accounts[0]?.currency || 'ETB',
+                    }, providerKeys);
+                    if (result.proposal) setProposal(result.proposal);
+                    setEvidenceIds(result.evidenceIds);
+                    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: result.answer, timestamp: new Date(), provider: result.provider }]);
+                    return;
+                } catch (agentError) {
+                    console.warn('Financial agent unavailable, falling back:', agentError);
+                }
+            }
+
             let response = '';
 
             switch (action) {
