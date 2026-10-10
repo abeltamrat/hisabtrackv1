@@ -249,6 +249,12 @@ export class AppNotificationService {
         ...phase2.recipientSuggestions.slice(0, 3).map(suggestion => ({ sourceKey: `phase2:${suggestion.id}`, title: 'Recipient aliases may match', message: `${suggestion.left} and ${suggestion.right}: ${suggestion.reason}`, type: 'info' as const, icon: 'user-circle', color: '#7c3aed', actionType: 'view_smart_review' as const })),
       ];
       await this.syncSourceNotifications('phase2:', reviewNotifications.slice(0, 12));
+      // Each isolated so a failure (e.g. offline AI) never blocks the rest of the check.
+      await (await import('@/services/ProactiveInsightsService')).ProactiveInsightsService
+        .run({ transactions, accounts, budgets, loans, recurring, categories: effectiveCategories.map(c => c.name) })
+        .catch(error => console.warn('Proactive insights failed:', error));
+      await (await import('@/services/DraftEnrichmentService')).DraftEnrichmentService.enrichPending()
+        .catch(error => console.warn('Draft enrichment failed:', error));
       const settings = await (await import('@/contexts/AppSettingsContext')).loadStoredAppSettings();
       const digestSettings = settings.backgroundReminders;
       const hour = new Date().getHours();

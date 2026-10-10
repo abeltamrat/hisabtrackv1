@@ -510,6 +510,8 @@ export class SMSSyncService {
       if (draftsToAdd.length > 0) {
         const savedDrafts = await DraftTransactionService.addMany(draftsToAdd);
         result.drafts.push(...savedDrafts);
+        // Fill in categories/merchant names for the new drafts in the background.
+        void import('./DraftEnrichmentService').then(m => m.DraftEnrichmentService.enrichPending()).catch(() => undefined);
       }
 
       // Link debit/credit legs of transfers between the user's own accounts
