@@ -35,7 +35,9 @@ const unique = (values: Array<string | undefined>) => [...new Set(values.filter(
 const validPhone = (value?: string) => !!value && /^\+[1-9]\d{7,14}$/.test(value);
 const validEmail = (value?: string) => !!value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const LOCAL_CACHE_MS = 5 * 60 * 1000;
-const DISCOVERY_CACHE_MS = 10 * 60 * 1000;
+// Registered profiles can change on another phone at any time. Keep this
+// short so an earlier empty result does not hide a newly saved phone number.
+const DISCOVERY_CACHE_MS = 60 * 1000;
 
 let localContactsCache: { loadedAt: number; contacts: DeviceContact[] } | null = null;
 let discoveryCache: { loadedAt: number; matches: Map<string, LinkedContactMatch> } | null = null;
@@ -86,10 +88,10 @@ export class DeviceContactsService {
   }
 
   /** Add registered-user badges after local contacts are already visible. */
-  static async discoverLinkedContacts(contacts: DeviceContact[]): Promise<ContactDiscoveryResult> {
+  static async discoverLinkedContacts(contacts: DeviceContact[], forceRefresh = false): Promise<ContactDiscoveryResult> {
     if (!contacts.length) return { contacts, discoveryFailed: false };
 
-    if (discoveryCache && Date.now() - discoveryCache.loadedAt < DISCOVERY_CACHE_MS) {
+    if (!forceRefresh && discoveryCache && Date.now() - discoveryCache.loadedAt < DISCOVERY_CACHE_MS) {
       return {
         contacts: contacts.map(contact => ({ ...contact, linkedAccount: discoveryCache?.matches.get(contact.id) })),
         discoveryFailed: false,
@@ -129,7 +131,8 @@ export class DeviceContactsService {
       discoveryCache = { loadedAt: Date.now(), matches: byKey };
       return { contacts: contacts.map(contact => ({ ...contact, linkedAccount: byKey.get(contact.id) })), discoveryFailed: false };
     } catch {
-      discoveryCache = { loadedAt: Date.now(), matches: selfMatches };
+      // Do not cache a network/backend failure as a valid empty discovery.
+      // Otherwise every reopen keeps hiding badges until the cache expires.
       return {
         contacts: contacts.map(contact => ({ ...contact, linkedAccount: selfMatches.get(contact.id) })),
         discoveryFailed: true,

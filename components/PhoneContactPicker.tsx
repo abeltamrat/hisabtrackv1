@@ -28,6 +28,21 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
   const [discoveryFailed, setDiscoveryFailed] = useState(false);
   const [discovering, setDiscovering] = useState(false);
 
+  const refreshBadges = async (source: DeviceContact[], forceRefresh = false) => {
+    if (!source.length || discovering) return;
+    setDiscovering(true);
+    setDiscoveryFailed(false);
+    try {
+      const discovered = await DeviceContactsService.discoverLinkedContacts(source, forceRefresh);
+      setContacts(discovered.contacts);
+      setDiscoveryFailed(discovered.discoveryFailed);
+    } catch {
+      setDiscoveryFailed(true);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
   useEffect(() => {
     if (!visible) return undefined;
     let active = true;
@@ -39,7 +54,6 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
         setStatus(result.status); setContacts(result.contacts); setLoading(false);
         if (result.status !== 'granted') return;
 
-        setDiscovering(true);
         const discovered = await DeviceContactsService.discoverLinkedContacts(result.contacts);
         if (!active) return;
         setContacts(discovered.contacts);
@@ -73,7 +87,8 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
         <View className="flex-row items-center bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 mb-2"><FontAwesome name="search" size={16} color="#94a3b8" /><TextInput value={query} onChangeText={setQuery} placeholder="Search phone contacts" placeholderTextColor="#94a3b8" className="flex-1 px-3 py-3 text-slate-900 dark:text-white" /></View>
         <View className="flex-row items-center mb-3 px-1"><HisabContactBadge /><Text className="flex-1 text-xs text-slate-500 dark:text-slate-400">The coin and link badge identifies a verified HisabTrack user. A plain coin means the number is saved in someone's HisabTrack profile but not verified. Phone and email values are checked securely and are not stored by discovery.</Text></View>
         {discovering && <View className="flex-row items-center mb-3 px-1"><ActivityIndicator size="small" color="#10b981" /><Text className="text-xs text-slate-500 dark:text-slate-400 ml-2">Checking HisabTrack contacts in the background…</Text></View>}
-        {discoveryFailed && <Text className="text-xs text-amber-600 dark:text-amber-400 mb-3">Contacts loaded. HisabTrack badges could not be checked while offline.</Text>}
+        {discoveryFailed && <View className="flex-row items-center mb-3 px-1"><Text className="flex-1 text-xs text-amber-600 dark:text-amber-400">HisabTrack badges could not be checked.</Text><TouchableOpacity disabled={discovering} onPress={() => void refreshBadges(contacts, true)} className="px-3 py-2 rounded-xl bg-amber-100 dark:bg-amber-900/30"><Text className="text-xs font-bold text-amber-700 dark:text-amber-300">Retry</Text></TouchableOpacity></View>}
+        {!discovering && !discoveryFailed && contacts.length > 0 && !contacts.some(contact => contact.linkedAccount) && <View className="flex-row items-center mb-3 px-1"><Text className="flex-1 text-xs text-slate-500 dark:text-slate-400">No HisabTrack badges found yet.</Text><TouchableOpacity onPress={() => void refreshBadges(contacts, true)} className="px-3 py-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/30"><Text className="text-xs font-bold text-indigo-700 dark:text-indigo-300">Check again</Text></TouchableOpacity></View>}
         <FlatList
           data={shown}
           keyExtractor={contact => contact.id}

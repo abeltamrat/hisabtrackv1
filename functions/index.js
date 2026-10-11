@@ -509,6 +509,7 @@ exports.lookupLinkedUser = onCall({ region: 'us-central1' }, async request => {
 // Contact discovery accepts only identifiers already present in the caller's
 // address book. It returns no phone or email data and omits ambiguous matches.
 exports.discoverLinkedContacts = onCall({ region: 'us-central1' }, async request => {
+  const startedAt = Date.now();
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
   const uid = request.auth.uid;
   const rawContacts = request.data?.contacts;
@@ -536,14 +537,14 @@ exports.discoverLinkedContacts = onCall({ region: 'us-central1' }, async request
     tx.set(limitRef, { count: count + 1, start: reset ? now : prior.start });
   });
 
-  const foundUsers = [];
-  for (let offset = 0; offset < identifiers.length; offset += 100) {
-    const result = await admin.auth().getUsers(identifiers.slice(offset, offset + 100));
-    foundUsers.push(...result.users);
-  }
+  const identifierBatches = [];
+  for (let offset = 0; offset < identifiers.length; offset += 100) identifierBatches.push(identifiers.slice(offset, offset + 100));
+  const foundUsers = (await Promise.all(identifierBatches.map(batch => admin.auth().getUsers(batch)))).flatMap(result => result.users);
   const eligible = [];
-  for (const user of foundUsers) {
-    if (user.uid === uid || user.disabled || (await db.doc(`deletedAccounts/${user.uid}`).get()).exists) continue;
+  const deletedUsers = await Promise.all(foundUsers.map(user => db.doc(`deletedAccounts/${user.uid}`).get()));
+  for (let index = 0; index < foundUsers.length; index += 1) {
+    const user = foundUsers[index];
+    if (user.uid === uid || user.disabled || deletedUsers[index].exists) continue;
     eligible.push(user);
   }
   const byPhone = new Map(eligible.filter(user => user.phoneNumber).map(user => [user.phoneNumber, user]));
@@ -552,12 +553,14 @@ exports.discoverLinkedContacts = onCall({ region: 'us-central1' }, async request
   // weaker "on HisabTrack" match (verified: false) that the app never uses to
   // link accounts. Several accounts claiming one number count as no match.
   const savedByPhone = new Map();
-  for (let offset = 0; offset < phoneValues.length; offset += 30) {
-    // Needs the meta.phoneNumber collection-group index; while it builds, verified matches still return.
-    const snapshot = await db.collectionGroup('meta').where('phoneNumber', 'in', phoneValues.slice(offset, offset + 30)).get().catch(error => {
+  const phoneBatches = [];
+  for (let offset = 0; offset < phoneValues.length; offset += 30) phoneBatches.push(phoneValues.slice(offset, offset + 30));
+  // Needs the meta.phoneNumber collection-group index; while it builds, verified matches still return.
+  const savedSnapshots = await Promise.all(phoneBatches.map(batch => db.collectionGroup('meta').where('phoneNumber', 'in', batch).get().catch(error => {
       console.warn('Saved-phone discovery unavailable:', error.message);
       return { docs: [] };
-    });
+    })));
+  for (const snapshot of savedSnapshots) {
     for (const item of snapshot.docs) {
       const owner = item.ref.parent.parent?.id;
       if (item.id !== 'profile' || !owner || owner === uid) continue;
@@ -568,8 +571,10 @@ exports.discoverLinkedContacts = onCall({ region: 'us-central1' }, async request
   }
   const savedUsers = new Map();
   const savedUids = [...new Set([...savedByPhone.values()].flatMap(owners => [...owners]))];
-  for (let offset = 0; offset < savedUids.length; offset += 100) {
-    const result = await admin.auth().getUsers(savedUids.slice(offset, offset + 100).map(id => ({ uid: id })));
+  const savedUidBatches = [];
+  for (let offset = 0; offset < savedUids.length; offset += 100) savedUidBatches.push(savedUids.slice(offset, offset + 100));
+  const savedResults = await Promise.all(savedUidBatches.map(batch => admin.auth().getUsers(batch.map(id => ({ uid: id })))));
+  for (const result of savedResults) {
     for (const user of result.users) {
       if (user.disabled || (await db.doc(`deletedAccounts/${user.uid}`).get()).exists) continue;
       savedUsers.set(user.uid, user);
@@ -593,6 +598,7 @@ exports.discoverLinkedContacts = onCall({ region: 'us-central1' }, async request
     const user = [...saved.values()][0];
     matches.push({ key: contact.key, uid: user.uid, displayName: user.displayName || 'HisabTrack user', verified: false });
   }
+  console.info('Contact discovery completed', { contacts: contacts.length, matches: matches.length, durationMs: Date.now() - startedAt });
   return { matches };
 });
 

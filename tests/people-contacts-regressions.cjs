@@ -36,17 +36,21 @@ test('phone contacts render before badge discovery and use a virtualized cached 
   assert.match(service, /DISCOVERY_CACHE_MS/);
   assert.match(picker, /setContacts\(result\.contacts\); setLoading\(false\)/);
   assert.match(picker, /await DeviceContactsService\.discoverLinkedContacts/);
+  const initialLoad = picker.slice(picker.indexOf('const load = async'), picker.indexOf('void load()'));
   assert.ok(
-    picker.indexOf('setContacts(result.contacts); setLoading(false)')
-      < picker.indexOf('await DeviceContactsService.discoverLinkedContacts'),
+    initialLoad.indexOf('setContacts(result.contacts); setLoading(false)')
+      < initialLoad.indexOf('await DeviceContactsService.discoverLinkedContacts'),
   );
   assert.match(picker, /<FlatList/);
   assert.doesNotMatch(picker, /shown\.map\(/);
+  assert.match(service, /DISCOVERY_CACHE_MS = 60 \* 1000/);
+  assert.doesNotMatch(service, /catch \{\s*discoveryCache =/s, 'failed discovery must never be cached as an empty success');
+  assert.match(picker, /Check again/);
 });
 
 test('a number saved in Settings gives a weaker, non-linking HisabTrack badge', () => {
   const fns = read('functions/index.js');
-  assert.match(fns, /collectionGroup\('meta'\)\.where\('phoneNumber', 'in', phoneValues\.slice\(offset, offset \+ 30\)\)/);
+  assert.match(fns, /collectionGroup\('meta'\)\.where\('phoneNumber', 'in', batch\)/);
   assert.match(fns, /verified: true \}\);/);
   assert.match(fns, /verified: false \}\);/);
   assert.match(fns, /if \(saved\.size !== 1\) continue;/, 'a number claimed by several accounts is not a match');
