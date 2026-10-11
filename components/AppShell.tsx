@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DrawerMenu from './DrawerMenu';
 import drawerBus from '@/utils/drawerBus';
 import FinanceAssistantOverlay from './FinanceAssistantOverlay';
+import MessagingService from '@/services/MessagingService';
 
 const HEADER_HEIGHT = 56;
 
@@ -42,9 +43,15 @@ export default function AppShell({ children }: AppShellProps) {
   const [regularUnreadCount, setRegularUnreadCount] = useState(0);
   const [recentNotifications, setRecentNotifications] = useState<AppNotification[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
 
   useEffect(() => InternetStatusService.subscribe(setOnline), []);
   useEffect(() => SyncService.subscribeStatus(setSyncState), []);
+
+  useEffect(() => {
+    if (!user?.uid) { setMessageUnreadCount(0); return; }
+    return MessagingService.listenUnreadCount(user.uid, setMessageUnreadCount);
+  }, [user?.uid]);
 
   const loadNotifications = async () => {
     const totalCount = await AppNotificationService.getUnreadCount();
@@ -118,6 +125,7 @@ export default function AppShell({ children }: AppShellProps) {
     else if (n.actionType === 'view_drafts') router.push('/draft-transactions' as any);
     else if (n.actionType === 'view_smart_review') router.push('/smart-review' as any);
     else if (n.actionType === 'view_funds') router.push((n.fundId ? `/fund/${n.fundId}` : '/funds') as any);
+    else if (n.actionType === 'view_messages') router.push('/messages' as any);
     else router.push('/notifications' as any);
   };
 
@@ -146,14 +154,16 @@ export default function AppShell({ children }: AppShellProps) {
           zIndex: 2000,
         }}
       >
-        <TouchableOpacity
-          onPress={() => setDrawerVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Open menu"
-          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <FontAwesome name="bars" size={20} color={actualTheme === 'dark' ? '#fff' : '#111827'} />
-        </TouchableOpacity>
+        <View style={{ width: 88, flexDirection: 'row' }}>
+          <TouchableOpacity
+            onPress={() => setDrawerVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <FontAwesome name="bars" size={20} color={actualTheme === 'dark' ? '#fff' : '#111827'} />
+          </TouchableOpacity>
+        </View>
 
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Text
@@ -165,13 +175,23 @@ export default function AppShell({ children }: AppShellProps) {
           </Text>
         </View>
 
-        <TouchableOpacity
-          onPress={togglePreview}
-          accessibilityRole="button"
-          accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-          accessibilityState={{ expanded: showPreview }}
-          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', position: 'relative' }}
-        >
+        <View style={{ width: 88, flexDirection: 'row' }}>
+          <TouchableOpacity
+            onPress={() => router.push('/messages' as any)}
+            accessibilityRole="button"
+            accessibilityLabel={messageUnreadCount > 0 ? `Messages, ${messageUnreadCount} unread` : 'Messages'}
+            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+          >
+            <FontAwesome name="comments-o" size={21} color={actualTheme === 'dark' ? '#fff' : '#111827'} />
+            {messageUnreadCount > 0 && <View style={{ position: 'absolute', top: 3, right: 2, backgroundColor: '#6366f1', borderRadius: 10, minWidth: 17, height: 17, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 }}><Text style={{ color: '#fff', fontSize: 9, fontWeight: 'bold' }}>{messageUnreadCount > 99 ? '99+' : messageUnreadCount}</Text></View>}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={togglePreview}
+            accessibilityRole="button"
+            accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+            accessibilityState={{ expanded: showPreview }}
+            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+          >
           <FontAwesome name="bell-o" size={20} color={actualTheme === 'dark' ? '#fff' : '#111827'} />
           {aiUnreadCount > 0 && (
             <View style={{
@@ -209,7 +229,8 @@ export default function AppShell({ children }: AppShellProps) {
               </Text>
             </View>
           )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Notification Preview Overlay */}

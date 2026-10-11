@@ -135,6 +135,18 @@ service cloud.firestore {
         allow write: if false;
       }
     }
+    // Conversations are readable only by their participants. A callable owns
+    // every write so clients cannot forge senders, alter requests, or skip the
+    // request-state transition checks.
+    match /conversations/{conversationId} {
+      function participant() { return signedIn() && request.auth.uid in resource.data.participantUids; }
+      allow read: if participant();
+      allow write: if false;
+      match /messages/{messageId} {
+        allow read: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantUids;
+        allow write: if false;
+      }
+    }
     match /pushDevices/{id} { allow read, write: if false; }
   }
 }

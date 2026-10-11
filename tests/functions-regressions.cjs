@@ -64,6 +64,31 @@ test('verified email lookup links a user without returning private contact data'
  assert.deepEqual(result,{uid:'alice',displayName:'Alice'});
 });
 
+test('conversations enforce membership and request response roles',async()=>{
+ const {exports:api,rows}=environment();
+ const start=await api.mutateConversation({auth:{uid:'alice',token:{name:'Alice'}},data:{action:'start',recipientUid:'carol'}});
+ assert.equal(start.conversationId,'alice__carol');
+ const send={auth:{uid:'alice',token:{name:'Alice'}},data:{action:'send',conversationId:start.conversationId,messageId:'request-1',type:'PAYMENT_REQUEST',amount:250,currency:'ETB',text:'Lunch'}};
+ await api.mutateConversation(send);
+ await api.mutateConversation(send);
+ assert.equal(rows.get('conversations/alice__carol/messages/request-1').status,'PENDING');
+ assert.equal(rows.get('conversations/alice__carol').unreadBy.carol,1,'retry must not increase unread count');
+ await assert.rejects(api.mutateConversation({auth:{uid:'alice'},data:{action:'respond',conversationId:start.conversationId,messageId:'request-1',response:'ACCEPTED'}}),{code:'permission-denied'});
+ await assert.rejects(api.mutateConversation({auth:{uid:'mallory'},data:{action:'markRead',conversationId:start.conversationId}}),{code:'permission-denied'});
+ await api.mutateConversation({auth:{uid:'carol',token:{name:'Carol'}},data:{action:'respond',conversationId:start.conversationId,messageId:'request-1',response:'ACCEPTED'}});
+ assert.equal(rows.get('conversations/alice__carol/messages/request-1').status,'ACCEPTED');
+ assert.equal(rows.get('conversations/alice__carol').unreadBy.alice,1);
+});
+
+test('message callable validates request amounts and only the sender can cancel',async()=>{
+ const {exports:api}=environment();
+ const conversationId=(await api.mutateConversation({auth:{uid:'alice'},data:{action:'start',recipientUid:'carol'}})).conversationId;
+ await assert.rejects(api.mutateConversation({auth:{uid:'alice'},data:{action:'send',conversationId,messageId:'bad',type:'LOAN_REQUEST',amount:-1,currency:'ETB'}}),{code:'invalid-argument'});
+ await api.mutateConversation({auth:{uid:'alice'},data:{action:'send',conversationId,messageId:'loan-1',type:'LOAN_REQUEST',amount:1000,currency:'ETB'}});
+ await assert.rejects(api.mutateConversation({auth:{uid:'carol'},data:{action:'cancel',conversationId,messageId:'loan-1'}}),{code:'permission-denied'});
+ await api.mutateConversation({auth:{uid:'alice'},data:{action:'cancel',conversationId,messageId:'loan-1'}});
+});
+
 test('contact discovery identifies verified users without returning contact details',async()=>{
  const {exports:api}=environment();
  await assert.rejects(api.discoverLinkedContacts({data:{contacts:[]}}),{code:'unauthenticated'});

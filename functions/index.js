@@ -400,8 +400,29 @@ exports.deleteMyAccount = onCall({ region: 'us-central1', timeoutSeconds: 540 },
     else if (fund.custodianUid === uid) await item.ref.update({ custodianUid: null, custodianName: 'Deleted account', formerCustodianUid: 'deleted-account', members, linkStatus: 'REJECTED', status: 'CLOSED', closedAt: Date.now() });
     else await item.ref.update({ invitedUid: null, inviteCode: null, members, linkStatus: fund.linkStatus === 'PENDING' ? 'REJECTED' : fund.linkStatus });
   }
+  // Keep the counterpart's request audit trail while removing the departing
+  // user's identity and free-text message content.
+  const conversations = await db.collection('conversations').where('participantUids', 'array-contains', uid).get();
+  for (const item of conversations.docs) {
+    const conversation = item.data();
+    const messages = await item.ref.collection('messages').get();
+    for (const message of messages.docs) {
+      const value = message.data();
+      const patch = {};
+      if (value.senderUid === uid) Object.assign(patch, { senderUid: 'deleted-account', senderName: 'Deleted account', ...(value.text ? { text: '[Message removed on account deletion]' } : {}) });
+      if (value.respondedByUid === uid) patch.respondedByUid = 'deleted-account';
+      if (Object.keys(patch).length) await message.ref.update(patch);
+    }
+    const otherUids = (conversation.participantUids || []).filter(member => member !== uid);
+    const participantNames = { ...(conversation.participantNames || {}) };
+    delete participantNames[uid];
+    participantNames['deleted-account'] = 'Deleted account';
+    const unreadBy = Object.fromEntries(Object.entries(conversation.unreadBy || {}).filter(([member]) => member !== uid));
+    await item.ref.update({ participantUids: [...otherUids, 'deleted-account'], participantNames, unreadBy, updatedAt: Date.now() });
+  }
   await db.doc(`fundLimits/${uid}`).delete();
   await db.doc(`lookupLimits/${uid}`).delete();
+  await db.doc(`messageRateLimits/${uid}`).delete();
   await db.recursiveDelete(db.doc(`users/${uid}`));
   await admin.auth().deleteUser(uid);
   return { deleted: true };
@@ -1054,4 +1075,163 @@ exports.mutateSharedFund = onCall({ region: 'us-central1' }, async request => {
         throw fundBad('Unknown action.');
     }
   });
+});
+
+// General person-to-person chat and structured financial requests. Financial
+// requests only record communication and consent; they never post ledger data.
+const MESSAGE_ID = /^[A-Za-z0-9_-]{1,160}$/;
+const MESSAGE_REQUEST_TYPES = [
+  'PAYMENT_REQUEST', 'REFUND_REQUEST', 'LOAN_REQUEST',
+  'LOAN_REPAYMENT_REQUEST', 'EQUB_PAYMENT_REQUEST', 'EQUB_INVITE',
+];
+const messageText = (value, max = 1000) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+const messageBad = text => new HttpsError('invalid-argument', text);
+const messageName = (request) => messageText(request.auth.token && request.auth.token.name, 100) || 'HisabTrack user';
+const requestTitle = type => ({
+  PAYMENT_REQUEST: 'Payment request', REFUND_REQUEST: 'Refund request', LOAN_REQUEST: 'Loan request',
+  LOAN_REPAYMENT_REQUEST: 'Loan repayment request', EQUB_PAYMENT_REQUEST: 'Equb payment request',
+  EQUB_INVITE: 'Equb invitation',
+}[type] || 'Message');
+
+exports.mutateConversation = onCall({ region: 'us-central1' }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use messages.');
+  const uid = request.auth.uid;
+  if ((await db.doc(`deletedAccounts/${uid}`).get()).exists) throw new HttpsError('permission-denied', 'This account is unavailable.');
+  const data = request.data || {};
+  const action = data.action;
+  const now = Date.now();
+
+  if (action === 'start') {
+    const recipientUid = messageText(data.recipientUid, 128);
+    if (!MESSAGE_ID.test(recipientUid) || recipientUid === uid) throw messageBad('Choose another valid HisabTrack user.');
+    let recipient;
+    try { recipient = await admin.auth().getUser(recipientUid); } catch { throw new HttpsError('not-found', 'This HisabTrack account is unavailable.'); }
+    if (recipient.disabled) throw new HttpsError('not-found', 'This HisabTrack account is unavailable.');
+    if ((await db.doc(`deletedAccounts/${recipientUid}`).get()).exists) throw new HttpsError('not-found', 'This HisabTrack account is unavailable.');
+    const participantUids = [uid, recipientUid].sort();
+    const conversationId = participantUids.join('__');
+    const ref = db.doc(`conversations/${conversationId}`);
+    await db.runTransaction(async tx => {
+      const snapshot = await tx.get(ref);
+      if (snapshot.exists) {
+        if (!snapshot.data().participantUids.includes(uid)) throw new HttpsError('permission-denied', 'You cannot open this conversation.');
+        return;
+      }
+      tx.create(ref, {
+        participantUids,
+        participantNames: { [uid]: messageName(request), [recipientUid]: messageText(recipient.displayName, 100) || 'HisabTrack user' },
+        unreadBy: { [uid]: 0, [recipientUid]: 0 },
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+    return { conversationId };
+  }
+
+  const conversationId = messageText(data.conversationId, 300);
+  if (!conversationId || !conversationId.includes('__')) throw messageBad('Invalid conversation.');
+  const conversationRef = db.doc(`conversations/${conversationId}`);
+
+  if (action === 'markRead') {
+    await db.runTransaction(async tx => {
+      const snapshot = await tx.get(conversationRef);
+      if (!snapshot.exists || !snapshot.data().participantUids.includes(uid)) throw new HttpsError('permission-denied', 'You cannot open this conversation.');
+      tx.update(conversationRef, { unreadBy: { ...(snapshot.data().unreadBy || {}), [uid]: 0 } });
+    });
+    return { saved: true };
+  }
+
+  const messageId = messageText(data.messageId, 160);
+  if (!MESSAGE_ID.test(messageId)) throw messageBad('Invalid message.');
+  const messageRef = db.doc(`conversations/${conversationId}/messages/${messageId}`);
+
+  if (action === 'send') {
+    const type = data.type === 'TEXT' ? 'TEXT' : MESSAGE_REQUEST_TYPES.includes(data.type) ? data.type : null;
+    if (!type) throw messageBad('Unknown message type.');
+    const text = messageText(data.text);
+    if (type === 'TEXT' && !text) throw messageBad('Write a message first.');
+    let amount;
+    let currency;
+    if (type !== 'TEXT' && type !== 'EQUB_INVITE') {
+      amount = Number(data.amount);
+      if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000000) throw messageBad('Enter a valid amount.');
+      amount = Math.round(amount * 100) / 100;
+      currency = messageText(data.currency, 3).toUpperCase();
+      if (!/^[A-Z]{3}$/.test(currency)) throw messageBad('Choose a valid currency.');
+    }
+    const communityName = messageText(data.communityName, 100);
+    if ((type === 'EQUB_INVITE' || type === 'EQUB_PAYMENT_REQUEST') && !communityName) throw messageBad('Enter the Equb name.');
+    const dueDate = data.dueDate == null ? undefined : Number(data.dueDate);
+    if (dueDate !== undefined && (!Number.isFinite(dueDate) || dueDate <= 0)) throw messageBad('Enter a valid due date.');
+    const rateRef = db.doc(`messageRateLimits/${uid}`);
+    const result = await db.runTransaction(async tx => {
+      const [conversation, existing, rateSnapshot] = await Promise.all([tx.get(conversationRef), tx.get(messageRef), tx.get(rateRef)]);
+      if (!conversation.exists || !conversation.data().participantUids.includes(uid)) throw new HttpsError('permission-denied', 'You cannot send to this conversation.');
+      if (existing.exists) {
+        const previous = existing.data();
+        const same = previous.senderUid === uid && previous.type === type && (previous.text || '') === text
+          && (previous.amount === undefined ? undefined : Number(previous.amount)) === amount
+          && previous.currency === currency && previous.dueDate === dueDate && (previous.communityName || '') === communityName;
+        if (!same) throw new HttpsError('already-exists', 'That message ID is already used with different details.');
+        return { existing: true };
+      }
+      const rate = rateSnapshot.exists ? rateSnapshot.data() : {};
+      const windowStartedAt = Number(rate.windowStartedAt) || 0;
+      const inWindow = now - windowStartedAt < 60 * 60 * 1000;
+      const count = inWindow ? (Number(rate.count) || 0) : 0;
+      if (count >= 120) throw new HttpsError('resource-exhausted', 'Too many messages. Try again later.');
+      tx.set(rateRef, { windowStartedAt: inWindow ? windowStartedAt : now, count: count + 1, updatedAt: now });
+      const state = conversation.data();
+      const recipientUid = state.participantUids.find(value => value !== uid);
+      const unreadBy = { ...(state.unreadBy || {}), [recipientUid]: (Number(state.unreadBy && state.unreadBy[recipientUid]) || 0) + 1 };
+      const preview = type === 'TEXT' ? text.slice(0, 120) : `${requestTitle(type)}${amount ? ` · ${currency} ${amount.toFixed(2)}` : ''}`;
+      tx.create(messageRef, {
+        senderUid: uid, senderName: state.participantNames[uid] || messageName(request), type,
+        ...(text ? { text } : {}), ...(amount !== undefined ? { amount, currency } : {}),
+        ...(dueDate !== undefined ? { dueDate } : {}), ...(communityName ? { communityName } : {}),
+        ...(type !== 'TEXT' ? { status: 'PENDING' } : {}), createdAt: now,
+      });
+      tx.update(conversationRef, { lastMessageText: preview, lastMessageType: type, lastSenderUid: uid, unreadBy, updatedAt: now });
+      return { recipientUid, preview };
+    });
+    if (!result.existing && result.recipientUid) {
+      await db.doc(`users/${result.recipientUid}/push_jobs/message-${messageId}`).set({
+        title: messageName(request), body: result.preview, status: 'queued', source: 'conversation',
+        actionType: 'view_messages', data: { actionType: 'view_messages', route: `/messages/${conversationId}`, conversationId }, createdAt: now,
+      });
+    }
+    return { saved: true, existing: !!result.existing };
+  }
+
+  if (action === 'respond' || action === 'cancel') {
+    const response = action === 'cancel' ? 'CANCELLED' : data.response;
+    if (!['ACCEPTED', 'DECLINED', 'CANCELLED'].includes(response)) throw messageBad('Unknown response.');
+    const result = await db.runTransaction(async tx => {
+      const [conversation, message] = await Promise.all([tx.get(conversationRef), tx.get(messageRef)]);
+      if (!conversation.exists || !conversation.data().participantUids.includes(uid)) throw new HttpsError('permission-denied', 'You cannot update this conversation.');
+      if (!message.exists || message.data().type === 'TEXT') throw new HttpsError('not-found', 'Request not found.');
+      const current = message.data();
+      if (current.status !== 'PENDING') {
+        if ((response === current.status) || (action === 'cancel' && current.status === 'CANCELLED')) return { existing: true };
+        throw new HttpsError('failed-precondition', 'This request has already been answered.');
+      }
+      if (action === 'cancel' && current.senderUid !== uid) throw new HttpsError('permission-denied', 'Only the sender can cancel this request.');
+      if (action === 'respond' && current.senderUid === uid) throw new HttpsError('permission-denied', 'The recipient must answer this request.');
+      const notifyUid = conversation.data().participantUids.find(value => value !== uid);
+      const unreadBy = { ...(conversation.data().unreadBy || {}), [notifyUid]: (Number(conversation.data().unreadBy && conversation.data().unreadBy[notifyUid]) || 0) + 1 };
+      const preview = `${requestTitle(current.type)} ${response.toLowerCase()}`;
+      tx.update(messageRef, { status: response, respondedAt: now, respondedByUid: uid });
+      tx.update(conversationRef, { lastMessageText: preview, lastSenderUid: uid, unreadBy, updatedAt: now });
+      return { notifyUid, preview };
+    });
+    if (!result.existing && result.notifyUid) {
+      await db.doc(`users/${result.notifyUid}/push_jobs/message-response-${messageId}`).set({
+        title: messageName(request), body: result.preview, status: 'queued', source: 'conversation',
+        actionType: 'view_messages', data: { actionType: 'view_messages', route: `/messages/${conversationId}`, conversationId }, createdAt: now,
+      });
+    }
+    return { saved: true, existing: !!result.existing };
+  }
+
+  throw messageBad('Unknown action.');
 });

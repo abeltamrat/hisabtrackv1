@@ -214,6 +214,8 @@ function RootLayoutNav() {
         router.push((typeof data.fundId === 'string' ? `/fund/${data.fundId}` : '/funds') as any);
       } else if (data?.actionType === 'view_community') {
         router.push('/community' as any);
+      } else if (data?.actionType === 'view_messages') {
+        router.push((typeof data.conversationId === 'string' ? `/messages/${data.conversationId}` : '/messages') as any);
       }
     });
 
@@ -377,6 +379,8 @@ function ThemedStack() {
         <Stack.Screen name="goals" options={{ headerShown: false }} />
         <Stack.Screen name="help" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="messages/index" options={{ headerShown: false }} />
+        <Stack.Screen name="messages/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="categories" options={{ headerShown: false }} />
         <Stack.Screen name="people/index" options={{ headerShown: false }} />
         <Stack.Screen name="people/[id]" options={{ headerShown: false }} />
