@@ -8,7 +8,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "node --test tests/*.cjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "update:manifest": "node scripts/create-update-manifest.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

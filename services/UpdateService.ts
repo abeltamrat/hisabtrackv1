@@ -8,7 +8,7 @@ const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const FLAG_GRANT_READ_URI_PERMISSION = 1;
 
 type UpdateType = 'ota' | 'binary';
-type UpdatePhase = 'checking' | 'downloading' | 'installing' | 'reloading' | 'completed';
+type UpdatePhase = 'checking' | 'permission' | 'downloading' | 'verifying' | 'installing' | 'browser' | 'reloading' | 'completed';
 
 interface BinaryUpdateManifest {
   latestVersion: string;
@@ -75,6 +75,19 @@ type FileSystemLegacyModule = {
   deleteAsync?: (fileUri: string, options?: { idempotent?: boolean }) => Promise<void>;
   getContentUriAsync: (fileUri: string) => Promise<string>;
 };
+
+type NativeUpdateInstallerModule = {
+  canRequestPackageInstalls: () => Promise<boolean>;
+  validateApk: (fileUri: string, expectedVersion?: string, expectedBuild?: number) => Promise<boolean>;
+};
+
+export class InstallPermissionRequiredError extends Error {
+  code = 'INSTALL_PERMISSION_REQUIRED';
+  constructor() {
+    super('Allow HisabTrack to install unknown apps, then return and tap Continue.');
+    this.name = 'InstallPermissionRequiredError';
+  }
+}
 
 export interface UpdateInfo {
   latestVersion: string;
@@ -165,6 +178,15 @@ export const UpdateService = {
   getLegacyFileSystem(): FileSystemLegacyModule | null {
     try {
       return require('expo-file-system/legacy') as FileSystemLegacyModule;
+    } catch {
+      return null;
+    }
+  },
+
+  getNativeUpdateInstaller(): NativeUpdateInstallerModule | null {
+    try {
+      const { NativeModules } = require('react-native') as { NativeModules?: Record<string, NativeUpdateInstallerModule> };
+      return NativeModules?.HisabUpdateInstaller ?? null;
     } catch {
       return null;
     }
@@ -362,15 +384,21 @@ export const UpdateService = {
     return otaUpdate ?? binaryUpdate;
   },
 
-  openUpdateUrl(url: string) {
+  async openUpdateUrl(url: string) {
     if (!url.startsWith('https://')) throw new Error('Update downloads require HTTPS');
-    Linking.canOpenURL(url).then(supported => {
-      if (supported) {
-        Linking.openURL(url);
-      } else {
-        Alert.alert('Error', 'Cannot open update URL: ' + url);
-      }
-    });
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) {
+      Alert.alert('Error', 'Cannot open update URL: ' + url);
+      throw new Error('This device cannot open the secure update link.');
+    }
+    await Linking.openURL(url);
+  },
+
+  async canRequestPackageInstalls(): Promise<boolean | null> {
+    if (Platform.OS !== 'android') return true;
+    const installer = this.getNativeUpdateInstaller();
+    if (!installer?.canRequestPackageInstalls) return null;
+    return installer.canRequestPackageInstalls();
   },
 
   async openAndroidInstallPermissionSettings() {
@@ -447,15 +475,39 @@ export const UpdateService = {
     }
 
     if (Platform.OS !== 'android') {
-      this.openUpdateUrl(updateInfo.downloadUrl);
+      await this.openUpdateUrl(updateInfo.downloadUrl);
       return;
     }
 
     const FileSystem = this.getLegacyFileSystem();
     const IntentLauncher = this.getIntentLauncherModule();
+    const NativeInstaller = this.getNativeUpdateInstaller();
 
-    if (!FileSystem?.createDownloadResumable || !FileSystem.getContentUriAsync || !IntentLauncher?.startActivityAsync) {
-      throw new Error('The Android in-app installer dependencies are not available in this build.');
+    // Older APKs do not contain the native permission/package inspector. They
+    // must use the browser and Android's normal download/install UI instead of
+    // receiving an OTA that assumes native code they do not have.
+    if (!FileSystem?.createDownloadResumable || !FileSystem.getContentUriAsync || !IntentLauncher?.startActivityAsync || !NativeInstaller) {
+      onProgress?.({ phase: 'browser', message: 'Opening the secure download in your browser...' });
+      await this.openUpdateUrl(updateInfo.downloadUrl);
+      onProgress?.({ phase: 'completed', message: 'Download opened in your browser.', progress: 1 });
+      return;
+    }
+
+    // A checksum is mandatory for the assisted installer. A browser download
+    // remains available, but the app never hands an unverified file directly
+    // to Android's package installer.
+    if (!updateInfo.expectedSha256) {
+      onProgress?.({ phase: 'browser', message: 'Opening the secure download in your browser...' });
+      await this.openUpdateUrl(updateInfo.downloadUrl);
+      onProgress?.({ phase: 'completed', message: 'Download opened in your browser.', progress: 1 });
+      return;
+    }
+
+    const installPermission = await this.canRequestPackageInstalls();
+    if (installPermission === false) {
+      onProgress?.({ phase: 'permission', message: 'Allow HisabTrack to install this update, then return to continue.' });
+      await this.openAndroidInstallPermissionSettings();
+      throw new InstallPermissionRequiredError();
     }
 
     const targetDirectory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
@@ -501,7 +553,7 @@ export const UpdateService = {
     }
 
     onProgress?.({
-      phase: 'installing',
+      phase: 'verifying',
       message: 'Verifying the update package...',
       progress: 1,
     });
@@ -511,6 +563,19 @@ export const UpdateService = {
       sha256: updateInfo.expectedSha256,
       size: updateInfo.expectedSize,
     });
+
+    // The hash proves that the file matches the server manifest. The native
+    // inspector separately proves that it is our package, signed by the same
+    // publisher, and that Android sees it as a real upgrade rather than a
+    // downgrade or an unrelated app.
+    const expectedBuild = updateInfo.latestBuildNumber === undefined
+      ? undefined
+      : Number(updateInfo.latestBuildNumber);
+    await NativeInstaller.validateApk(
+      result.uri,
+      updateInfo.latestVersion,
+      expectedBuild !== undefined && Number.isFinite(expectedBuild) ? expectedBuild : undefined,
+    );
 
     onProgress?.({
       phase: 'installing',
@@ -526,8 +591,12 @@ export const UpdateService = {
         type: APK_MIME_TYPE,
       });
     } catch (error) {
-      await this.openAndroidInstallPermissionSettings().catch(() => undefined);
-      throw new Error('Android blocked the installer. Allow installs from this app and try again.');
+      const stillAllowed = await this.canRequestPackageInstalls().catch(() => null);
+      if (stillAllowed === false) {
+        await this.openAndroidInstallPermissionSettings().catch(() => undefined);
+        throw new InstallPermissionRequiredError();
+      }
+      throw new Error('Android could not open the verified update package. You can use the browser download instead.');
     }
 
     onProgress?.({
