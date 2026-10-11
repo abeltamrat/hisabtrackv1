@@ -2,6 +2,7 @@ import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import { Linking, Platform } from 'react-native';
 import { Alert } from '@/utils/alert';
+import { sha256 } from '@noble/hashes/sha256';
 
 const DEFAULT_UPDATE_JSON_URL = 'https://www.hisab.nonstopplc.com/update.json';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
@@ -239,8 +240,9 @@ export const UpdateService = {
     return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
   },
 
-  toHex(buffer: ArrayBuffer): string {
-    return Array.from(new Uint8Array(buffer)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  toHex(value: ArrayBuffer | Uint8Array): string {
+    const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+    return Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0')).join('');
   },
 
   /**
@@ -252,7 +254,11 @@ export const UpdateService = {
    * the publisher committed to closes that, and also catches a truncated or
    * tampered download before the installer ever sees it.
    */
-  async verifyDownloadedPackage(fileUri: string, expected: { sha256?: string; size?: number }) {
+  async verifyDownloadedPackage(
+    fileUri: string,
+    expected: { sha256?: string; size?: number },
+    onProgress?: (progress: number) => void,
+  ) {
     if (!expected.sha256) {
       throw new Error('This update is missing its SHA-256 checksum, so it cannot be verified. Update was not installed.');
     }
@@ -261,13 +267,12 @@ export const UpdateService = {
       File: new (uri: string) => {
         exists: boolean;
         size: number;
-        bytes(): Promise<Uint8Array<ArrayBuffer>>;
+        open(): {
+          readBytes(length: number): Uint8Array;
+          close(): void;
+        };
         delete(): void;
       };
-    };
-    const Crypto = require('expo-crypto') as {
-      digest(algorithm: string, data: BufferSource): Promise<ArrayBuffer>;
-      CryptoDigestAlgorithm: Record<string, string>;
     };
 
     const file = new File(fileUri);
@@ -279,7 +284,27 @@ export const UpdateService = {
       throw new Error('The downloaded update is the wrong size and was discarded. Please try again.');
     }
 
-    const actual = this.toHex(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, await file.bytes()));
+    // File.bytes() materializes the complete APK in Java memory. A 103 MB APK
+    // can exceed the heap limit on entry-level phones, so hash it through the
+    // native file handle in small chunks and yield between reads.
+    const hasher = sha256.create();
+    const handle = file.open();
+    const chunkSize = 1024 * 1024;
+    let bytesRead = 0;
+    try {
+      while (bytesRead < file.size) {
+        const chunk = handle.readBytes(Math.min(chunkSize, file.size - bytesRead));
+        if (!chunk.length) throw new Error('The downloaded update ended before verification finished.');
+        hasher.update(chunk);
+        bytesRead += chunk.length;
+        onProgress?.(bytesRead / file.size);
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      }
+    } finally {
+      handle.close();
+    }
+
+    const actual = this.toHex(hasher.digest());
     if (actual !== expected.sha256) {
       // Never leave an unverified APK on disk where a later run might use it.
       file.delete();
@@ -614,6 +639,12 @@ export const UpdateService = {
     await this.verifyDownloadedPackage(result.uri, {
       sha256: updateInfo.expectedSha256,
       size: updateInfo.expectedSize,
+    }, (progress) => {
+      onProgress?.({
+        phase: 'verifying',
+        message: `Verifying the update package... ${Math.round(progress * 100)}%`,
+        progress,
+      });
     });
 
     // The hash proves that the file matches the server manifest. The native

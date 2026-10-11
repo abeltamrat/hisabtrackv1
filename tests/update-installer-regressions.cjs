@@ -52,3 +52,12 @@ test('runtime 1.0.4 has a checksum-pinned installer bridge to the signed 1.0.5 A
   assert.match(service, /\(!NativeInstaller && !updateInfo\.legacyVerifiedInstaller\)/);
   assert.match(service, /if \(NativeInstaller\)[\s\S]*?NativeInstaller\.validateApk/);
 });
+
+test('APK verification hashes bounded chunks instead of loading the whole file', () => {
+  const service = read('services/UpdateService.ts');
+  assert.match(service, /sha256\.create\(\)/);
+  assert.match(service, /const chunkSize = 1024 \* 1024/);
+  assert.match(service, /handle\.readBytes\(Math\.min\(chunkSize, file\.size - bytesRead\)\)/);
+  assert.match(service, /handle\.close\(\)/);
+  assert.doesNotMatch(service, /await file\.bytes\(\)/);
+});
