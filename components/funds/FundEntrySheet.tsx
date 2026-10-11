@@ -8,6 +8,7 @@ import FormField from '@/components/FormField';
 import FormSheet from '@/components/FormSheet';
 import TagInputField from '@/components/TagInputField';
 import { mergeSplitTags, pushTagsIntoSplits } from '@/utils/tags';
+import { commonSplitProject, pushProjectIntoSplits } from '@/utils/projectFinance';
 import PersonLinkField from '@/components/PersonLinkField';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import LineItemsEditor from '@/components/LineItemsEditor';
@@ -182,9 +183,9 @@ export default function FundEntrySheet({
         recipient: mode === 'pay' ? recipient.trim() || undefined : undefined,
         recipientPersonId: mode === 'pay' ? recipientPerson?.id : undefined,
         category: mode === 'pay' ? category || undefined : undefined,
-        splits: splitActive ? pushTagsIntoSplits(tags, splits) : undefined,
+        splits: splitActive ? pushProjectIntoSplits(project, pushTagsIntoSplits(tags, splits)) : undefined,
         lines: purchaseLines.length ? purchaseLines : undefined,
-        project: mode === 'pay' ? project : undefined,
+        project: mode === 'pay' && !splitActive ? project : undefined,
         supplier: mode === 'pay' ? supplier : undefined,
         tags: splitActive ? undefined : tags,
         reference_number: reference.trim() || undefined,
@@ -350,15 +351,16 @@ export default function FundEntrySheet({
               const next = !splitEnabled;
               setSplitEnabled(next);
               clearError('splits');
-              if (!next) { setTags(mergeSplitTags(splits)); return; }
+              if (!next) { setTags(mergeSplitTags(splits)); setProject(commonSplitProject(splits)); return; }
               const value = Number(amount.replace(',', '.')) || 0;
               // Tags move onto the parts; the tag field hides while split.
               const parts = splits.length ? splits : [
                 { id: `split-${Date.now()}-0`, amount: value, category: category || categoryTree[0]?.name || 'Uncategorized' },
                 { id: `split-${Date.now()}-1`, amount: 0, category: categoryTree[1]?.name || categoryTree[0]?.name || 'Uncategorized' },
               ];
-              setSplits(pushTagsIntoSplits(tags, parts));
+              setSplits(pushProjectIntoSplits(project, pushTagsIntoSplits(tags, parts)));
               setTags(undefined);
+              setProject(undefined);
             }}
             className="flex-row items-center py-2"
           >
@@ -366,7 +368,10 @@ export default function FundEntrySheet({
             <Text className="text-slate-700 dark:text-slate-300 text-sm font-semibold ml-2">Split across categories</Text>
           </TouchableOpacity>
           {splitEnabled && (
-            <TransactionSplitEditor total={Number(amount.replace(',', '.')) || 0} splits={splits} categories={categoryTree} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={tagSuggestions} />
+            // Part project pickers read the owner's shared lists, like the fields below.
+            <MelaCatalogContext.Provider value={sharedCatalog ?? EMPTY_CATALOG}>
+              <TransactionSplitEditor total={Number(amount.replace(',', '.')) || 0} splits={splits} categories={categoryTree} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={tagSuggestions} />
+            </MelaCatalogContext.Provider>
           )}
           {errors.splits ? <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.splits}</Text> : null}
         </View>
@@ -376,7 +381,7 @@ export default function FundEntrySheet({
         // Inside the provider, pickers read the owner's shared lists instead of this device's own.
         <MelaCatalogContext.Provider value={sharedCatalog ?? EMPTY_CATALOG}>
           <View className="mb-4 gap-3">
-            <ProjectCostToggle value={project} onChange={setProject} variant="row" />
+            {!splitEnabled && <ProjectCostToggle value={project} onChange={setProject} variant="row" />}
             <SupplierField value={supplier} onChange={setSupplier} />
             <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: itemize }} onPress={() => setItemize(!itemize)} className="flex-row items-center py-2">
               <FontAwesome name={itemize ? 'check-square' : 'square-o'} size={18} color={itemize ? '#0d9488' : '#94a3b8'} />

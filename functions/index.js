@@ -615,7 +615,7 @@ function fundSplits(splits, amount) {
   if (!Array.isArray(splits) || splits.length < 2 || splits.length > 20) throw fundBad('A split needs 2 to 20 parts.');
   const out = splits.map(split => {
     if (!split || typeof split.id !== 'string' || !FUND_ID.test(split.id) || !isFundMoney(split.amount) || !fundText(split.category, 80)) throw fundBad('Each split part needs an amount and a category.');
-    return fundCompact({ id: split.id, amount: split.amount, category: fundText(split.category, 80), description: fundText(split.description, 200) || undefined, tags: fundTags(split.tags) });
+    return fundCompact({ id: split.id, amount: split.amount, category: fundText(split.category, 80), description: fundText(split.description, 200) || undefined, tags: fundTags(split.tags), project: fundProject(split.project) });
   });
   if (out.reduce((sum, split) => sum + fundCents(split.amount), 0) !== fundCents(amount)) throw fundBad('Split amounts must equal the total.');
   return out;

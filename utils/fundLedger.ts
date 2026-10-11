@@ -129,7 +129,7 @@ export function planFundMirror(
 export function mirrorSignature(row: Partial<Transaction>): string {
   return JSON.stringify([
     row.type, row.account_id, row.to_account_id ?? null, Math.round(Number(row.amount) * 100), row.category, row.purpose ?? null,
-    row.date, (row.splits || []).map(split => [split.category, Math.round(split.amount * 100)]),
+    row.date, (row.splits || []).map(split => [split.category, Math.round(split.amount * 100), split.project?.id ?? null]),
     row.sender_receiver ?? null, row.person_id ?? null, row.person_name_snapshot ?? null, row.description ?? null, row.receipt_url ?? null, row.reference_number ?? null, (row.tags || []).join('|'),
     (row.lines || []).map(line => [line.item.source, line.item.id, line.quantity, Math.round(line.amount * 100), line.project?.id ?? null]),
     row.project?.id ?? null, row.supplier?.id ?? null,

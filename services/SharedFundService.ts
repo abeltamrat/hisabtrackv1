@@ -81,6 +81,7 @@ function parseSplits(value: unknown): TransactionSplit[] | undefined {
       category: item.category,
       description: optStr(item.description),
       tags: Array.isArray(item.tags) ? item.tags.filter((tag: unknown) => typeof tag === 'string') : undefined,
+      ...(parseProject(item.project) ? { project: parseProject(item.project) } : {}),
     }));
   return splits.length >= 2 ? splits : undefined;
 }

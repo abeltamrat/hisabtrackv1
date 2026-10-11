@@ -20,6 +20,7 @@ import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import { useDispatch, useSelector } from 'react-redux';
 import { formatTagInput, mergeSplitTags, parseTagInput, pushTagsIntoSplits } from '@/utils/tags';
+import { commonSplitProject, pushProjectIntoSplits } from '@/utils/projectFinance';
 import { RecurringTransactionService } from '@/services/RecurringTransactionService';
 import type { RecurringFrequency, TransactionType } from '@/types/database';
 import { findTransferCandidates } from '@/utils/transferPairing';
@@ -569,7 +570,7 @@ export default function DraftTransactionsScreen() {
 
       // With a split, tags live on each part (typed or learned tags fill untagged parts).
       const splitActive = editedType !== 'TRANSFER' && splitEnabled;
-      const finalSplits = splitActive ? pushTagsIntoSplits(parseTagInput(tagsInput), splits) : undefined;
+      const finalSplits = splitActive ? pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), splits)) : undefined;
       const parsedTags = splitActive ? undefined : parseTagInput(tagsInput);
       if (editedType !== 'TRANSFER' && splitEnabled && (splits.length < 2 || splits.some(item => !item.category.trim() || money(item.amount) <= 0) || sumMoney(splits.map(item => item.amount)) !== money(selectedDraft.amount))) {
         Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(selectedDraft.amount)}.`);
@@ -633,7 +634,7 @@ export default function DraftTransactionsScreen() {
         ...(finalSplits ? { splits: finalSplits } : {}),
         ...(editedType !== 'TRANSFER' && purchaseLines.length ? { lines: purchaseLines } : {}),
         ...(editedType === 'EXPENSE' && supplier ? { supplier } : {}),
-        ...(editedType !== 'TRANSFER' && project ? { project } : {}),
+        ...(!splitActive && editedType !== 'TRANSFER' && project ? { project } : {}),
       } as Omit<Transaction, 'id'>;
 
       let transactionId: string | undefined;
@@ -1753,14 +1754,15 @@ export default function DraftTransactionsScreen() {
                       onPress={() => {
                         const enabled = !splitEnabled;
                         setSplitEnabled(enabled);
-                        if (!enabled) { setTagsInput(formatTagInput(mergeSplitTags(splits))); return; }
-                        // Tags move onto the parts; the tag box hides while split.
+                        if (!enabled) { setTagsInput(formatTagInput(mergeSplitTags(splits))); setProject(commonSplitProject(splits)); return; }
+                        // Tags and project move onto the parts; the whole-transaction ones hide while split.
                         const parts = splits.length ? splits : [
                           { id: `split-${Date.now()}-0`, amount: selectedDraft?.amount || 0, category: editedCategory || confirmCategories[0]?.name || 'Uncategorized' },
                           { id: `split-${Date.now()}-1`, amount: 0, category: confirmCategories[1]?.name || confirmCategories[0]?.name || 'Uncategorized' },
                         ];
-                        setSplits(pushTagsIntoSplits(parseTagInput(tagsInput), parts));
+                        setSplits(pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), parts)));
                         setTagsInput('');
+                        setProject(undefined);
                       }}
                       className={`min-h-[64px] flex-row items-center rounded-xl border p-3 ${splitEnabled ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}
                     >
@@ -1775,7 +1777,7 @@ export default function DraftTransactionsScreen() {
                     </TouchableOpacity>
                   )}
 
-                  {editedType !== 'TRANSFER' && <ProjectCostToggle value={project} onChange={setProject} income={editedType === 'INCOME'} variant="tile" />}
+                  {editedType !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle value={project} onChange={setProject} income={editedType === 'INCOME'} variant="tile" />}
 
                   {editedType !== 'TRANSFER' && (
                     <TouchableOpacity

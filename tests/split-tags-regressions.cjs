@@ -29,7 +29,7 @@ test('the transaction tag box hides while split, and splits save per-part tags o
   const modal = read('app/modal.tsx');
   assert.match(modal, /\{!\(type !== 'TRANSFER' && splitEnabled\) && <View[^>]*>\s*<Text[^>]*>Tags \(Optional\)/);
   assert.match(modal, /tags: type !== 'TRANSFER' && splitEnabled \? undefined : parseTagInput\(tagsInput\)/);
-  assert.match(modal, /splits: pushTagsIntoSplits\(parseTagInput\(tagsInput\), splits\)/);
+  assert.match(modal, /splits: pushProjectIntoSplits\(project, pushTagsIntoSplits\(parseTagInput\(tagsInput\), splits\)\)/);
   const drafts = read('app/draft-transactions.tsx');
   assert.match(drafts, /\{!\(editedType !== 'TRANSFER' && splitEnabled\) && <View className="mb-6">\s*<Text[^>]*>Tags \(Optional\)/);
   assert.match(drafts, /const parsedTags = splitActive \? undefined : parseTagInput\(tagsInput\)/);

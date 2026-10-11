@@ -183,3 +183,34 @@ test('project is an opt-in "project cost" toggle under split, not a field on eve
   assert.match(drafts, /input\.project \? \{ project: input\.project \}/, 'fund entries from SMS carry the project');
   assert.match(read('components/funds/FundEntrySheet.tsx'), /<ProjectCostToggle value=\{project\}/);
 });
+
+test('with a split, the project lives on each part and the transaction toggle hides', () => {
+  const { pushProjectIntoSplits, commonSplitProject } = load('./utils/projectFinance.ts');
+  const villa = { source: 'mela', id: 7, title: 'Bole villa' };
+  const office = { source: 'mela', id: 9, title: 'Office' };
+  const parts = pushProjectIntoSplits(villa, [{ id: 'a', amount: 60 }, { id: 'b', amount: 40, project: office }]);
+  assert.deepEqual(parts.map(p => p.project.id), [7, 9], 'only parts without a project inherit it');
+  assert.equal(commonSplitProject([{ project: villa }, { project: { ...villa } }]).id, 7);
+  assert.equal(commonSplitProject([{ project: villa }, { project: office }]), undefined, 'mixed projects collapse to none');
+  assert.equal(commonSplitProject([{ project: villa }, {}]), undefined);
+
+  // Old saved shape (transaction project + split) and new shape (pushed onto parts) report the same totals.
+  const old = { id: 'o', type: 'EXPENSE', amount: 100, date: 1, project: villa, splits: [{ id: 'a', amount: 60, category: 'A' }, { id: 'b', amount: 40, category: 'B', project: office }] };
+  const fresh = { ...old, project: undefined, splits: pushProjectIntoSplits(villa, old.splits) };
+  for (const tx of [old, fresh]) {
+    const entries = projectEntries([tx]);
+    assert.equal(projectTotals(entries.get(projectKey(villa))).paid, 60);
+    assert.equal(projectTotals(entries.get(projectKey(office))).paid, 40);
+  }
+  // Items on a split whose parts share one project still count toward it.
+  const itemized = { id: 'i', type: 'EXPENSE', amount: 100, date: 1, splits: [{ id: 'a', amount: 50, category: 'A', project: villa }, { id: 'b', amount: 50, category: 'B', project: villa }], lines: [{ id: 'l', item: { source: 'local', id: 'x', name: 'x' }, quantity: 1, unit_price: 70, amount: 70 }] };
+  assert.equal(projectTotals(projectEntries([itemized]).get(projectKey(villa))).paid, 100);
+
+  const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+  assert.match(read('app/modal.tsx'), /type !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle/);
+  assert.match(read('app/modal.tsx'), /project: type !== 'TRANSFER' && !splitEnabled \? project : undefined/);
+  assert.match(read('app/draft-transactions.tsx'), /editedType !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle/);
+  assert.match(read('components/funds/FundEntrySheet.tsx'), /\{!splitEnabled && <ProjectCostToggle/);
+  assert.match(read('functions/index.js'), /tags: fundTags\(split\.tags\), project: fundProject\(split\.project\)/, 'server keeps each part\'s project');
+  assert.match(read('services/SharedFundService.ts'), /parseProject\(item\.project\)/);
+});

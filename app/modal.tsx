@@ -18,6 +18,7 @@ import { addTransaction, deleteTransaction, updateTransaction, fetchTransactions
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { NotificationService } from '@/services/NotificationService';
 import { formatTagInput, mergeSplitTags, parseTagInput, pushTagsIntoSplits } from '@/utils/tags';
+import { commonSplitProject, pushProjectIntoSplits } from '@/utils/projectFinance';
 import { celebrate } from '@/utils/celebrate';
 import FloatingCalculator from '@/components/FloatingCalculator';
 import { useDispatch, useSelector } from 'react-redux';
@@ -184,8 +185,9 @@ export default function AddTransactionScreen() {
       setTagsInput(editingSplits ? '' : formatTagInput(editingTransaction.tags));
       setTransactionDate(new Date(editingTransaction.date));
       setSplitEnabled(!!editingSplits);
-      setSplits(editingSplits ? pushTagsIntoSplits(editingTransaction.tags, editingSplits) : []);
-      setProject(editingTransaction.project);
+      // Same for the project: with a split, each part carries its own.
+      setSplits(editingSplits ? pushProjectIntoSplits(editingTransaction.project, pushTagsIntoSplits(editingTransaction.tags, editingSplits)) : []);
+      setProject(editingSplits ? undefined : editingTransaction.project);
       setLines(editingTransaction.lines || []);
       setSupplier(editingTransaction.supplier);
       setItemize(!!editingTransaction.lines?.length);
@@ -301,8 +303,8 @@ export default function AddTransactionScreen() {
       tags: type !== 'TRANSFER' && splitEnabled ? undefined : parseTagInput(tagsInput),
       date: transactionDate.getTime(),
       ...(type === 'TRANSFER' ? { to_account_id: toAccountId } : {}),
-      ...(type !== 'TRANSFER' && splitEnabled ? { splits: pushTagsIntoSplits(parseTagInput(tagsInput), splits) } : { splits: undefined }),
-      project: type !== 'TRANSFER' ? project : undefined,
+      ...(type !== 'TRANSFER' && splitEnabled ? { splits: pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), splits)) } : { splits: undefined }),
+      project: type !== 'TRANSFER' && !splitEnabled ? project : undefined,
       lines: purchaseLines.length ? purchaseLines : undefined,
       supplier: type === 'EXPENSE' ? supplier : undefined,
     };
@@ -683,14 +685,15 @@ export default function AddTransactionScreen() {
             <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: splitEnabled }} onPress={() => {
               const enabled = !splitEnabled;
               setSplitEnabled(enabled);
-              if (!enabled) { setTagsInput(formatTagInput(mergeSplitTags(splits))); return; }
-              // Tags move onto the parts; the whole-transaction tag box hides while split.
+              if (!enabled) { setTagsInput(formatTagInput(mergeSplitTags(splits))); setProject(commonSplitProject(splits)); return; }
+              // Tags and project move onto the parts; the whole-transaction ones hide while split.
               const parts = splits.length ? splits : [
                 { id: `split-${Date.now()}-0`, amount: parseFloat(amount) || 0, category: selectedCategory || filteredCategories[0]?.name || 'Uncategorized' },
                 { id: `split-${Date.now()}-1`, amount: 0, category: filteredCategories[1]?.name || filteredCategories[0]?.name || 'Uncategorized' },
               ];
-              setSplits(pushTagsIntoSplits(parseTagInput(tagsInput), parts));
+              setSplits(pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), parts)));
               setTagsInput('');
+              setProject(undefined);
             }} className="flex-row items-center">
               <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
               <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">The account is charged once; reports use each allocation.</Text></View>
@@ -698,7 +701,8 @@ export default function AddTransactionScreen() {
             {splitEnabled && <View className="mt-3"><TransactionSplitEditor total={parseFloat(amount) || 0} splits={splits} categories={filteredCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} /></View>}
           </View>
         )}
-        {type !== 'TRANSFER' && <ProjectCostToggle value={project} onChange={setProject} income={type === 'INCOME'} />}
+        {/* Hidden while split: each part has its own project picker */}
+        {type !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle value={project} onChange={setProject} income={type === 'INCOME'} />}
 
         {!isEditing && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>

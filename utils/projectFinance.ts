@@ -7,6 +7,20 @@ export interface ProjectTotals { paid: number; received: number; net: number; co
 export const projectKey = (link: Pick<ProjectLink, 'source' | 'id'>) => `${link.source}:${link.id}`;
 
 /**
+ * With a split, the project lives on each part (like tags). A whole-transaction
+ * project used to be the fallback for parts without one, so it's copied onto
+ * those parts — project totals stay exactly the same.
+ */
+export const pushProjectIntoSplits = <T extends { project?: ProjectLink }>(project: ProjectLink | undefined, splits: T[]): T[] =>
+  project ? splits.map(split => (split.project ? split : { ...split, project })) : splits;
+
+/** The project every part shares, if they all have the same one (used when a split is turned off). */
+export function commonSplitProject(splits: Array<{ project?: ProjectLink }> = []): ProjectLink | undefined {
+  const first = splits[0]?.project;
+  return first && splits.every(split => split.project && projectKey(split.project) === projectKey(first)) ? first : undefined;
+}
+
+/**
  * Money attributed to each project. A split's own project wins; a split
  * without one inherits the transaction's project; a transaction without
  * splits counts in full. Transfers between own accounts are not project money.
@@ -23,9 +37,11 @@ export function projectEntries(transactions: Transaction[]): Map<string, Project
     // Itemized purchases attribute per line (a line's own project wins); any
     // un-itemized remainder stays with the transaction's project.
     if (tx.lines?.length) {
-      for (const line of tx.lines) add(line.project ?? tx.project, { transaction: tx, amount: line.amount, lineId: line.id });
+      // A split whose parts all share one project acts as the transaction's project.
+      const fallback = tx.project ?? commonSplitProject(tx.splits);
+      for (const line of tx.lines) add(line.project ?? fallback, { transaction: tx, amount: line.amount, lineId: line.id });
       const remainder = money(tx.amount - sumMoney(tx.lines.map(line => line.amount)));
-      if (remainder > 0) add(tx.project, { transaction: tx, amount: remainder });
+      if (remainder > 0) add(fallback, { transaction: tx, amount: remainder });
       continue;
     }
     if (tx.splits?.length) {
