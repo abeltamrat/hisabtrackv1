@@ -1,17 +1,19 @@
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import CategoryTreeSelect, { type TreeCategory } from '@/components/CategoryTreeSelect';
+import LineItemsEditor from '@/components/LineItemsEditor';
 import TagInputField from '@/components/TagInputField';
-import { ProjectField } from '@/components/ProjectPicker';
-import type { TransactionSplit } from '@/types/database';
+import { ProjectField, useMelaProjects } from '@/components/ProjectPicker';
+import type { PurchaseLine, TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 
 type Category = TreeCategory;
 
 export default function TransactionSplitEditor({
   total, splits, categories, onChange, formatCurrency, tagSuggestions = [], tagSuggestionsForCategory,
+  lines, onLinesChange,
 }: {
   total: number;
   splits: TransactionSplit[];
@@ -20,7 +22,34 @@ export default function TransactionSplitEditor({
   formatCurrency: (value: number) => string;
   tagSuggestions?: string[];
   tagSuggestionsForCategory?: (category: string) => string[];
+  /** With these, each part can be itemized on its own (items carry the part's split_id). */
+  lines?: PurchaseLine[];
+  onLinesChange?: (lines: PurchaseLine[]) => void;
 }) {
+  // Parts ticked "This is a project cost" (parts that already have a project start ticked).
+  // Not every part of a payment is project money, so each part decides on its own.
+  const { connected } = useMelaProjects();
+  const [projectParts, setProjectParts] = useState(() => new Set(splits.filter(split => split.project).map(split => split.id)));
+  const isProjectPart = (split: TransactionSplit) => projectParts.has(split.id) || !!split.project;
+  const toggleProject = (split: TransactionSplit) => {
+    const next = new Set(projectParts);
+    if (isProjectPart(split)) { next.delete(split.id); update(split.id, { project: undefined }); } else next.add(split.id);
+    setProjectParts(next);
+  };
+  // Parts ticked "Itemize this part" (parts that already have items start ticked).
+  const [itemized, setItemized] = useState(() => new Set((lines || []).map(line => line.split_id).filter((id): id is string => !!id)));
+  const partLines = (splitId: string) => (lines || []).filter(line => line.split_id === splitId);
+  const setPartLines = (splitId: string, next: PurchaseLine[]) =>
+    onLinesChange?.([...(lines || []).filter(line => line.split_id !== splitId), ...next.map(line => ({ ...line, split_id: splitId }))]);
+  const toggleItemize = (splitId: string) => {
+    const next = new Set(itemized);
+    if (next.has(splitId)) { next.delete(splitId); setPartLines(splitId, []); } else next.add(splitId);
+    setItemized(next);
+  };
+  const remove = (splitId: string) => {
+    onChange(splits.filter(item => item.id !== splitId));
+    if (partLines(splitId).length) onLinesChange?.((lines || []).filter(line => line.split_id !== splitId));
+  };
   const allocated = sumMoney(splits.map(item => Number(item.amount) || 0));
   const remaining = money(total - allocated);
   const update = (id: string, patch: Partial<TransactionSplit>) => onChange(splits.map(item => item.id === id ? { ...item, ...patch } : item));
@@ -61,7 +90,7 @@ export default function TransactionSplitEditor({
         <View key={split.id} className="bg-white dark:bg-slate-900 rounded-xl p-3 mb-3 border border-slate-200 dark:border-slate-700">
           <View className="flex-row items-center mb-2">
             <Text className="text-slate-600 dark:text-slate-300 text-xs font-bold flex-1">Part {index + 1}</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove split ${index + 1}`} onPress={() => onChange(splits.filter(item => item.id !== split.id))} className="p-2">
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove split ${index + 1}`} onPress={() => remove(split.id)} className="p-2">
               <FontAwesome name="trash-o" size={15} color="#ef4444" />
             </TouchableOpacity>
           </View>
@@ -100,8 +129,30 @@ export default function TransactionSplitEditor({
             savedLabel="Saved tags"
             compact
           />
-          {/* Hidden unless Mela is connected; a part without its own project uses the transaction's. */}
-          <View className="mt-2"><ProjectField value={split.project} onChange={value => update(split.id, { project: value })} compact /></View>
+          {(connected || split.project) && (
+            <>
+              <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: isProjectPart(split) }} accessibilityLabel={`Part ${index + 1} is a project cost`} onPress={() => toggleProject(split)} className="flex-row items-center mt-2 py-1.5">
+                <FontAwesome name={isProjectPart(split) ? 'check-square' : 'square-o'} size={16} color={isProjectPart(split) ? '#0d9488' : '#94a3b8'} />
+                <FontAwesome name="folder-open" size={11} color="#0d9488" style={{ marginLeft: 8 }} />
+                <Text className="ml-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">This is a project cost</Text>
+              </TouchableOpacity>
+              {isProjectPart(split) && <View className="mt-1"><ProjectField value={split.project} onChange={value => update(split.id, { project: value })} compact /></View>}
+            </>
+          )}
+          {onLinesChange && (
+            <>
+              <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: itemized.has(split.id) }} accessibilityLabel={`Itemize part ${index + 1}`} onPress={() => toggleItemize(split.id)} className="flex-row items-center mt-2 py-1.5">
+                <FontAwesome name={itemized.has(split.id) ? 'check-square' : 'square-o'} size={16} color={itemized.has(split.id) ? '#f97316' : '#94a3b8'} />
+                <FontAwesome name="shopping-basket" size={11} color="#f97316" style={{ marginLeft: 8 }} />
+                <Text className="ml-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">Itemize this part</Text>
+              </TouchableOpacity>
+              {itemized.has(split.id) && (
+                <View className="mt-2">
+                  <LineItemsEditor lines={partLines(split.id)} onChange={next => setPartLines(split.id, next)} total={Number(split.amount) || 0} formatCurrency={formatCurrency} showProject={false} />
+                </View>
+              )}
+            </>
+          )}
         </View>
       ))}
       {splits.length === 1 && <Text className="text-amber-600 text-[10px]">Add at least one more part, or remove this split.</Text>}

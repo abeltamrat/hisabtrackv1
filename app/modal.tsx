@@ -19,6 +19,7 @@ import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { NotificationService } from '@/services/NotificationService';
 import { formatTagInput, mergeSplitTags, parseTagInput, pushTagsIntoSplits } from '@/utils/tags';
 import { commonSplitProject, pushProjectIntoSplits } from '@/utils/projectFinance';
+import { attachLinesToSplits, detachLines, hasAnyProject, linesForSave, overfilledSplit, withoutProjects } from '@/utils/splitLines';
 import { celebrate } from '@/utils/celebrate';
 import FloatingCalculator from '@/components/FloatingCalculator';
 import { useDispatch, useSelector } from 'react-redux';
@@ -128,6 +129,7 @@ export default function AddTransactionScreen() {
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [project, setProject] = useState<ProjectLink | undefined>();
+  const [projectCost, setProjectCost] = useState(false);
   const [itemize, setItemize] = useState(false);
   const [supplier, setSupplier] = useState<SupplierLink | undefined>();
   const [lines, setLines] = useState<PurchaseLine[]>([]);
@@ -151,6 +153,12 @@ export default function AddTransactionScreen() {
     category,
     timestamp: transactionDate.getTime(),
   });
+
+  // Unticking "This is a project cost" leaves no project on the transaction or its items.
+  const toggleProjectCost = (next: boolean) => {
+    setProjectCost(next);
+    if (!next) { setProject(undefined); setLines(current => withoutProjects(current)); }
+  };
 
   const handleToggleTag = (tagToToggle: string) => {
     const currentTags = parseTagInput(tagsInput) || [];
@@ -188,9 +196,11 @@ export default function AddTransactionScreen() {
       // Same for the project: with a split, each part carries its own.
       setSplits(editingSplits ? pushProjectIntoSplits(editingTransaction.project, pushTagsIntoSplits(editingTransaction.tags, editingSplits)) : []);
       setProject(editingSplits ? undefined : editingTransaction.project);
-      setLines(editingTransaction.lines || []);
+      // Items of a split belong to its parts; older ones without a part go to the first part with room.
+      setLines(editingSplits ? attachLinesToSplits(editingTransaction.lines || [], editingSplits) : editingTransaction.lines || []);
+      setProjectCost(!editingSplits && hasAnyProject(editingTransaction));
       setSupplier(editingTransaction.supplier);
-      setItemize(!!editingTransaction.lines?.length);
+      setItemize(!editingSplits && !!editingTransaction.lines?.length);
     }
   }, [isEditing, editingTransaction]);
 
@@ -255,7 +265,14 @@ export default function AddTransactionScreen() {
       return;
     }
     // Rows left completely blank are ignored; a row with an amount needs a name.
-    const purchaseLines = itemize && type !== 'TRANSFER' ? lines.filter(line => line.item.name.trim() || line.amount > 0) : [];
+    // With a split, items come from the parts ticked "Itemize this part".
+    const splitParts = type !== 'TRANSFER' && splitEnabled ? splits : undefined;
+    const purchaseLines = type === 'TRANSFER' ? [] : splitParts ? linesForSave(lines, splitParts) : itemize ? linesForSave(lines) : [];
+    const overfilled = splitParts && overfilledSplit(purchaseLines, splitParts);
+    if (overfilled) {
+      Alert.alert('Check items', `Items in the ${overfilled.split.category} part add up to ${formatCurrency(overfilled.itemsTotal)}, more than that part's ${formatCurrency(overfilled.split.amount)}.`);
+      return;
+    }
     if (purchaseLines.some(line => !line.item.name.trim() || !(line.quantity > 0))) {
       Alert.alert('Check items', 'Give every item a name and a quantity above zero, or remove the empty row.');
       return;
@@ -304,8 +321,8 @@ export default function AddTransactionScreen() {
       date: transactionDate.getTime(),
       ...(type === 'TRANSFER' ? { to_account_id: toAccountId } : {}),
       ...(type !== 'TRANSFER' && splitEnabled ? { splits: pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), splits)) } : { splits: undefined }),
-      project: type !== 'TRANSFER' && !splitEnabled ? project : undefined,
-      lines: purchaseLines.length ? purchaseLines : undefined,
+      project: type !== 'TRANSFER' && !splitEnabled && projectCost ? project : undefined,
+      lines: purchaseLines.length ? (splitEnabled || projectCost ? purchaseLines : withoutProjects(purchaseLines)) : undefined,
       supplier: type === 'EXPENSE' ? supplier : undefined,
     };
 
@@ -671,13 +688,14 @@ export default function AddTransactionScreen() {
         </View>}
 
         {type === 'EXPENSE' && <View className="mb-3"><SupplierField value={supplier} onChange={setSupplier} /></View>}
-        {type !== 'TRANSFER' && (
+        {/* Hidden while split: each part has its own "Itemize this part" */}
+        {type !== 'TRANSFER' && !splitEnabled && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
             <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: itemize }} onPress={() => setItemize(!itemize)} className="flex-row items-center">
               <FontAwesome name={itemize ? 'check-square' : 'square-o'} size={18} color={itemize ? '#6366f1' : '#94a3b8'} />
               <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">Itemize purchase</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">Quantities and unit prices, with your last and best prices.</Text></View>
             </TouchableOpacity>
-            {itemize && <View className="mt-3"><LineItemsEditor lines={lines} onChange={setLines} total={parseFloat(amount) || 0} formatCurrency={formatCurrency} onUseTotal={value => setAmount(String(value))} /></View>}
+            {itemize && <View className="mt-3"><LineItemsEditor lines={lines} onChange={setLines} total={parseFloat(amount) || 0} formatCurrency={formatCurrency} onUseTotal={value => setAmount(String(value))} showProject={projectCost} /></View>}
           </View>
         )}
         {type !== 'TRANSFER' && (
@@ -685,24 +703,32 @@ export default function AddTransactionScreen() {
             <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: splitEnabled }} onPress={() => {
               const enabled = !splitEnabled;
               setSplitEnabled(enabled);
-              if (!enabled) { setTagsInput(formatTagInput(mergeSplitTags(splits))); setProject(commonSplitProject(splits)); return; }
+              if (!enabled) {
+                setTagsInput(formatTagInput(mergeSplitTags(splits)));
+                const shared = commonSplitProject(splits);
+                setProject(shared); setProjectCost(!!shared);
+                setLines(current => detachLines(current)); setItemize(lines.length > 0);
+                return;
+              }
               // Tags and project move onto the parts; the whole-transaction ones hide while split.
               const parts = splits.length ? splits : [
                 { id: `split-${Date.now()}-0`, amount: parseFloat(amount) || 0, category: selectedCategory || filteredCategories[0]?.name || 'Uncategorized' },
                 { id: `split-${Date.now()}-1`, amount: 0, category: filteredCategories[1]?.name || filteredCategories[0]?.name || 'Uncategorized' },
               ];
-              setSplits(pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), parts)));
+              setSplits(pushProjectIntoSplits(projectCost ? project : undefined, pushTagsIntoSplits(parseTagInput(tagsInput), parts)));
               setTagsInput('');
-              setProject(undefined);
+              setProject(undefined); setProjectCost(false);
+              // Items already entered move into a part; each part is itemized on its own from here.
+              setLines(current => itemize ? attachLinesToSplits(current, parts) : []); setItemize(false);
             }} className="flex-row items-center">
               <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
               <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">The account is charged once; reports use each allocation.</Text></View>
             </TouchableOpacity>
-            {splitEnabled && <View className="mt-3"><TransactionSplitEditor total={parseFloat(amount) || 0} splits={splits} categories={filteredCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} /></View>}
+            {splitEnabled && <View className="mt-3"><TransactionSplitEditor total={parseFloat(amount) || 0} splits={splits} categories={filteredCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} lines={lines} onLinesChange={setLines} /></View>}
           </View>
         )}
-        {/* Hidden while split: each part has its own project picker */}
-        {type !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle value={project} onChange={setProject} income={type === 'INCOME'} />}
+        {/* Hidden while split: each part has its own "This is a project cost" */}
+        {type !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle checked={projectCost} onToggle={toggleProjectCost} value={project} onChange={setProject} income={type === 'INCOME'} />}
 
         {!isEditing && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>

@@ -21,6 +21,7 @@ import FormSheet from '@/components/FormSheet';
 import { useDispatch, useSelector } from 'react-redux';
 import { formatTagInput, mergeSplitTags, parseTagInput, pushTagsIntoSplits } from '@/utils/tags';
 import { commonSplitProject, pushProjectIntoSplits } from '@/utils/projectFinance';
+import { attachLinesToSplits, detachLines, linesForSave, overfilledSplit, withoutProjects } from '@/utils/splitLines';
 import { RecurringTransactionService } from '@/services/RecurringTransactionService';
 import type { RecurringFrequency, TransactionType } from '@/types/database';
 import { findTransferCandidates } from '@/utils/transferPairing';
@@ -138,6 +139,7 @@ export default function DraftTransactionsScreen() {
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [itemize, setItemize] = useState(false);
   const [project, setProject] = useState<ProjectLink | undefined>();
+  const [projectCost, setProjectCost] = useState(false);
   const [supplier, setSupplier] = useState<SupplierLink | undefined>();
   const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [dismissedRecurringSuggestion, setDismissedRecurringSuggestion] = useState(false);
@@ -259,7 +261,7 @@ export default function DraftTransactionsScreen() {
       setRememberOwnedRecipient(false);
       setSplitEnabled(!!target.suggested_splits?.length);
       setSplits(target.suggested_splits || []);
-      setItemize(false); setLines([]); setSupplier(undefined); setProject(undefined);
+      setItemize(false); setLines([]); setSupplier(undefined); setProject(undefined); setProjectCost(false);
       setDismissedRecurringSuggestion(false);
       setNote('');
       setTagsInput('');
@@ -461,7 +463,7 @@ export default function DraftTransactionsScreen() {
     setRecurringOccurrences('');
     setSplitEnabled(!!draft.suggested_splits?.length);
     setSplits(draft.suggested_splits || []);
-    setItemize(false); setLines([]); setSupplier(undefined); setProject(undefined);
+    setItemize(false); setLines([]); setSupplier(undefined); setProject(undefined); setProjectCost(false);
     setDismissedRecurringSuggestion(false);
     setNote('');
     setTagsInput('');
@@ -577,7 +579,13 @@ export default function DraftTransactionsScreen() {
         return;
       }
       // Rows left completely blank are ignored; a row with an amount needs a name.
-      const purchaseLines = itemize && editedType !== 'TRANSFER' ? lines.filter(line => line.item.name.trim() || line.amount > 0) : [];
+      // With a split, items come from the parts ticked "Itemize this part".
+      const purchaseLines = editedType === 'TRANSFER' ? [] : splitActive ? linesForSave(lines, splits) : itemize ? linesForSave(lines) : [];
+      const overfilled = splitActive && overfilledSplit(purchaseLines, splits);
+      if (overfilled) {
+        Alert.alert('Check items', `Items in the ${overfilled.split.category} part add up to ${formatCurrency(overfilled.itemsTotal)}, more than that part's ${formatCurrency(overfilled.split.amount)}.`);
+        return;
+      }
       if (purchaseLines.some(line => !line.item.name.trim() || !(line.quantity > 0))) {
         Alert.alert('Check items', 'Give every item a name and a quantity above zero, or remove the empty row.');
         return;
@@ -632,9 +640,9 @@ export default function DraftTransactionsScreen() {
         disaster_recovery_fee: expenseLeg.disaster_recovery_fee,
         receipt_url: expenseLeg.receipt_url || selectedDraft.receipt_url,
         ...(finalSplits ? { splits: finalSplits } : {}),
-        ...(editedType !== 'TRANSFER' && purchaseLines.length ? { lines: purchaseLines } : {}),
+        ...(editedType !== 'TRANSFER' && purchaseLines.length ? { lines: splitActive || projectCost ? purchaseLines : withoutProjects(purchaseLines) } : {}),
         ...(editedType === 'EXPENSE' && supplier ? { supplier } : {}),
-        ...(!splitActive && editedType !== 'TRANSFER' && project ? { project } : {}),
+        ...(!splitActive && projectCost && editedType !== 'TRANSFER' && project ? { project } : {}),
       } as Omit<Transaction, 'id'>;
 
       let transactionId: string | undefined;
@@ -1754,15 +1762,23 @@ export default function DraftTransactionsScreen() {
                       onPress={() => {
                         const enabled = !splitEnabled;
                         setSplitEnabled(enabled);
-                        if (!enabled) { setTagsInput(formatTagInput(mergeSplitTags(splits))); setProject(commonSplitProject(splits)); return; }
+                        if (!enabled) {
+                          setTagsInput(formatTagInput(mergeSplitTags(splits)));
+                          const shared = commonSplitProject(splits);
+                          setProject(shared); setProjectCost(!!shared);
+                          setLines(current => detachLines(current)); setItemize(lines.length > 0);
+                          return;
+                        }
                         // Tags and project move onto the parts; the whole-transaction ones hide while split.
                         const parts = splits.length ? splits : [
                           { id: `split-${Date.now()}-0`, amount: selectedDraft?.amount || 0, category: editedCategory || confirmCategories[0]?.name || 'Uncategorized' },
                           { id: `split-${Date.now()}-1`, amount: 0, category: confirmCategories[1]?.name || confirmCategories[0]?.name || 'Uncategorized' },
                         ];
-                        setSplits(pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), parts)));
+                        setSplits(pushProjectIntoSplits(projectCost ? project : undefined, pushTagsIntoSplits(parseTagInput(tagsInput), parts)));
                         setTagsInput('');
-                        setProject(undefined);
+                        setProject(undefined); setProjectCost(false);
+                        // Items already entered move into a part; each part is itemized on its own from here.
+                        setLines(current => itemize ? attachLinesToSplits(current, parts) : []); setItemize(false);
                       }}
                       className={`min-h-[64px] flex-row items-center rounded-xl border p-3 ${splitEnabled ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}
                     >
@@ -1777,9 +1793,10 @@ export default function DraftTransactionsScreen() {
                     </TouchableOpacity>
                   )}
 
-                  {editedType !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle value={project} onChange={setProject} income={editedType === 'INCOME'} variant="tile" />}
+                  {/* Hidden while split: each part has its own project and itemize checkboxes */}
+                  {editedType !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle checked={projectCost} onToggle={next => { setProjectCost(next); if (!next) { setProject(undefined); setLines(current => withoutProjects(current)); } }} value={project} onChange={setProject} income={editedType === 'INCOME'} variant="tile" />}
 
-                  {editedType !== 'TRANSFER' && (
+                  {editedType !== 'TRANSFER' && !splitEnabled && (
                     <TouchableOpacity
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: itemize }}
@@ -1915,18 +1932,18 @@ export default function DraftTransactionsScreen() {
                     <FontAwesome name="pie-chart" size={16} color="#6366f1" />
                     <Text className="ml-2 font-bold text-slate-900 dark:text-white">Category split</Text>
                   </View>
-                  {splitEnabled && <TransactionSplitEditor total={selectedDraft?.amount || 0} splits={splits} categories={confirmCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} />}
+                  {splitEnabled && <TransactionSplitEditor total={selectedDraft?.amount || 0} splits={splits} categories={confirmCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} lines={lines} onLinesChange={setLines} />}
                 </View>
               )}
 
-              {editedType !== 'TRANSFER' && itemize && (
+              {editedType !== 'TRANSFER' && !splitEnabled && itemize && (
                 <View className="mb-6">
                   <View className="mb-3 flex-row items-center">
                     <FontAwesome name="shopping-basket" size={15} color="#f97316" />
                     <Text className="ml-2 font-bold text-slate-900 dark:text-white">Items</Text>
                   </View>
                   {editedType === 'EXPENSE' && <View className="mb-3"><SupplierField value={supplier} onChange={setSupplier} /></View>}
-                  <LineItemsEditor lines={lines} onChange={setLines} total={selectedDraft?.amount || 0} formatCurrency={formatCurrency} />
+                  <LineItemsEditor lines={lines} onChange={setLines} total={selectedDraft?.amount || 0} formatCurrency={formatCurrency} showProject={projectCost} />
                 </View>
               )}
 

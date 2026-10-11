@@ -95,8 +95,12 @@ export function validateTransaction(t: Partial<Transaction>, accounts?: Account[
       if (!(Number(line.quantity) > 0) || !(Number(line.unit_price) >= 0) || !Number.isFinite(line.amount)) throw new Error('Line quantity must be positive and price zero or more');
       if (Math.abs(minor(line.amount) - minor(line.quantity * line.unit_price)) > 1) throw new Error('Line amount must equal quantity × unit price');
       if (badProject(line.project)) throw new Error('Invalid project link');
+      if (line.split_id !== undefined && !t.splits?.some(split => split.id === line.split_id)) throw new Error('Line item belongs to a missing split part');
     }
     if (minor(sumMoney(t.lines.map(line => line.amount))) > minor(t.amount!)) throw new Error('Line items exceed the transaction amount');
+    for (const split of t.splits || []) {
+      if (minor(sumMoney(t.lines.filter(line => line.split_id === split.id).map(line => line.amount))) > minor(split.amount)) throw new Error('Line items exceed their split part');
+    }
   }
   if (t.gross_amount !== undefined && minor(t.gross_amount) < minor(t.amount!)) throw new Error('Total debit cannot be less than transaction amount');
   if (minor((t.fees || 0) + (t.tax || 0)) > minor(t.amount)) throw new Error('Fees exceed the amount');

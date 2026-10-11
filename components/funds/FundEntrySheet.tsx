@@ -9,6 +9,7 @@ import FormSheet from '@/components/FormSheet';
 import TagInputField from '@/components/TagInputField';
 import { mergeSplitTags, pushTagsIntoSplits } from '@/utils/tags';
 import { commonSplitProject, pushProjectIntoSplits } from '@/utils/projectFinance';
+import { attachLinesToSplits, detachLines, linesForSave, overfilledSplit, withoutProjects } from '@/utils/splitLines';
 import PersonLinkField from '@/components/PersonLinkField';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import LineItemsEditor from '@/components/LineItemsEditor';
@@ -93,6 +94,7 @@ export default function FundEntrySheet({
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [project, setProject] = useState<ProjectLink | undefined>();
+  const [projectCost, setProjectCost] = useState(false);
   const [supplier, setSupplier] = useState<SupplierLink | undefined>();
   const [itemize, setItemize] = useState(false);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
@@ -112,7 +114,7 @@ export default function FundEntrySheet({
   useEffect(() => {
     if (!visible) return;
     resetErrors();
-    setProject(undefined); setSupplier(undefined); setItemize(false); setLines([]);
+    setProject(undefined); setProjectCost(false); setSupplier(undefined); setItemize(false); setLines([]);
     setAmount(prefill?.amount ? String(prefill.amount) : mode === 'send' && fund.floatTarget && fund.balance < fund.floatTarget ? String(money(fund.floatTarget - fund.balance)) : '');
     setAccountId(defaultAccountId && pickable.some(account => account.id === defaultAccountId) ? defaultAccountId : pickable[0]?.id || '');
     setRecipient(prefill?.recipient || '');
@@ -145,8 +147,9 @@ export default function FundEntrySheet({
       receipt: receiptLink && !/^https:\/\/\S+$/i.test(receiptLink) ? 'Receipt links must start with https://' : false,
       splits: mode === 'pay' && splitEnabled && (splits.length < 2 || sumMoney(splits.map(item => Number(item.amount) || 0)) !== money(value)) ? 'Split parts must add up to the amount.' : false,
     });
-    const purchaseLines = mode === 'pay' && itemize ? lines.filter(line => line.item.name.trim() || line.amount > 0) : [];
-    if (ok && (purchaseLines.some(line => !line.item.name.trim() || !(line.quantity > 0)) || sumMoney(purchaseLines.map(line => line.amount)) > money(value))) {
+    // With a split, items come from the parts ticked "Itemize this part".
+    const purchaseLines = mode !== 'pay' ? [] : splitEnabled ? linesForSave(lines, splits) : itemize ? linesForSave(lines) : [];
+    if (ok && (purchaseLines.some(line => !line.item.name.trim() || !(line.quantity > 0)) || sumMoney(purchaseLines.map(line => line.amount)) > money(value) || (splitEnabled && overfilledSplit(purchaseLines, splits)))) {
       setError('splits', 'Give every item a name and quantity, and keep items within the amount.');
       return;
     }
@@ -184,8 +187,8 @@ export default function FundEntrySheet({
         recipientPersonId: mode === 'pay' ? recipientPerson?.id : undefined,
         category: mode === 'pay' ? category || undefined : undefined,
         splits: splitActive ? pushProjectIntoSplits(project, pushTagsIntoSplits(tags, splits)) : undefined,
-        lines: purchaseLines.length ? purchaseLines : undefined,
-        project: mode === 'pay' && !splitActive ? project : undefined,
+        lines: purchaseLines.length ? (splitActive || projectCost ? purchaseLines : withoutProjects(purchaseLines)) : undefined,
+        project: mode === 'pay' && !splitActive && projectCost ? project : undefined,
         supplier: mode === 'pay' ? supplier : undefined,
         tags: splitActive ? undefined : tags,
         reference_number: reference.trim() || undefined,
@@ -351,16 +354,23 @@ export default function FundEntrySheet({
               const next = !splitEnabled;
               setSplitEnabled(next);
               clearError('splits');
-              if (!next) { setTags(mergeSplitTags(splits)); setProject(commonSplitProject(splits)); return; }
+              if (!next) {
+                setTags(mergeSplitTags(splits));
+                const shared = commonSplitProject(splits);
+                setProject(shared); setProjectCost(!!shared);
+                setLines(current => detachLines(current)); setItemize(lines.length > 0);
+                return;
+              }
               const value = Number(amount.replace(',', '.')) || 0;
               // Tags move onto the parts; the tag field hides while split.
               const parts = splits.length ? splits : [
                 { id: `split-${Date.now()}-0`, amount: value, category: category || categoryTree[0]?.name || 'Uncategorized' },
                 { id: `split-${Date.now()}-1`, amount: 0, category: categoryTree[1]?.name || categoryTree[0]?.name || 'Uncategorized' },
               ];
-              setSplits(pushProjectIntoSplits(project, pushTagsIntoSplits(tags, parts)));
+              setSplits(pushProjectIntoSplits(projectCost ? project : undefined, pushTagsIntoSplits(tags, parts)));
               setTags(undefined);
-              setProject(undefined);
+              setProject(undefined); setProjectCost(false);
+              setLines(current => itemize ? attachLinesToSplits(current, parts) : []); setItemize(false);
             }}
             className="flex-row items-center py-2"
           >
@@ -370,7 +380,7 @@ export default function FundEntrySheet({
           {splitEnabled && (
             // Part project pickers read the owner's shared lists, like the fields below.
             <MelaCatalogContext.Provider value={sharedCatalog ?? EMPTY_CATALOG}>
-              <TransactionSplitEditor total={Number(amount.replace(',', '.')) || 0} splits={splits} categories={categoryTree} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={tagSuggestions} />
+              <TransactionSplitEditor total={Number(amount.replace(',', '.')) || 0} splits={splits} categories={categoryTree} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={tagSuggestions} lines={lines} onLinesChange={setLines} />
             </MelaCatalogContext.Provider>
           )}
           {errors.splits ? <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.splits}</Text> : null}
@@ -381,13 +391,16 @@ export default function FundEntrySheet({
         // Inside the provider, pickers read the owner's shared lists instead of this device's own.
         <MelaCatalogContext.Provider value={sharedCatalog ?? EMPTY_CATALOG}>
           <View className="mb-4 gap-3">
-            {!splitEnabled && <ProjectCostToggle value={project} onChange={setProject} variant="row" />}
+            {/* Hidden while split: each part has its own project and itemize checkboxes */}
+            {!splitEnabled && <ProjectCostToggle checked={projectCost} onToggle={next => { setProjectCost(next); if (!next) { setProject(undefined); setLines(current => withoutProjects(current)); } }} value={project} onChange={setProject} variant="row" />}
             <SupplierField value={supplier} onChange={setSupplier} />
-            <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: itemize }} onPress={() => setItemize(!itemize)} className="flex-row items-center py-2">
-              <FontAwesome name={itemize ? 'check-square' : 'square-o'} size={18} color={itemize ? '#0d9488' : '#94a3b8'} />
-              <Text className="text-slate-700 dark:text-slate-300 text-sm font-semibold ml-2">Itemize purchase</Text>
-            </TouchableOpacity>
-            {itemize && <LineItemsEditor lines={lines} onChange={setLines} total={Number(amount.replace(',', '.')) || 0} formatCurrency={formatCurrency} />}
+            {!splitEnabled && (
+              <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: itemize }} onPress={() => setItemize(!itemize)} className="flex-row items-center py-2">
+                <FontAwesome name={itemize ? 'check-square' : 'square-o'} size={18} color={itemize ? '#0d9488' : '#94a3b8'} />
+                <Text className="text-slate-700 dark:text-slate-300 text-sm font-semibold ml-2">Itemize purchase</Text>
+              </TouchableOpacity>
+            )}
+            {!splitEnabled && itemize && <LineItemsEditor lines={lines} onChange={setLines} total={Number(amount.replace(',', '.')) || 0} formatCurrency={formatCurrency} showProject={projectCost} />}
           </View>
         </MelaCatalogContext.Provider>
       )}

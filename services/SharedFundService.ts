@@ -144,6 +144,7 @@ function parseLines(value: any): PurchaseLine[] | undefined {
       item: { source: line.item.source, id: line.item.id, name: line.item.name, ...(line.item.kind ? { kind: line.item.kind } : {}), ...(line.item.category ? { category: line.item.category } : {}) },
       quantity: line.quantity, ...(typeof line.unit === 'string' ? { unit: line.unit } : {}), unit_price: line.unit_price, amount: line.amount,
       ...(parseProject(line.project) ? { project: parseProject(line.project) } : {}),
+      ...(typeof line.split_id === 'string' ? { split_id: line.split_id } : {}),
     })) as PurchaseLine[];
   return lines.length ? lines : undefined;
 }

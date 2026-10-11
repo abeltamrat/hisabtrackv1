@@ -655,7 +655,7 @@ function fundSupplier(supplier) {
 }
 
 /** Itemized purchase lines: quantity × unit price, never more than the payment itself. */
-function fundLines(lines, amount) {
+function fundLines(lines, amount, splits) {
   if (lines === undefined || lines === null) return undefined;
   if (!Array.isArray(lines) || lines.length < 1 || lines.length > 50) throw fundBad('Use 1 to 50 items.');
   const out = lines.map(line => {
@@ -670,10 +670,20 @@ function fundLines(lines, amount) {
       item: fundCompact({ source: item.source, id: item.id.trim().slice(0, 200), name: fundText(item.name, 120), kind: ['MATERIAL', 'TOOL', 'OTHER'].includes(item.kind) ? item.kind : undefined, category: fundText(item.category, 80) || undefined }),
       quantity, unit: fundText(line.unit, 20) || undefined, unit_price: unitPrice, amount: line.amount,
       project: fundProject(line.project),
+      split_id: line.split_id === undefined || line.split_id === null ? undefined : fundSplitRef(line.split_id, splits),
     });
   });
+  for (const split of splits || []) {
+    const sum = out.filter(line => line.split_id === split.id).reduce((total, line) => total + fundCents(line.amount), 0);
+    if (sum > fundCents(split.amount)) throw fundBad('Items add up to more than their split part.');
+  }
   if (out.reduce((sum, line) => sum + fundCents(line.amount), 0) > fundCents(amount)) throw fundBad('Items add up to more than the payment.');
   return out;
+}
+
+function fundSplitRef(id, splits) {
+  if (typeof id !== 'string' || !(splits || []).some(split => split.id === id)) throw fundBad('An item belongs to a missing split part.');
+  return id;
 }
 
 function fundReceipt(url) {
@@ -768,6 +778,7 @@ function readEntryInput(data, role) {
   const payerName = fundText(data.payerName, 120) || undefined;
   const payerPersonId = fundText(data.payerPersonId, 160) || undefined;
   if (kind === 'DEPOSIT' && source === 'THIRD_PARTY' && !payerName) throw fundBad('Enter who sent the money.');
+  const splits = kind === 'SPEND' ? fundSplits(data.splits, amount) : undefined;
   return fundCompact({
     kind, source, amount, date,
     description: fundText(data.description, 200) || (kind === 'SPEND' ? 'Fund payment' : kind === 'RETURN' ? 'Returned to owner' : 'Fund deposit'),
@@ -780,8 +791,8 @@ function readEntryInput(data, role) {
     receipt_url: fundReceipt(data.receipt_url),
     sms_linked: data.sms_linked === true,
     category: kind === 'SPEND' ? fundText(data.category, 80) || 'Uncategorized' : undefined,
-    splits: kind === 'SPEND' ? fundSplits(data.splits, amount) : undefined,
-    lines: kind === 'SPEND' ? fundLines(data.lines, amount) : undefined,
+    splits,
+    lines: kind === 'SPEND' ? fundLines(data.lines, amount, splits) : undefined,
     project: kind === 'SPEND' ? fundProject(data.project) : undefined,
     supplier: kind === 'SPEND' ? fundSupplier(data.supplier) : undefined,
     tags: fundTags(data.tags),

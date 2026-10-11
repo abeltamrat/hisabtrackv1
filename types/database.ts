@@ -132,6 +132,8 @@ export interface PurchaseLine {
   amount: number;
   /** Overrides the transaction's project for this line. */
   project?: ProjectLink;
+  /** On a split transaction, the part this item belongs to (it then uses that part's project). */
+  split_id?: string;
 }
 
 export interface StandardTransaction extends TransactionBase {

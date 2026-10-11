@@ -21,8 +21,10 @@ export function useItemCatalog(extra: ItemLink[] = []) {
   return { records, catalog };
 }
 
-export default function LineItemsEditor({ lines, onChange, total, formatCurrency, extraItems = [], onUseTotal }: {
+export default function LineItemsEditor({ lines, onChange, total, formatCurrency, extraItems = [], onUseTotal, showProject = true }: {
   lines: PurchaseLine[];
+  /** Per-item project pickers (only for project costs; items in a split part use the part's project). */
+  showProject?: boolean;
   onChange: (lines: PurchaseLine[]) => void;
   total: number;
   formatCurrency: (amount: number) => string;
@@ -39,12 +41,12 @@ export default function LineItemsEditor({ lines, onChange, total, formatCurrency
     const next = { ...line, ...patch };
     return { ...next, amount: money((Number(next.quantity) || 0) * (Number(next.unit_price) || 0)) };
   }));
-  const add = () => onChange([...lines, { id: `line-${Date.now()}-${lines.length}`, item: localItem(''), quantity: 1, unit_price: 0, amount: 0 }]);
+  const add = () => onChange([...lines, { id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, item: localItem(''), quantity: 1, unit_price: 0, amount: 0 }]);
 
   return (
     <View>
       {lines.map((line, index) => (
-        <LineRow key={line.id} index={index} line={line} catalog={catalog} records={records} formatCurrency={formatCurrency}
+        <LineRow key={line.id} index={index} line={line} catalog={catalog} records={records} formatCurrency={formatCurrency} showProject={showProject}
           onChange={patch => update(line.id, patch)} onRemove={() => onChange(lines.filter(l => l.id !== line.id))} />
       ))}
       <TouchableOpacity accessibilityRole="button" onPress={add} className="flex-row items-center justify-center py-3 rounded-xl border border-dashed border-indigo-300 dark:border-indigo-700 mb-2">
@@ -66,8 +68,8 @@ export default function LineItemsEditor({ lines, onChange, total, formatCurrency
   );
 }
 
-function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRemove }: {
-  index: number; line: PurchaseLine; catalog: CatalogEntry[]; records: ReturnType<typeof purchaseRecords>;
+function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRemove, showProject }: {
+  index: number; line: PurchaseLine; catalog: CatalogEntry[]; records: ReturnType<typeof purchaseRecords>; showProject: boolean;
   formatCurrency: (amount: number) => string; onChange: (patch: Partial<PurchaseLine>) => void; onRemove: () => void;
 }) {
   const [query, setQuery] = useState(line.item.name);
@@ -159,7 +161,7 @@ function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRe
         </View>
       )}
 
-      <View className="mt-2"><ProjectField value={line.project} onChange={project => onChange({ project })} compact /></View>
+      {showProject && <View className="mt-2"><ProjectField value={line.project} onChange={project => onChange({ project })} compact /></View>}
     </View>
   );
 }

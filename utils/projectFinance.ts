@@ -36,8 +36,21 @@ export function projectEntries(transactions: Transaction[]): Map<string, Project
     if (tx.type === 'TRANSFER') continue;
     // Itemized purchases attribute per line (a line's own project wins); any
     // un-itemized remainder stays with the transaction's project.
+    // Items that belong to split parts: each part's items, then its remainder,
+    // count toward the item's own project, else the part's, else the transaction's.
+    const splitIds = new Set((tx.splits || []).map(split => split.id));
+    if (tx.splits?.length && (tx.lines || []).every(line => line.split_id && splitIds.has(line.split_id))) {
+      for (const split of tx.splits) {
+        const base = split.project ?? tx.project;
+        const own = (tx.lines || []).filter(line => line.split_id === split.id);
+        for (const line of own) add(line.project ?? base, { transaction: tx, amount: line.amount, lineId: line.id, splitId: split.id });
+        const remainder = money(split.amount - sumMoney(own.map(line => line.amount)));
+        if (remainder > 0) add(base, { transaction: tx, amount: remainder, splitId: split.id });
+      }
+      continue;
+    }
     if (tx.lines?.length) {
-      // A split whose parts all share one project acts as the transaction's project.
+      // Older items not tied to a part: a split whose parts all share one project acts as the transaction's project.
       const fallback = tx.project ?? commonSplitProject(tx.splits);
       for (const line of tx.lines) add(line.project ?? fallback, { transaction: tx, amount: line.amount, lineId: line.id });
       const remainder = money(tx.amount - sumMoney(tx.lines.map(line => line.amount)));

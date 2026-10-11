@@ -173,7 +173,7 @@ test('project is an opt-in "project cost" toggle under split, not a field on eve
   const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
   const picker = read('components/ProjectPicker.tsx');
   assert.match(picker, /export function ProjectCostToggle/);
-  assert.match(picker, /if \(!next\) onChange\(undefined\)/, 'unticking clears the project');
+  assert.match(read('app/modal.tsx'), /if \(!next\) \{ setProject\(undefined\); setLines\(current => withoutProjects\(current\)\); \}/, 'unticking clears the project');
   const modal = read('app/modal.tsx');
   assert.ok(!/<ProjectField /.test(modal), 'no always-on project field');
   assert.ok(modal.indexOf('<ProjectCostToggle') > modal.indexOf('Split across categories'), 'toggle sits under split');
@@ -181,7 +181,7 @@ test('project is an opt-in "project cost" toggle under split, not a field on eve
   assert.ok(drafts.indexOf('<ProjectCostToggle') > drafts.indexOf('accessibilityLabel="Split across categories"'));
   assert.match(drafts, /editedType !== 'TRANSFER' && project \? \{ project \}/);
   assert.match(drafts, /input\.project \? \{ project: input\.project \}/, 'fund entries from SMS carry the project');
-  assert.match(read('components/funds/FundEntrySheet.tsx'), /<ProjectCostToggle value=\{project\}/);
+  assert.match(read('components/funds/FundEntrySheet.tsx'), /<ProjectCostToggle checked=\{projectCost\}/);
 });
 
 test('with a split, the project lives on each part and the transaction toggle hides', () => {
@@ -208,9 +208,50 @@ test('with a split, the project lives on each part and the transaction toggle hi
 
   const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
   assert.match(read('app/modal.tsx'), /type !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle/);
-  assert.match(read('app/modal.tsx'), /project: type !== 'TRANSFER' && !splitEnabled \? project : undefined/);
+  assert.match(read('app/modal.tsx'), /project: type !== 'TRANSFER' && !splitEnabled && projectCost \? project : undefined/);
   assert.match(read('app/draft-transactions.tsx'), /editedType !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle/);
   assert.match(read('components/funds/FundEntrySheet.tsx'), /\{!splitEnabled && <ProjectCostToggle/);
   assert.match(read('functions/index.js'), /tags: fundTags\(split\.tags\), project: fundProject\(split\.project\)/, 'server keeps each part\'s project');
   assert.match(read('services/SharedFundService.ts'), /parseProject\(item\.project\)/);
+});
+
+test('with a split, each part has its own "project cost" and "itemize" checkboxes', () => {
+  const lines = load('./utils/splitLines.ts');
+  const item = name => ({ source: 'local', id: name, name });
+  const line = (id, amount, extra = {}) => ({ id, item: item(id), quantity: 1, unit_price: amount, amount, ...extra });
+  const parts = [{ id: 'a', amount: 100, category: 'Materials' }, { id: 'b', amount: 50, category: 'Labour' }];
+
+  // Turning split on: items go to the first part with room; off: they're the transaction's again.
+  const attached = lines.attachLinesToSplits([line('x', 80), line('y', 40)], parts);
+  assert.deepEqual(attached.map(l => l.split_id), ['a', 'b']);
+  assert.deepEqual(lines.detachLines(attached).map(l => l.split_id), [undefined, undefined]);
+  // Saving keeps only items of existing parts and drops blank rows; without a split, no part links.
+  assert.deepEqual(lines.linesForSave([...attached, line('z', 5, { split_id: 'gone' }), { ...line('blank', 0), item: item('') }], parts).map(l => l.id), ['x', 'y']);
+  assert.equal(lines.linesForSave(attached)[0].split_id, undefined);
+  assert.equal(lines.overfilledSplit([line('x', 60, { split_id: 'b' })], parts).split.id, 'b');
+  assert.deepEqual(lines.withoutProjects([{ project: { source: 'mela', id: 1, title: 't' } }, {}]), [{}, {}]);
+
+  // Validation: an item must belong to an existing part and fit inside it.
+  const base = { type: 'EXPENSE', account_id: 'a', amount: 150, date: 1, category: 'X', description: 'x', splits: parts };
+  assert.doesNotThrow(() => validateTransaction({ ...base, lines: [line('x', 80, { split_id: 'a' })] }));
+  assert.throws(() => validateTransaction({ ...base, lines: [line('x', 60, { split_id: 'b' })] }), /exceed their split part/);
+  assert.throws(() => validateTransaction({ ...base, lines: [line('x', 10, { split_id: 'nope' })] }), /missing split part/);
+
+  // Reports: a project part counts its items and remainder; a non-project part counts nowhere.
+  const villa = { source: 'mela', id: 7, title: 'Villa' };
+  const tx = { ...base, id: 't', splits: [{ ...parts[0], project: villa }, parts[1]], lines: [line('cement', 70, { split_id: 'a' }), line('food', 20, { split_id: 'b' })] };
+  const entries = projectEntries([tx]).get(projectKey(villa));
+  assert.equal(projectTotals(entries).paid, 100);
+  assert.deepEqual(entries.map(e => e.lineId ?? 'rest'), ['cement', 'rest']);
+  const records = load('./utils/itemFinance.ts').purchaseRecords([tx]);
+  assert.equal(records.find(r => r.lineId === 'cement').project.id, 7, 'item prices know the part\'s project');
+  assert.equal(records.find(r => r.lineId === 'food').project, undefined);
+
+  // UI: per-part checkboxes; the whole-transaction ones hide while split.
+  const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+  const editor = read('components/TransactionSplitEditor.tsx');
+  assert.match(editor, /This is a project cost/);
+  assert.match(editor, /Itemize this part/);
+  assert.match(read('app/modal.tsx'), /type !== 'TRANSFER' && !splitEnabled && \(\s*<View[^>]*>\s*<TouchableOpacity accessibilityRole="checkbox" accessibilityState=\{\{ checked: itemize \}\}/);
+  assert.match(read('functions/index.js'), /split_id: line\.split_id === undefined \|\| line\.split_id === null \? undefined : fundSplitRef\(line\.split_id, splits\)/);
 });

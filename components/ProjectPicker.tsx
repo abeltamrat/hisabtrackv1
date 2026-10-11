@@ -126,21 +126,23 @@ export function ProjectField({ value, onChange, compact = false }: { value?: Pro
  * Not every expense is a project cost, so the project picker stays hidden
  * until it's ticked; unticking clears the project. Hidden without Mela.
  */
-export function ProjectCostToggle({ value, onChange, income = false, variant = 'card' }: {
+export function ProjectCostToggle({ checked: on, onToggle, value, onChange, showPicker = true, income = false, variant = 'card' }: {
+  /** Form-wide: when off, the form clears every project (transaction, parts, items). */
+  checked: boolean;
+  onToggle: (next: boolean) => void;
   value?: ProjectLink;
   onChange: (project: ProjectLink | undefined) => void;
+  /** False while split: each part shows its own picker instead. */
+  showPicker?: boolean;
   income?: boolean;
   variant?: 'card' | 'tile' | 'row';
 }) {
   const { connected } = useMelaProjects();
-  const [on, setOn] = useState(!!value);
-  // Edits and drafts load the project after mount.
-  useEffect(() => { if (value) setOn(true); }, [value]);
-  if (!connected && !value) return null;
+  if (!connected && !on) return null;
   const label = income ? 'This is project income' : 'This is a project cost';
-  const hint = income ? 'Link this payment to a Mela project.' : 'Count this toward a Mela project\'s spending.';
-  const toggle = () => { const next = !on; setOn(next); if (!next) onChange(undefined); };
-  const picker = on ? <View className="mt-3"><ProjectField value={value} onChange={onChange} /></View> : null;
+  const hint = !showPicker ? 'Choose a project on each split part.' : income ? 'Link this payment to a Mela project.' : 'Count this toward a Mela project\'s spending.';
+  const toggle = () => onToggle(!on);
+  const picker = on && showPicker ? <View className="mt-3"><ProjectField value={value} onChange={onChange} /></View> : null;
 
   if (variant === 'tile') return (
     <View>

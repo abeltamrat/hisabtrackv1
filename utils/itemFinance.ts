@@ -66,7 +66,7 @@ export function purchaseRecords(transactions: Transaction[]): PurchaseRecord[] {
       records.push({
         key: itemKey(line.item), item: line.item, transactionId: tx.id, lineId: line.id, type: tx.type,
         date: tx.date, quantity: line.quantity, unit: line.unit, unitPrice: line.unit_price, amount: line.amount,
-        supplier, project: line.project ?? tx.project,
+        supplier, project: line.project ?? tx.splits?.find(split => split.id === line.split_id)?.project ?? tx.project,
       });
     }
   }

@@ -337,8 +337,8 @@ export default function TransactionDetail() {
                   <TouchableOpacity key={line.id} onPress={() => router.push(`/items/${encodeURIComponent(`${line.item.source}:${line.item.id}`)}` as any)} className="flex-row justify-between items-start py-2 border-b border-slate-200 dark:border-slate-700">
                     <View className="flex-1 mr-3">
                       <Text className="text-slate-900 dark:text-white text-sm font-semibold">{line.item.name}</Text>
-                      <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{line.quantity}{line.unit ? ` ${line.unit}` : ''} × {formatCurrency(line.unit_price)}{line.item.kind && line.item.kind !== 'OTHER' ? ` · ${line.item.kind === 'TOOL' ? 'Tool' : 'Material'}` : ''}</Text>
-                      {line.project ? <Text numberOfLines={1} className="text-indigo-600 dark:text-indigo-300 text-xs font-semibold mt-0.5">{line.project.title}</Text> : null}
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{line.quantity}{line.unit ? ` ${line.unit}` : ''} × {formatCurrency(line.unit_price)}{line.item.kind && line.item.kind !== 'OTHER' ? ` · ${line.item.kind === 'TOOL' ? 'Tool' : 'Material'}` : ''}{line.split_id && transaction.splits?.some(split => split.id === line.split_id) ? ` · ${transaction.splits.find(split => split.id === line.split_id)!.category}` : ''}</Text>
+                      {(line.project ?? transaction.splits?.find(split => split.id === line.split_id)?.project) ? <Text numberOfLines={1} className="text-indigo-600 dark:text-indigo-300 text-xs font-semibold mt-0.5">{(line.project ?? transaction.splits?.find(split => split.id === line.split_id)?.project)!.title}</Text> : null}
                     </View>
                     <Text className="text-slate-900 dark:text-white text-sm font-bold">{formatCurrency(line.amount)}</Text>
                   </TouchableOpacity>
