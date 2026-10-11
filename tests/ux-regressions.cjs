@@ -1586,3 +1586,26 @@ test('Aurora transaction filter sheets use an opaque readable surface', () => {
   assert.equal((source.match(/: filterControlBackground/g) || []).length >= 4, true,
     'all filter buttons must use a readable Aurora surface');
 });
+
+test('split filters show and total only matching allocation rows', () => {
+  const { buildTransactionDisplayRows } = load('@/utils/transactionFilterRows');
+  const transaction = {
+    id: 'tx-1', account_id: 'bank', amount: 3800, type: 'EXPENSE',
+    category: 'Food & Drink', description: 'Parent description', date: 1,
+    splits: [
+      { id: 'tools', amount: 2300, category: 'Simple tools' },
+      { id: 'materials', amount: 1500, category: 'Material for project' },
+    ],
+  };
+
+  const wrongParentMatch = buildTransactionDisplayRows(
+    [transaction], true, row => row.category === 'Food & Drink',
+  );
+  assert.deepEqual(wrongParentMatch, [], 'a parent category must not leak unrelated splits into the result');
+
+  transaction.splits.push({ id: 'food', amount: 200, category: 'Food & Drink' });
+  const matching = buildTransactionDisplayRows(
+    [transaction], true, row => row.category === 'Food & Drink',
+  );
+  assert.deepEqual(matching.map(row => [row.split.id, row.amount]), [['food', 200]]);
+});

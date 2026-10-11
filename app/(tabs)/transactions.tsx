@@ -10,6 +10,7 @@ import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import ExportService from '@/services/ExportService';
 import { hasTag } from '@/utils/tags';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
+import { buildTransactionDisplayRows } from '@/utils/transactionFilterRows';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -125,13 +126,19 @@ export default function TransactionsScreen() {
   const getCategoryNamesToInclude = (selectedCatNames: string[]) => {
     if (selectedCatNames.length === 0) return null;
     const names = new Set<string>();
+    const visited = new Set<string>();
+    const addWithDescendants = (categoryId: string) => {
+      if (visited.has(categoryId)) return;
+      visited.add(categoryId);
+      const category = categories.find(item => item.id === categoryId);
+      if (!category) return;
+      names.add(category.name);
+      categories.filter(item => item.parentId === categoryId).forEach(child => addWithDescendants(child.id));
+    };
     for (const selectedCatName of selectedCatNames) {
       const selectedCat = categories.find(c => c.name === selectedCatName);
       if (!selectedCat) { names.add(selectedCatName); continue; }
-      names.add(selectedCat.name);
-      if (!selectedCat.parentId) {
-        getChildCategories(selectedCat.id).forEach(c => names.add(c.name));
-      }
+      addWithDescendants(selectedCat.id);
     }
     return [...names];
   };
@@ -224,46 +231,11 @@ export default function TransactionsScreen() {
       return true;
     };
 
-    const rows: {
-      key: string;
-      transaction: typeof filteredTransactions[number];
-      split: NonNullable<typeof filteredTransactions[number]['splits']>[number] | null;
-      category: string;
-      description: string;
-      amount: number;
-      tags?: string[];
-    }[] = [];
-
-    filteredTransactions.forEach((t) => {
-      if (t.splits && t.splits.length > 0) {
-        const candidateRows = t.splits.map(split => ({
-          key: `${t.id}:${split.id}`,
-          transaction: t,
-          split,
-          category: split.category,
-          description: split.description || t.description,
-          amount: split.amount,
-          tags: split.tags?.length ? split.tags : t.tags,
-        }));
-        // If some splits match the active filters, show only those; if
-        // the transaction qualified another way (e.g. only its own
-        // top-level fields matched), show every split rather than none.
-        const matching = hasActiveFilter ? candidateRows.filter(row => rowMatches(row.category, row.tags, row.description)) : candidateRows;
-        rows.push(...(matching.length > 0 ? matching : candidateRows));
-      } else {
-        rows.push({
-          key: t.id,
-          transaction: t,
-          split: null,
-          category: t.category,
-          description: t.description,
-          amount: t.amount,
-          tags: t.tags,
-        });
-      }
-    });
-
-    return rows;
+    return buildTransactionDisplayRows(
+      filteredTransactions,
+      hasActiveFilter,
+      row => rowMatches(row.category, row.tags, row.description),
+    );
   }, [filteredTransactions, selectedCategories, selectedTags, searchQuery, categories]);
 
   // Group by date
@@ -300,10 +272,17 @@ export default function TransactionsScreen() {
   };
 
   const totals = useMemo(() => {
-    const income = sumMoney(filteredTransactions.map(operatingIncome));
-    const expense = sumMoney(filteredTransactions.map(operatingExpense));
+    const hasAllocationFilter = selectedCategories.length > 0 || selectedTags.length > 0 || !!searchQuery.trim();
+    if (!hasAllocationFilter) {
+      return {
+        income: sumMoney(filteredTransactions.map(operatingIncome)),
+        expense: sumMoney(filteredTransactions.map(operatingExpense)),
+      };
+    }
+    const income = sumMoney(displayRows.filter(row => row.transaction.type === 'INCOME').map(row => row.amount));
+    const expense = sumMoney(displayRows.filter(row => row.transaction.type === 'EXPENSE').map(row => row.amount));
     return { income, expense };
-  }, [filteredTransactions]);
+  }, [displayRows, filteredTransactions, searchQuery, selectedCategories.length, selectedTags.length]);
 
   const categoriesMap = useMemo(() => new Map(categories.map(c => [c.name, c])), [categories]);
   const accountsMap = useMemo(() => new Map(accounts.map(a => [a.id, a])), [accounts]);
@@ -341,8 +320,11 @@ export default function TransactionsScreen() {
 
   // Table view: oldest first (bank statement order)
   const tableTransactions = useMemo(
-    () => [...filteredTransactions].sort((a, b) => a.date - b.date),
-    [filteredTransactions]
+    () => {
+      const visibleIds = new Set(displayRows.map(row => row.transaction.id));
+      return filteredTransactions.filter(transaction => visibleIds.has(transaction.id)).sort((a, b) => a.date - b.date);
+    },
+    [displayRows, filteredTransactions]
   );
 
   // tableTransactions is already filtered by account/date via filteredTransactions
