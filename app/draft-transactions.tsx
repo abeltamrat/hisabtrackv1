@@ -19,7 +19,7 @@ import { Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import { useDispatch, useSelector } from 'react-redux';
-import { parseTagInput } from '@/utils/tags';
+import { formatTagInput, mergeSplitTags, parseTagInput, pushTagsIntoSplits } from '@/utils/tags';
 import { RecurringTransactionService } from '@/services/RecurringTransactionService';
 import type { RecurringFrequency, TransactionType } from '@/types/database';
 import { findTransferCandidates } from '@/utils/transferPairing';
@@ -563,7 +563,10 @@ export default function DraftTransactionsScreen() {
         ? `${editedDescription.trim()} (${note.trim()})`
         : editedDescription.trim();
 
-      const parsedTags = parseTagInput(tagsInput);
+      // With a split, tags live on each part (typed or learned tags fill untagged parts).
+      const splitActive = editedType !== 'TRANSFER' && splitEnabled;
+      const finalSplits = splitActive ? pushTagsIntoSplits(parseTagInput(tagsInput), splits) : undefined;
+      const parsedTags = splitActive ? undefined : parseTagInput(tagsInput);
       if (editedType !== 'TRANSFER' && splitEnabled && (splits.length < 2 || splits.some(item => !item.category.trim() || money(item.amount) <= 0) || sumMoney(splits.map(item => item.amount)) !== money(selectedDraft.amount))) {
         Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(selectedDraft.amount)}.`);
         return;
@@ -623,7 +626,7 @@ export default function DraftTransactionsScreen() {
         vat: expenseLeg.vat,
         disaster_recovery_fee: expenseLeg.disaster_recovery_fee,
         receipt_url: expenseLeg.receipt_url || selectedDraft.receipt_url,
-        ...(editedType !== 'TRANSFER' && splitEnabled ? { splits } : {}),
+        ...(finalSplits ? { splits: finalSplits } : {}),
         ...(editedType !== 'TRANSFER' && purchaseLines.length ? { lines: purchaseLines } : {}),
         ...(editedType === 'EXPENSE' && supplier ? { supplier } : {}),
       } as Omit<Transaction, 'id'>;
@@ -702,7 +705,7 @@ export default function DraftTransactionsScreen() {
             reminderDaysBeforeList: reminderDaysBefore.split(',').map(value => Number(value.trim())).filter(Number.isFinite),
             reminderHour: Math.max(0, hour),
             reminderMinute: Math.max(0, minute),
-            splits: splitEnabled ? splits : undefined,
+            splits: finalSplits,
             nextDate: recurringNextDate ? new Date(`${recurringNextDate}T12:00:00`).getTime() : undefined,
             endDate: recurringEndDate ? new Date(`${recurringEndDate}T23:59:59`).getTime() : undefined,
             totalRepetitions: recurringOccurrences ? Number(recurringOccurrences) : undefined,
@@ -1787,10 +1790,14 @@ export default function DraftTransactionsScreen() {
                       onPress={() => {
                         const enabled = !splitEnabled;
                         setSplitEnabled(enabled);
-                        if (enabled && splits.length === 0) setSplits([
+                        if (!enabled) { setTagsInput(formatTagInput(mergeSplitTags(splits))); return; }
+                        // Tags move onto the parts; the tag box hides while split.
+                        const parts = splits.length ? splits : [
                           { id: `split-${Date.now()}-0`, amount: selectedDraft?.amount || 0, category: editedCategory || confirmCategories[0]?.name || 'Uncategorized' },
                           { id: `split-${Date.now()}-1`, amount: 0, category: confirmCategories[1]?.name || confirmCategories[0]?.name || 'Uncategorized' },
-                        ]);
+                        ];
+                        setSplits(pushTagsIntoSplits(parseTagInput(tagsInput), parts));
+                        setTagsInput('');
                       }}
                       className={`min-h-[64px] flex-row items-center rounded-xl border p-3 ${splitEnabled ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}
                     >
@@ -1958,8 +1965,8 @@ export default function DraftTransactionsScreen() {
                 </View>
               )}
 
-              {/* Tags Input */}
-              <View className="mb-6">
+              {/* Tags Input (hidden while split: each part carries its own tags) */}
+              {!(editedType !== 'TRANSFER' && splitEnabled) && <View className="mb-6">
                 <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">Tags (Optional)</Text>
                 <TextInput
                   value={tagsInput}
@@ -2006,7 +2013,7 @@ export default function DraftTransactionsScreen() {
                     </ScrollView>
                   </View>
                 )}
-              </View>
+              </View>}
 
               {/* Note Input */}
               <View className="mb-6">

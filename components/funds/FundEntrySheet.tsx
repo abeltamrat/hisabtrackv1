@@ -7,6 +7,7 @@ import CategoryTreeSelect from '@/components/CategoryTreeSelect';
 import FormField from '@/components/FormField';
 import FormSheet from '@/components/FormSheet';
 import TagInputField from '@/components/TagInputField';
+import { mergeSplitTags, pushTagsIntoSplits } from '@/utils/tags';
 import PersonLinkField from '@/components/PersonLinkField';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import LineItemsEditor from '@/components/LineItemsEditor';
@@ -170,6 +171,7 @@ export default function FundEntrySheet({
       }
 
       // Custodian: write my own ledger row (works offline), then tell the fund.
+      const splitActive = mode === 'pay' && splitEnabled;
       const entry: FundEntryInput = {
         kind: mode === 'pay' ? 'SPEND' : mode === 'received' ? 'DEPOSIT' : 'RETURN',
         source: mode === 'received' ? (fromSomeoneElse ? 'THIRD_PARTY' : 'OWNER_UNRECORDED') : undefined,
@@ -180,11 +182,11 @@ export default function FundEntrySheet({
         recipient: mode === 'pay' ? recipient.trim() || undefined : undefined,
         recipientPersonId: mode === 'pay' ? recipientPerson?.id : undefined,
         category: mode === 'pay' ? category || undefined : undefined,
-        splits: mode === 'pay' && splitEnabled ? splits : undefined,
+        splits: splitActive ? pushTagsIntoSplits(tags, splits) : undefined,
         lines: purchaseLines.length ? purchaseLines : undefined,
         project: mode === 'pay' ? project : undefined,
         supplier: mode === 'pay' ? supplier : undefined,
-        tags,
+        tags: splitActive ? undefined : tags,
         reference_number: reference.trim() || undefined,
         receipt_url: receiptLink || undefined,
       };
@@ -201,7 +203,8 @@ export default function FundEntrySheet({
         person_link_source: (mode === 'pay' && recipientPerson) || (mode === 'received' && fromSomeoneElse && payerPerson) ? 'MANUAL' : undefined,
         reference_number: reference.trim() || undefined,
         receipt_url: receiptLink || undefined,
-        tags,
+        // The holder's own row has no parts, so it keeps every part's tags.
+        tags: splitActive ? mergeSplitTags(pushTagsIntoSplits(tags, splits)) : tags,
         ...custodianFundFields(fund.id, entryId),
       } as Omit<Transaction, 'id'>;
       const result = await FundPostingService.submit(
@@ -321,10 +324,10 @@ export default function FundEntrySheet({
 
       {!ownerMode && (
         <>
-          <View className="mb-4">
+          {!(mode === 'pay' && splitEnabled) && <View className="mb-4">
             <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">Tags</Text>
             <TagInputField tags={tags} suggestions={tagSuggestions} onChange={setTags} />
-          </View>
+          </View>}
           <FormField label="Bank reference" value={reference} onChangeText={setReference} placeholder="e.g. FT26123ABC" autoCapitalize="characters" />
           <FormField
             label="Receipt link"
@@ -347,11 +350,15 @@ export default function FundEntrySheet({
               const next = !splitEnabled;
               setSplitEnabled(next);
               clearError('splits');
+              if (!next) { setTags(mergeSplitTags(splits)); return; }
               const value = Number(amount.replace(',', '.')) || 0;
-              if (next && splits.length === 0) setSplits([
+              // Tags move onto the parts; the tag field hides while split.
+              const parts = splits.length ? splits : [
                 { id: `split-${Date.now()}-0`, amount: value, category: category || categoryTree[0]?.name || 'Uncategorized' },
                 { id: `split-${Date.now()}-1`, amount: 0, category: categoryTree[1]?.name || categoryTree[0]?.name || 'Uncategorized' },
-              ]);
+              ];
+              setSplits(pushTagsIntoSplits(tags, parts));
+              setTags(undefined);
             }}
             className="flex-row items-center py-2"
           >

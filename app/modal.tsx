@@ -17,7 +17,7 @@ import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addTransaction, deleteTransaction, updateTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { NotificationService } from '@/services/NotificationService';
-import { formatTagInput, parseTagInput } from '@/utils/tags';
+import { formatTagInput, mergeSplitTags, parseTagInput, pushTagsIntoSplits } from '@/utils/tags';
 import { celebrate } from '@/utils/celebrate';
 import FloatingCalculator from '@/components/FloatingCalculator';
 import { useDispatch, useSelector } from 'react-redux';
@@ -188,10 +188,12 @@ export default function AddTransactionScreen() {
       if (editingTransaction.person_id) {
         RecipientIdentityService.getAll().then(people => setSelectedPerson(people.find(person => person.id === editingTransaction.person_id)));
       } else setSelectedPerson(undefined);
-      setTagsInput(formatTagInput(editingTransaction.tags));
+      // A split keeps its tags on the parts; older whole-transaction tags move onto untagged parts.
+      const editingSplits = editingTransaction.splits?.length ? editingTransaction.splits : undefined;
+      setTagsInput(editingSplits ? '' : formatTagInput(editingTransaction.tags));
       setTransactionDate(new Date(editingTransaction.date));
-      setSplitEnabled(!!editingTransaction.splits?.length);
-      setSplits(editingTransaction.splits || []);
+      setSplitEnabled(!!editingSplits);
+      setSplits(editingSplits ? pushTagsIntoSplits(editingTransaction.tags, editingSplits) : []);
       setProject(editingTransaction.project);
       setLines(editingTransaction.lines || []);
       setSupplier(editingTransaction.supplier);
@@ -213,7 +215,7 @@ export default function AddTransactionScreen() {
       if (value.description) setNote(value.description);
       if (value.date) setTransactionDate(new Date(value.date));
       setTagsInput(formatTagInput(value.tags));
-      if (value.splits?.length) { setSplits(value.splits); setSplitEnabled(true); }
+      if (value.splits?.length) { setSplits(pushTagsIntoSplits(value.tags, value.splits)); setSplitEnabled(true); setTagsInput(''); }
     });
     return () => { active = false; };
   }, [draft]);
@@ -305,10 +307,10 @@ export default function AddTransactionScreen() {
       person_link_source: selectedPersonId ? (selectedPersonId === editingTransaction?.person_id ? editingTransaction.person_link_source : 'MANUAL' as const) : undefined,
       person_alias_used: selectedPersonId ? (selectedPersonId === editingTransaction?.person_id ? editingTransaction.person_alias_used : recipient.trim() || selectedPerson?.displayName) : undefined,
       operation_id: inputDraft ? `smart-input:${inputDraft.fingerprint}` : editingTransaction?.operation_id,
-      tags: parseTagInput(tagsInput),
+      tags: type !== 'TRANSFER' && splitEnabled ? undefined : parseTagInput(tagsInput),
       date: transactionDate.getTime(),
       ...(type === 'TRANSFER' ? { to_account_id: toAccountId } : {}),
-      ...(type !== 'TRANSFER' && splitEnabled ? { splits } : { splits: undefined }),
+      ...(type !== 'TRANSFER' && splitEnabled ? { splits: pushTagsIntoSplits(parseTagInput(tagsInput), splits) } : { splits: undefined }),
       project: type !== 'TRANSFER' ? project : undefined,
       lines: purchaseLines.length ? purchaseLines : undefined,
       supplier: type === 'EXPENSE' ? supplier : undefined,
@@ -375,7 +377,7 @@ export default function AddTransactionScreen() {
           description: note,
           person_id: selectedPersonId,
           person_name_snapshot: selectedPersonId ? selectedPerson?.displayName || recipient.trim() : undefined,
-          tags: parseTagInput(tagsInput),
+          tags: splitEnabled ? undefined : parseTagInput(tagsInput),
           frequency,
           startDate: transactionDate.getTime(),
           reminderEnabled,
@@ -383,7 +385,7 @@ export default function AddTransactionScreen() {
           reminderDaysBeforeList: reminderDaysBefore.split(',').map(value => Number(value.trim())).filter(Number.isFinite),
           reminderHour: Math.max(0, hour),
           reminderMinute: Math.max(0, minute),
-          splits: splitEnabled ? splits : undefined,
+          splits: splitEnabled ? pushTagsIntoSplits(parseTagInput(tagsInput), splits) : undefined,
           nextDate: recurringNextDate ? new Date(`${recurringNextDate}T12:00:00`).getTime() : undefined,
           endDate: recurringEndDate ? new Date(`${recurringEndDate}T23:59:59`).getTime() : undefined,
           totalRepetitions: recurringOccurrences ? Number(recurringOccurrences) : undefined,
@@ -740,10 +742,14 @@ export default function AddTransactionScreen() {
             <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: splitEnabled }} onPress={() => {
               const enabled = !splitEnabled;
               setSplitEnabled(enabled);
-              if (enabled && splits.length === 0) setSplits([
+              if (!enabled) { setTagsInput(formatTagInput(mergeSplitTags(splits))); return; }
+              // Tags move onto the parts; the whole-transaction tag box hides while split.
+              const parts = splits.length ? splits : [
                 { id: `split-${Date.now()}-0`, amount: parseFloat(amount) || 0, category: selectedCategory || filteredCategories[0]?.name || 'Uncategorized' },
                 { id: `split-${Date.now()}-1`, amount: 0, category: filteredCategories[1]?.name || filteredCategories[0]?.name || 'Uncategorized' },
-              ]);
+              ];
+              setSplits(pushTagsIntoSplits(parseTagInput(tagsInput), parts));
+              setTagsInput('');
             }} className="flex-row items-center">
               <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
               <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">The account is charged once; reports use each allocation.</Text></View>
@@ -800,8 +806,8 @@ export default function AddTransactionScreen() {
           </View>
         )}
 
-        {/* Tags Input */}
-        <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+        {/* Tags Input (hidden while split: each part carries its own tags) */}
+        {!(type !== 'TRANSFER' && splitEnabled) && <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
           <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Tags (Optional)</Text>
           <View className="bg-slate-50 dark:bg-slate-900 px-3 py-2 rounded-xl">
             <TextInput
@@ -847,7 +853,7 @@ export default function AddTransactionScreen() {
               </ScrollView>
             </View>
           )}
-        </View>
+        </View>}
 
         {type !== 'TRANSFER' && <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
           <View className="flex-row items-center justify-between mb-2">

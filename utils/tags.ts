@@ -46,3 +46,15 @@ export const hasTag = (tags: string[] | undefined, selectedTag: string | null) =
   const wanted = selectedTag.toLowerCase();
   return tags.some((tag) => tag.toLowerCase() === wanted);
 };
+
+/**
+ * With a split, tags live on each part. Whole-transaction tags used to be the
+ * fallback for untagged parts, so they're copied onto those parts rather than
+ * dropped — reports keep counting them the same way.
+ */
+export const pushTagsIntoSplits = <T extends { tags?: string[] }>(tags: string[] | undefined, splits: T[]): T[] =>
+  tags?.length ? splits.map(split => (split.tags?.length ? split : { ...split, tags: [...tags] })) : splits;
+
+/** Turning a split off: the parts' tags become the transaction's tags. */
+export const mergeSplitTags = (splits: Array<{ tags?: string[] }>): string[] | undefined =>
+  normalizeTransactionTags(splits.flatMap(split => split.tags || []));
