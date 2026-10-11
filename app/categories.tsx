@@ -4,8 +4,8 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Animated, Modal, PanResponder, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import { useFormErrors } from '@/hooks/useFormErrors';
@@ -14,8 +14,9 @@ import { Category, useTransactions } from '../context/TransactionContext';
 import { operatingTransactions, sumMoney } from '@/utils/finance';
 import { themeTokens } from '@/constants/theme';
 import { useTheme } from '@/contexts/ThemeContext';
+import AICategoryBuilder from '@/components/AICategoryBuilder';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type IconGroup = { id: string; title: string; items: string[] };
 type SortMode = 'name' | 'usage' | 'amount';
@@ -29,10 +30,8 @@ interface CategoryStat {
   isUnused: boolean;     // no transaction in 60+ days
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const SWIPE_REVEAL = 140; // px — width of revealed action buttons
-const SWIPE_TRIGGER = 60; // px — minimum drag to snap open
 const SIXTY_DAYS = 60 * 24 * 60 * 60 * 1000;
 
 const AVAILABLE_COLORS = [
@@ -48,11 +47,11 @@ const ICON_GROUPS: IconGroup[] = [
   { id: 'home', title: 'Home & Lifestyle', items: ['home', 'building-o', 'university', 'key', 'lock', 'shield', 'leaf', 'tree', 'paw', 'sun-o', 'moon-o', 'fire', 'bolt'] },
   { id: 'tech', title: 'Tech & Media', items: ['phone', 'mobile', 'laptop', 'desktop', 'tablet', 'wifi', 'globe', 'envelope', 'camera', 'film', 'music', 'headphones', 'gamepad', 'book', 'graduation-cap'] },
   { id: 'people', title: 'People & Health', items: ['heart', 'heartbeat', 'medkit', 'stethoscope', 'hospital-o', 'users', 'user', 'child', 'male', 'female', 'folder', 'star', 'trophy'] },
-  { id: 'emoji-money', title: 'Emoji Money', items: ['emoji:💰', 'emoji:💸', 'emoji:💳', 'emoji:🏦', 'emoji:🧾', 'emoji:📈', 'emoji:📉', 'emoji:📊', 'emoji:🪙', 'emoji:💵', 'emoji:💶', 'emoji:💷'] },
-  { id: 'emoji-life', title: 'Emoji Lifestyle', items: ['emoji:🍔', 'emoji:🍕', 'emoji:☕', 'emoji:🛒', 'emoji:🛍️', 'emoji:🚗', 'emoji:⛽', 'emoji:🏠', 'emoji:📱', 'emoji:💻', 'emoji:🎓', 'emoji:🏥', 'emoji:🎮', 'emoji:🎵', 'emoji:🎁', 'emoji:✈️'] },
+  { id: 'emoji-money', title: 'Emoji Money', items: ['emoji:ðŸ’°', 'emoji:ðŸ’¸', 'emoji:ðŸ’³', 'emoji:ðŸ¦', 'emoji:ðŸ§¾', 'emoji:ðŸ“ˆ', 'emoji:ðŸ“‰', 'emoji:ðŸ“Š', 'emoji:ðŸª™', 'emoji:ðŸ’µ', 'emoji:ðŸ’¶', 'emoji:ðŸ’·'] },
+  { id: 'emoji-life', title: 'Emoji Lifestyle', items: ['emoji:ðŸ”', 'emoji:ðŸ•', 'emoji:â˜•', 'emoji:ðŸ›’', 'emoji:ðŸ›ï¸', 'emoji:ðŸš—', 'emoji:â›½', 'emoji:ðŸ ', 'emoji:ðŸ“±', 'emoji:ðŸ’»', 'emoji:ðŸŽ“', 'emoji:ðŸ¥', 'emoji:ðŸŽ®', 'emoji:ðŸŽµ', 'emoji:ðŸŽ', 'emoji:âœˆï¸'] },
 ];
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function formatLastUsed(ts: number | null): string {
   if (!ts) return 'Never used';
@@ -64,83 +63,7 @@ function formatLastUsed(ts: number | null): string {
   return `${Math.floor(days / 365)}y ago`;
 }
 
-// ─── SwipeableRow ─────────────────────────────────────────────────────────────
-
-interface SwipeableRowProps {
-  onDelete: () => void;
-  onMerge: () => void;
-  activeRef: React.MutableRefObject<(() => void) | null>;
-  children: React.ReactNode;
-}
-
-function SwipeableRow({ onDelete, onMerge, activeRef, children }: SwipeableRowProps) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const isOpen = useRef(false);
-
-  const close = useCallback(() => {
-    Animated.spring(translateX, { toValue: 0, useNativeDriver: true, tension: 120, friction: 10 }).start();
-    isOpen.current = false;
-  }, [translateX]);
-
-  const open = useCallback(() => {
-    // Close previously open row
-    if (activeRef.current && activeRef.current !== close) {
-      activeRef.current();
-    }
-    activeRef.current = close;
-    Animated.spring(translateX, { toValue: -SWIPE_REVEAL, useNativeDriver: true, tension: 120, friction: 10 }).start();
-    isOpen.current = true;
-  }, [translateX, close, activeRef]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
-        Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.5,
-      onPanResponderGrant: () => {
-        (translateX as any).stopAnimation();
-      },
-      onPanResponderMove: (_, { dx }) => {
-        const base = isOpen.current ? -SWIPE_REVEAL : 0;
-        const next = Math.max(-SWIPE_REVEAL, Math.min(0, base + dx));
-        translateX.setValue(next);
-      },
-      onPanResponderRelease: (_, { dx, vx }) => {
-        const base = isOpen.current ? -SWIPE_REVEAL : 0;
-        const finalPos = base + dx;
-        const shouldOpen = finalPos < -SWIPE_TRIGGER || vx < -0.5;
-        if (shouldOpen) { open(); } else { close(); }
-      },
-    })
-  ).current;
-
-  return (
-    <View style={{ overflow: 'hidden', marginBottom: 6 }}>
-      {/* Revealed action buttons */}
-      <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, flexDirection: 'row', width: SWIPE_REVEAL }}>
-        <TouchableOpacity
-          onPress={() => { close(); setTimeout(onMerge, 200); }}
-          style={{ width: 70, backgroundColor: '#f59e0b', justifyContent: 'center', alignItems: 'center' }}
-        >
-          <FontAwesome name="code-fork" size={16} color="#fff" />
-          <Text style={{ color: '#fff', fontSize: 10, marginTop: 3, fontWeight: '600' }}>Merge</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => { close(); setTimeout(onDelete, 200); }}
-          style={{ width: 70, backgroundColor: '#ef4444', justifyContent: 'center', alignItems: 'center', borderRadius: 0 }}
-        >
-          <FontAwesome name="trash" size={16} color="#fff" />
-          <Text style={{ color: '#fff', fontSize: 10, marginTop: 3, fontWeight: '600' }}>Delete</Text>
-        </TouchableOpacity>
-      </View>
-      {/* Sliding content */}
-      <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
-        {children}
-      </Animated.View>
-    </View>
-  );
-}
-
-// ─── Merge Modal ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ SwipeableRow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface MergeModalProps {
   source: Category;
@@ -211,7 +134,7 @@ function MergeModal({ source, candidates, onConfirm, onClose }: MergeModalProps)
   );
 }
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function ManageCategoriesScreen() {
   const colorScheme = useColorScheme();
@@ -220,10 +143,10 @@ export default function ManageCategoriesScreen() {
   const isDark = colorScheme === 'dark';
   const theme = themeTokens(isDark, isAurora);
   const router = useRouter();
-  const { categories, addCategory, updateCategory, deleteCategory } = useTransactions();
+  const { categories, addCategory, addCategoryHierarchy, updateCategory, deleteCategory } = useTransactions();
   const transactions = useSelector((s: RootState) => s.transactions.items);
 
-  // ── UI state ─────────────────────────────────────────────────────────────
+  // â”€â”€ UI state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [filter, setFilter] = useState<FilterMode>('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortMode>('name');
@@ -235,11 +158,9 @@ export default function ManageCategoriesScreen() {
   const [formData, setFormData] = useState<Partial<Category>>({ name: '', icon: 'folder', color: '#6366f1', type: 'expense', parentId: undefined });
   const [merging, setMerging] = useState(false);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [showAIBuilder, setShowAIBuilder] = useState(false);
 
-  // Ref shared across all swipeable rows — tracks which row is open
-  const activeSwipeClose = useRef<(() => void) | null>(null);
-
-  // ── Tree helpers ─────────────────────────────────────────────────────────
+  // â”€â”€ Tree helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Returns IDs of all descendants of a given category (any depth)
   const getAllDescendantIds = useCallback((parentId: string, cats: Category[] = categories): string[] => {
     const direct = cats.filter(c => c.parentId === parentId);
@@ -254,7 +175,7 @@ export default function ManageCategoriesScreen() {
     });
   }, []);
 
-  // ── Stats computation ─────────────────────────────────────────────────────
+  // â”€â”€ Stats computation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const categoryStats = useMemo<Record<string, CategoryStat>>(() => {
     const monthStart = new Date();
     monthStart.setDate(1);
@@ -282,7 +203,7 @@ export default function ManageCategoriesScreen() {
     return result;
   }, [transactions, categories]);
 
-  // ── Filtered + sorted list ────────────────────────────────────────────────
+  // â”€â”€ Filtered + sorted list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const visibleCategories = useMemo(() => {
     let list = categories.filter(c => {
       if (filter !== 'all' && c.type !== filter) return false;
@@ -305,7 +226,7 @@ export default function ManageCategoriesScreen() {
   const rootCategories = visibleCategories.filter(c => !c.parentId);
   const getChildren = (parentId: string) => visibleCategories.filter(c => c.parentId === parentId);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleAdd = async () => {
     const name = (formData.name ?? '').trim();
     if (!validate({ name: !name && 'Enter a name for this category.' })) return;
@@ -349,7 +270,7 @@ export default function ManageCategoriesScreen() {
     if (!mergingCategory) return;
     setMerging(true);
     try {
-      // Rename source to target's name → cascade updates all transactions
+      // Rename source to target's name â†’ cascade updates all transactions
       await updateCategory(mergingCategory.id, { name: target.name });
       // Delete the now-duplicate source category
       await deleteCategory(mergingCategory.id);
@@ -382,7 +303,7 @@ export default function ManageCategoriesScreen() {
     setOpenIconGroup('finance');
   };
 
-  // ── Category Row Renderer ─────────────────────────────────────────────────
+  // â”€â”€ Category Row Renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderRow = useCallback((cat: Category, level = 0) => {
     const stat = categoryStats[cat.id];
     // Use full category list for child detection (not filtered list)
@@ -394,11 +315,7 @@ export default function ManageCategoriesScreen() {
 
     return (
       <View key={cat.id} style={{ marginLeft: level * 16 }}>
-        <SwipeableRow
-          activeRef={activeSwipeClose}
-          onDelete={() => handleDelete(cat)}
-          onMerge={() => setMergingCategory(cat)}
-        >
+        <View style={{ marginBottom: 6 }}>
           <View style={{
             backgroundColor: theme.surface,
             borderRadius: 16,
@@ -454,7 +371,7 @@ export default function ManageCategoriesScreen() {
                     </Text>
                   </View>
                   <Text style={{ fontSize: 11, color: '#94a3b8' }}>
-                    {stat?.count ?? 0} txns · {formatLastUsed(stat?.lastUsed ?? null)}
+                    {stat?.count ?? 0} txns Â· {formatLastUsed(stat?.lastUsed ?? null)}
                   </Text>
                 </View>
               </View>
@@ -473,10 +390,20 @@ export default function ManageCategoriesScreen() {
                 >
                   <FontAwesome name="edit" size={11} color="#3b82f6" />
                 </TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={`More actions for ${cat.name}`}
+                  onPress={() => Alert.alert(cat.name, 'Choose a category action.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Merge', onPress: () => setMergingCategory(cat) },
+                    { text: 'Delete', style: 'destructive', onPress: () => { void handleDelete(cat); } },
+                  ])}
+                  style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: theme.surfaceMuted, justifyContent: 'center', alignItems: 'center' }}
+                >
+                  <FontAwesome name="ellipsis-v" size={12} color="#64748b" />
+                </TouchableOpacity>
               </View>
             </View>
 
-            {/* Spend bar — only if used this month */}
+            {/* Spend bar â€” only if used this month */}
             {(stat?.sharePercent ?? 0) > 0 && (
               <View style={{ marginTop: 7 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
@@ -491,16 +418,16 @@ export default function ManageCategoriesScreen() {
               </View>
             )}
           </View>
-        </SwipeableRow>
+        </View>
 
-        {/* Children — only rendered when not collapsed */}
+        {/* Children â€” only rendered when not collapsed */}
         {visibleChildren.map(child => renderRow(child, level + 1))}
       </View>
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryStats, isDark, categories, collapsedIds]);
 
-  // ─── Merge candidates ────────────────────────────────────────────────────
+  // â”€â”€â”€ Merge candidates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const mergeCandidates = mergingCategory
     ? categories.filter(c =>
         c.id !== mergingCategory.id &&
@@ -509,7 +436,7 @@ export default function ManageCategoriesScreen() {
       )
     : [];
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <StatusBar style="light" />
@@ -550,6 +477,16 @@ export default function ManageCategoriesScreen() {
 
       {/* Search + Sort */}
       <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4, gap: 8 }}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Build categories with AI"
+          onPress={() => setShowAIBuilder(true)}
+          style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, backgroundColor: isDark ? '#312e81' : '#ede9fe' }}
+        >
+          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#7c3aed', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}><FontAwesome name="magic" size={15} color="#fff" /></View>
+          <View style={{ flex: 1 }}><Text style={{ color: isDark ? '#ede9fe' : '#4c1d95', fontWeight: '800' }}>Build my categories</Text><Text style={{ color: isDark ? '#c4b5fd' : '#6d28d9', fontSize: 11 }}>Answer a few questions and create a deep hierarchy</Text></View>
+          <FontAwesome name="chevron-right" size={12} color={isDark ? '#c4b5fd' : '#7c3aed'} />
+        </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderRadius: 12, paddingHorizontal: 12, height: 40, borderWidth: 1, borderColor: theme.surfaceMuted }}>
           <FontAwesome name="search" size={15} color="#94a3b8" />
           <TextInput
@@ -591,7 +528,7 @@ export default function ManageCategoriesScreen() {
             </TouchableOpacity>
             {showSortMenu && (
               <View style={{ position: 'absolute', top: 44, right: 0, backgroundColor: theme.surface, borderRadius: 12, padding: 5, zIndex: 100, minWidth: 148, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, elevation: 10, borderWidth: 1, borderColor: theme.surfaceMuted }}>
-                {([['name', 'A–Z Name'], ['usage', 'Most Used'], ['amount', 'Highest Spend']] as [SortMode, string][]).map(([mode, label]) => (
+                {([['name', 'Aâ€“Z Name'], ['usage', 'Most Used'], ['amount', 'Highest Spend']] as [SortMode, string][]).map(([mode, label]) => (
                   <TouchableOpacity
                     key={mode}
                     onPress={() => { setSort(mode); setShowSortMenu(false); }}
@@ -612,7 +549,6 @@ export default function ManageCategoriesScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 28 }}
         showsVerticalScrollIndicator={false}
-        onScrollBeginDrag={() => { activeSwipeClose.current?.(); }}
       >
         {rootCategories.length === 0 ? (
           <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 80 }}>
@@ -632,6 +568,12 @@ export default function ManageCategoriesScreen() {
       </ScrollView>
 
       {/* Add / Edit Modal */}
+      <AICategoryBuilder
+        visible={showAIBuilder}
+        existingNames={categories.map(category => category.name)}
+        onClose={() => setShowAIBuilder(false)}
+        onSave={addCategoryHierarchy}
+      />
       <FormSheet
         visible={showAddModal || editingCategory !== null}
         onClose={() => { setShowAddModal(false); setEditingCategory(null); resetForm(); }}

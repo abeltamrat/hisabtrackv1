@@ -21,7 +21,7 @@ function load(name, parent = root) {
   new Function('require', 'module', 'exports', js)(n => load(n, path.dirname(file)), mod, mod.exports);
   return mod.exports;
 }
-const { analyzeSmsIntelligence, analyzeRecurringExpectations, extractIdentityHints, recipientSimilarity, selectRecipientProfile } = load('./utils/phase2Intelligence.ts');
+const { analyzeSmsIntelligence, analyzeRecurringExpectations, extractIdentityHints, normalizeRecipient, recipientSimilarity, selectRecipientProfile } = load('./utils/phase2Intelligence.ts');
 const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
 const { BackupService } = load('./services/BackupService.ts');
 const day = 86400000;
@@ -97,6 +97,12 @@ test('shared names stay ambiguous unless a verified hint selects one person', ()
   assert.equal(selectRecipientProfile(profiles, 'Abebe Kebede', 'payment received'), undefined);
   assert.equal(selectRecipientProfile(profiles, 'Abebe Kebede', 'to account ****2222'), profiles[1]);
   assert.equal(selectRecipientProfile([profiles[0]], 'Abebe Kebede', 'to account ****9999'), undefined);
+});
+
+test('recipient normalization preserves Ethiopic names and does not create empty matches', () => {
+  assert.equal(normalizeRecipient('  አበበ  ከበደ '), 'አበበ ከበደ');
+  assert.equal(normalizeRecipient('Élodie Tesfaye'), 'élodie tesfaye');
+  assert.equal(normalizeRecipient('---'), '');
 });
 
 test('coverage fixtures parse cash-out, reversal and configured institutions', () => {

@@ -111,15 +111,13 @@ export class AIFinancialAssistant {
     private static readonly ONE_DAY_MS = 24 * 60 * 60 * 1000;
     private static readonly BUDGET_NEAR_THRESHOLD = 0.85;
     private static readonly GEMINI_MODEL_CANDIDATES = [
-        'gemini-2.0-flash',
-        'gemini-2.0-flash-lite',
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-8b',
+        'gemini-3.5-flash-lite',
+        'gemini-flash-latest',
     ];
     private static readonly GROQ_MODEL_CANDIDATES = [
+        'openai/gpt-oss-20b',
         'llama-3.1-8b-instant',
         'llama-3.3-70b-versatile',
-        'mixtral-8x7b-32768',
     ];
     private static readonly OPENROUTER_MODEL_CANDIDATES = [
         'meta-llama/llama-3.1-8b-instruct:free',
@@ -156,6 +154,8 @@ export class AIFinancialAssistant {
             message.includes('resource_exhausted') ||
             message.includes('not found') ||
             message.includes('unsupported') ||
+            message.includes('decommissioned') ||
+            message.includes('no longer supported') ||
             message.includes('api version')
         );
     }
@@ -885,17 +885,18 @@ export class AIFinancialAssistant {
             : [...this.GEMINI_MODEL_CANDIDATES];
 
         let lastError: unknown;
+        const modelErrors: string[] = [];
 
         for (const modelName of modelCandidates) {
             try {
                 const res = await fetch(
-                    `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
                     {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
                         body: JSON.stringify({
                             contents: [{ parts: [{ text: prompt }] }],
-                            generationConfig: { maxOutputTokens: 600, temperature: 0.7 },
+                            generationConfig: { maxOutputTokens: 2048, temperature: 0.7 },
                         }),
                     }
                 );
@@ -905,23 +906,25 @@ export class AIFinancialAssistant {
                     const errMsg = errBody?.error?.message || `HTTP ${res.status}`;
                     if (res.status === 400 || res.status === 404) {
                         lastError = new Error(errMsg);
+                        modelErrors.push(`${modelName}: ${res.status} ${errMsg}`);
                         continue;
                     }
                     throw new Error(errMsg);
                 }
 
                 const data = await res.json() as any;
-                const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                const text = data?.candidates?.[0]?.content?.parts?.filter((part: any) => !part.thought && typeof part.text === 'string').map((part: any) => part.text).join('').trim();
                 if (!text) throw new Error('Empty response from Gemini');
                 this.workingGeminiModelByApiKey.set(apiKey, modelName);
                 return text;
             } catch (error) {
                 lastError = error;
+                modelErrors.push(`${modelName}: ${this.toErrorSummary(error)}`);
                 if (!this.shouldTryNextModel(error)) break;
             }
         }
 
-        throw lastError || new Error('No compatible Gemini model is available for this API key.');
+        throw new Error(modelErrors.join(' | ') || String(lastError || 'No compatible Gemini model is available for this API key.'));
     }
 
     private static extractChatCompletionText(payload: any) {
@@ -942,6 +945,7 @@ export class AIFinancialAssistant {
             : [...this.GROQ_MODEL_CANDIDATES];
 
         let lastError: unknown;
+        const modelErrors: string[] = [];
 
         for (const modelName of modelCandidates) {
             try {
@@ -954,7 +958,7 @@ export class AIFinancialAssistant {
                     body: JSON.stringify({
                         model: modelName,
                         temperature: 0.3,
-                        max_tokens: 400,
+                        max_tokens: 2048,
                         messages: [{ role: 'user', content: prompt }],
                     }),
                 });
@@ -970,13 +974,14 @@ export class AIFinancialAssistant {
                 return text;
             } catch (error) {
                 lastError = error;
+                modelErrors.push(`${modelName}: ${this.toErrorSummary(error)}`);
                 if (!this.shouldTryNextModel(error)) {
                     break;
                 }
             }
         }
 
-        throw lastError || new Error('No compatible Groq model is available for this API key.');
+        throw new Error(modelErrors.join(' | ') || String(lastError || 'No compatible Groq model is available for this API key.'));
     }
 
     private static async generateWithOpenRouterFallback(apiKey: string, prompt: string): Promise<string> {
@@ -986,6 +991,7 @@ export class AIFinancialAssistant {
             : [...this.OPENROUTER_MODEL_CANDIDATES];
 
         let lastError: unknown;
+        const modelErrors: string[] = [];
 
         for (const modelName of modelCandidates) {
             try {
@@ -1000,7 +1006,7 @@ export class AIFinancialAssistant {
                     body: JSON.stringify({
                         model: modelName,
                         temperature: 0.3,
-                        max_tokens: 400,
+                        max_tokens: 2048,
                         messages: [{ role: 'user', content: prompt }],
                     }),
                 });
@@ -1016,13 +1022,14 @@ export class AIFinancialAssistant {
                 return text;
             } catch (error) {
                 lastError = error;
+                modelErrors.push(`${modelName}: ${this.toErrorSummary(error)}`);
                 if (!this.shouldTryNextModel(error)) {
                     break;
                 }
             }
         }
 
-        throw lastError || new Error('No compatible OpenRouter model is available for this API key.');
+        throw new Error(modelErrors.join(' | ') || String(lastError || 'No compatible OpenRouter model is available for this API key.'));
     }
 
     private static shouldUsePuter(apiKeys: AssistantApiKeys) {
@@ -1228,6 +1235,11 @@ export class AIFinancialAssistant {
         }
 
         throw new Error(`All AI providers failed. ${errors.join(' | ')}`);
+    }
+
+    static async generateCategoryHierarchy(answers: { use: string; income: string; spending: string; commitments: string; detail: string }, existingNames: string[], apiKeys: AssistantApiKeys | string) {
+        const prompt = `Create a practical financial category hierarchy for a user in Ethiopia. Return ONLY a JSON array. Each node must be {"name":string,"type":"income"|"expense","children":Node[]}. Use up to 3 levels (parent, child, grandchild), short unique names, and no names already present. Profile: ${JSON.stringify(answers)}. Existing names: ${JSON.stringify(existingNames)}. Include only categories relevant to the answers; consider Birr cash, bank/mobile payments, Equb, Iddir, family support, taxes and business costs when relevant. Detail level: ${answers.detail}.`;
+        return this.generateWithProviderFallback(apiKeys, prompt);
     }
 
     /**

@@ -291,6 +291,17 @@ export default function AIAssistantScreen() {
                         </TouchableOpacity>
                     </View>
                 )}
+                {hasAnyCloudProvider && (
+                    <Text accessibilityRole="text" className="text-slate-600 dark:text-slate-300 text-xs mb-3">
+                        {`Configured providers: ${[
+                            providerKeys.topToolsApiKey && 'Top Tools AI',
+                            providerKeys.geminiApiKey && 'Gemini',
+                            providerKeys.groqApiKey && 'Groq',
+                            providerKeys.openRouterApiKey && 'OpenRouter',
+                            Platform.OS === 'web' && providerKeys.usePuterJs && 'Puter.js',
+                        ].filter(Boolean).join(' ? ')}`}
+                    </Text>
+                )}
                 {hasAnyCloudProvider && !aiSharingEnabled && (
                     <View className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-6 mb-6">
                         <View className="flex-row items-center mb-3">

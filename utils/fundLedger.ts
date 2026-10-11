@@ -83,6 +83,9 @@ export function planFundMirror(
         category: entry.ownerCategory || UNCLASSIFIED_DEPOSIT, purpose: entry.ownerPurpose || 'FINANCING',
         description: entry.description && entry.description !== 'Fund deposit' ? entry.description : `${entry.payerName || 'Deposit'} via ${holder}`,
         sender_receiver: entry.payerName,
+        person_id: entry.payerPersonId,
+        person_name_snapshot: entry.payerPersonId ? entry.payerName : undefined,
+        person_link_source: entry.payerPersonId ? 'MANUAL' : undefined,
       } as Omit<Transaction, 'id'> });
       continue;
     }
@@ -95,6 +98,9 @@ export function planFundMirror(
         ...base, type: 'EXPENSE', account_id: context.fundAccountId,
         category: entry.ownerCategory || entry.category || 'Uncategorized', purpose: entry.ownerPurpose || 'OPERATING',
         description: entry.description || 'Fund payment', sender_receiver: entry.recipient,
+        person_id: entry.recipientPersonId,
+        person_name_snapshot: entry.recipientPersonId ? entry.recipient : undefined,
+        person_link_source: entry.recipientPersonId ? 'MANUAL' : undefined,
         ...(splits && splits.length >= 2 ? { splits } : {}),
       } as Omit<Transaction, 'id'> });
       continue;
@@ -119,6 +125,6 @@ export function mirrorSignature(row: Partial<Transaction>): string {
   return JSON.stringify([
     row.type, row.account_id, row.to_account_id ?? null, Math.round(Number(row.amount) * 100), row.category, row.purpose ?? null,
     row.date, (row.splits || []).map(split => [split.category, Math.round(split.amount * 100)]),
-    row.sender_receiver ?? null, row.description ?? null, row.receipt_url ?? null, row.reference_number ?? null, (row.tags || []).join('|'),
+    row.sender_receiver ?? null, row.person_id ?? null, row.person_name_snapshot ?? null, row.description ?? null, row.receipt_url ?? null, row.reference_number ?? null, (row.tags || []).join('|'),
   ]);
 }

@@ -9,14 +9,16 @@ import { DraftTransactionService } from '@/services/DraftTransactionService';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import { BackgroundService } from '@/services/BackgroundService';
 import { NotificationService } from '@/services/NotificationService';
-import { loadStoredAppSettings } from './AppSettingsContext';
+import { loadStoredAppSettings, saveCloudSyncPreferenceLocally } from './AppSettingsContext';
+import CloudProfileService from '@/services/CloudProfileService';
 import { resetAccounts } from '@/store/slices/accountsSlice';
 import { resetBudgets } from '@/store/slices/budgetsSlice';
 import { resetLoans } from '@/store/slices/loansSlice';
 import { resetTransactions } from '@/store/slices/transactionsSlice';
 import { createSerialQueue } from '@/utils/asyncLock';
+import CoinLoader from '@/components/CoinLoader';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Appearance, Text, TouchableOpacity, View } from 'react-native';
+import { Appearance, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch } from 'react-redux';
 interface User { uid: string; email: string | null; displayName?: string | null }
 interface AuthContextType { user: User | null; loading: boolean; signOut: () => Promise<void>; isAuthenticated: boolean }
@@ -26,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openingMessage, setOpeningMessage] = useState('Opening your data…');
   // Bumped by `retry` to re-run the auth-state effect from scratch.
   const [attempt, setAttempt] = useState(0);
   const dispatch = useDispatch();
@@ -37,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const currentGeneration = ++generation;
       const adoptExistingSession = initialAuthEvent && !!firebaseUser;
       initialAuthEvent = false;
-      setLoading(true); setError(null); SyncService.stopAutoSync();
+      setLoading(true); setError(null); setOpeningMessage('Opening your data…'); SyncService.stopAutoSync();
       void transitions(async () => {
         await BackgroundService.suspend();
         await SMSSyncService.suspend();
@@ -59,17 +62,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await SyncService.refreshLocalStore();
         if (disposed || currentGeneration !== generation) return;
         setUser(firebaseUser ? { uid: firebaseUser.uid, email: firebaseUser.email, displayName: firebaseUser.displayName } : null);
-        setLoading(false);
         if (firebaseUser) {
           SMSSyncService.resume(); BackgroundService.resume();
           void import('@/services/LinkedPaymentService').then(m => { if (disposed || currentGeneration !== generation) return; m.default.resume(); return m.default.retryPending(); }).catch(() => undefined);
           void import('@/services/FundPostingService').then(m => { if (disposed || currentGeneration !== generation) return; m.default.resume(); return m.default.retryPending(); }).catch(() => undefined);
           void import('@/services/FundSyncService').then(m => { if (disposed || currentGeneration !== generation) return; m.default.start(firebaseUser.uid); }).catch(() => undefined);
-          const settings = await loadStoredAppSettings();
+          let settings = await loadStoredAppSettings();
           if (disposed || currentGeneration !== generation) return;
-          if (settings.cloudSyncEnabled) SyncService.startAutoSync(firebaseUser.uid);
+          const onlinePreference = await CloudProfileService.getCloudSyncEnabled(firebaseUser.uid).catch(() => null);
+          if (onlinePreference !== null && onlinePreference !== settings.cloudSyncEnabled) {
+            await saveCloudSyncPreferenceLocally(onlinePreference);
+            settings = { ...settings, cloudSyncEnabled: onlinePreference };
+          }
+          if (settings.cloudSyncEnabled) {
+            setOpeningMessage('Restoring your cloud data…');
+            try {
+              await SyncService.syncNow(firebaseUser.uid);
+              if (disposed || currentGeneration !== generation) return;
+              SyncService.startAutoSync(firebaseUser.uid);
+            } catch (syncError) {
+              // Cloud recovery problems must not lock the owner out of data
+              // already stored safely on this device.
+              SyncService.lastError = syncError instanceof Error ? syncError.message : 'Cloud restore needs attention';
+            }
+          }
           void RemotePushService.syncCurrentDevice(firebaseUser.uid).catch(() => undefined);
         }
+        setLoading(false);
       }).catch(e => { if (!disposed && currentGeneration === generation) { setError(e.message || 'Unable to open your data'); setLoading(false); } });
     });
     return () => { disposed = true; unsubscribe(); SyncService.stopAutoSync(); };
@@ -111,8 +130,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return <AuthContext.Provider value={{ user, loading, signOut, isAuthenticated: !!user }}>
     {loading ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: surface }}>
-        <ActivityIndicator size="large" color="#6366f1" />
-        <Text accessibilityLiveRegion="polite" style={{ color: muted, marginTop: 12 }}>Opening your data…</Text>
+        <CoinLoader size={72} accessibilityLabel="Opening your data" />
+        <Text accessibilityLiveRegion="polite" style={{ color: muted, marginTop: 12 }}>{openingMessage}</Text>
       </View>
       : error ? <View style={{ flex: 1, padding: 24, justifyContent: 'center', backgroundColor: surface }}>
           <Text accessibilityRole="alert" style={{ color: heading, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Unable to open your data</Text>

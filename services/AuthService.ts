@@ -9,6 +9,7 @@ import {
   // @ts-ignore
   getReactNativePersistence,
   initializeAuth,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithCredential,
   signInWithPopup,
@@ -150,6 +151,10 @@ export class AuthService {
 
       if (displayName && userCredential.user) {
         await updateProfile(userCredential.user, { displayName });
+      }
+      if (!userCredential.user.emailVerified) {
+        try { await sendEmailVerification(userCredential.user); }
+        catch (error) { console.warn('[AuthService] Verification email could not be sent:', error); }
       }
 
       if (phoneNumber && userCredential.user) {

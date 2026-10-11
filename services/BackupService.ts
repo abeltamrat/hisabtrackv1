@@ -183,6 +183,15 @@ export class BackupService {
         if (!profile || typeof profile.id !== 'string' || typeof profile.displayName !== 'string' || !profile.displayName.trim()) return false;
         if (!Array.isArray(profile.aliases) || profile.aliases.length < 1 || profile.aliases.length > 100 || profile.aliases.some((alias: unknown) => typeof alias !== 'string' || !alias.trim() || alias.length > 160)) return false;
         if (!Array.isArray(profile.verifiedHints) || profile.verifiedHints.length > 100 || profile.verifiedHints.some((hint: unknown) => typeof hint !== 'string' || !/^(phone|account):[\d*]{4,20}$/.test(hint))) return false;
+        if (profile.kind !== undefined && !['PERSON', 'ORGANIZATION'].includes(profile.kind)) return false;
+        if (profile.groups !== undefined && (!Array.isArray(profile.groups) || profile.groups.length > 50 || profile.groups.some((group: unknown) => typeof group !== 'string' || !group.trim() || group.length > 80))) return false;
+        if (profile.phone !== undefined && (typeof profile.phone !== 'string' || profile.phone.length > 40)) return false;
+        if (profile.email !== undefined && (typeof profile.email !== 'string' || profile.email.length > 160)) return false;
+        if (profile.linkedUid !== undefined && (typeof profile.linkedUid !== 'string' || !profile.linkedUid || profile.linkedUid.length > 160)) return false;
+        if (profile.linkedDisplayName !== undefined && (typeof profile.linkedDisplayName !== 'string' || !profile.linkedDisplayName.trim() || profile.linkedDisplayName.length > 160)) return false;
+        if (profile.linkCheckedAt !== undefined && !Number.isFinite(profile.linkCheckedAt)) return false;
+        if (profile.notes !== undefined && (typeof profile.notes !== 'string' || profile.notes.length > 2000)) return false;
+        if (profile.archivedAt !== undefined && !Number.isFinite(profile.archivedAt)) return false;
       }
       for (const category of data.categories || []) {
         if (typeof category.name !== 'string' || !category.name.trim()) return false;

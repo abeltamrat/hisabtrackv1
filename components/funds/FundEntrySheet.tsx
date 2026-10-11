@@ -7,6 +7,7 @@ import CategoryTreeSelect from '@/components/CategoryTreeSelect';
 import FormField from '@/components/FormField';
 import FormSheet from '@/components/FormSheet';
 import TagInputField from '@/components/TagInputField';
+import PersonLinkField from '@/components/PersonLinkField';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import { useFormErrors } from '@/hooks/useFormErrors';
 import FundPostingService, { custodianFundFields } from '@/services/FundPostingService';
@@ -18,6 +19,7 @@ import { addTransaction } from '@/store/slices/transactionsSlice';
 import type { Account, SharedFund, Transaction, TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 import { generateUUID } from '@/utils/uuid';
+import type { RecipientProfile } from '@/services/RecipientIdentityService';
 import { fundCategoryTree, setCustodianAccount } from './fundUi';
 
 /**
@@ -45,7 +47,6 @@ const TITLES: Record<FundEntryMode, { title: string; button: string; icon: strin
 };
 
 type Field = 'amount' | 'account' | 'payer' | 'receipt' | 'splits';
-
 export default function FundEntrySheet({
   visible, mode, fund, myUid, accounts, defaultAccountId, tagSuggestions, fallbackCategories, prefill,
   formatCurrency, onClose, onSaved,
@@ -79,6 +80,8 @@ export default function FundEntrySheet({
   const [receipt, setReceipt] = useState('');
   const [fromSomeoneElse, setFromSomeoneElse] = useState(false);
   const [payerName, setPayerName] = useState('');
+  const [payerPerson, setPayerPerson] = useState<RecipientProfile>();
+  const [recipientPerson, setRecipientPerson] = useState<RecipientProfile>();
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [saving, setSaving] = useState(false);
@@ -105,6 +108,8 @@ export default function FundEntrySheet({
     setReceipt(prefill?.receipt_url || '');
     setFromSomeoneElse(!!prefill?.payerName);
     setPayerName(prefill?.payerName || '');
+    setPayerPerson(undefined);
+    setRecipientPerson(undefined);
     setSplitEnabled(false);
     setSplits([]);
     setSaving(false);
@@ -133,7 +138,7 @@ export default function FundEntrySheet({
     try {
       if (ownerMode) {
         if (mode === 'expect') {
-          await SharedFundService.announce(fund.id, entryId, { amount: value, date, payerName: payerName.trim(), note: description.trim() || undefined });
+          await SharedFundService.announce(fund.id, entryId, { amount: value, date, payerName: payerName.trim(), payerPersonId: payerPerson?.id, note: description.trim() || undefined });
           onSaved(`${holder} will be asked to confirm when ${formatCurrency(value)} arrives.`);
         } else {
           await SharedFundService.record(fund.id, entryId, {
@@ -153,7 +158,9 @@ export default function FundEntrySheet({
         amount: value, date,
         description: description.trim() || undefined,
         payerName: mode === 'received' && fromSomeoneElse ? payerName.trim() : undefined,
+        payerPersonId: mode === 'received' && fromSomeoneElse ? payerPerson?.id : undefined,
         recipient: mode === 'pay' ? recipient.trim() || undefined : undefined,
+        recipientPersonId: mode === 'pay' ? recipientPerson?.id : undefined,
         category: mode === 'pay' ? category || undefined : undefined,
         splits: mode === 'pay' && splitEnabled ? splits : undefined,
         tags,
@@ -168,6 +175,9 @@ export default function FundEntrySheet({
         category: mode === 'pay' ? category || 'Fund payment' : mode === 'received' ? 'Fund deposit' : 'Fund return',
         description: description.trim() || (mode === 'pay' ? `${recipient.trim() || 'Payment'} for ${fund.ownerName}` : mode === 'received' ? `For ${fund.ownerName}${fromSomeoneElse ? ` from ${payerName.trim()}` : ''}` : `Returned to ${fund.ownerName}`),
         sender_receiver: mode === 'pay' ? recipient.trim() || undefined : mode === 'received' ? (fromSomeoneElse ? payerName.trim() : fund.ownerName) : fund.ownerName,
+        person_id: mode === 'pay' ? recipientPerson?.id : mode === 'received' && fromSomeoneElse ? payerPerson?.id : undefined,
+        person_name_snapshot: mode === 'pay' ? recipientPerson?.displayName : mode === 'received' && fromSomeoneElse ? payerPerson?.displayName : undefined,
+        person_link_source: (mode === 'pay' && recipientPerson) || (mode === 'received' && fromSomeoneElse && payerPerson) ? 'MANUAL' : undefined,
         reference_number: reference.trim() || undefined,
         receipt_url: receiptLink || undefined,
         tags,
@@ -231,7 +241,7 @@ export default function FundEntrySheet({
       />
 
       {needsPayer && (
-        <FormField
+        <><PersonLinkField label={mode === 'expect' ? 'Expected from saved person' : 'Sender'} person={payerPerson} suggestedName={payerName} onChange={person => { setPayerPerson(person); if (person) setPayerName(person.displayName); }} /><FormField
           label={mode === 'expect' ? 'Who will send it?' : 'Who sent it?'}
           required
           value={payerName}
@@ -239,7 +249,7 @@ export default function FundEntrySheet({
           placeholder="e.g. Mr X"
           error={errors.payer}
           hint={mode === 'expect' ? `${holder} confirms when it arrives. Until then it is not counted.` : undefined}
-        />
+        /></>
       )}
 
       {needsAccount && (
@@ -271,6 +281,7 @@ export default function FundEntrySheet({
 
       {mode === 'pay' && (
         <>
+          <PersonLinkField label="Paid to saved person" person={recipientPerson} suggestedName={recipient} onChange={person => { setRecipientPerson(person); if (person) setRecipient(person.displayName); }} />
           <FormField label="Paid to" value={recipient} onChangeText={setRecipient} placeholder="Shop, person or company" />
           <View className="mb-4">
             <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">Category</Text>
@@ -332,6 +343,7 @@ export default function FundEntrySheet({
           {errors.splits ? <Text accessibilityRole="alert" className="text-red-600 dark:text-red-400 text-xs mt-1.5 font-semibold">{errors.splits}</Text> : null}
         </View>
       )}
+
 
       {!ownerMode && (
         <Text className="text-slate-500 dark:text-slate-400 text-[11px] mb-4">

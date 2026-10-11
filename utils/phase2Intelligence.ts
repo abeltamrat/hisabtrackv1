@@ -13,10 +13,11 @@ const median = (values: number[]) => {
 const mad = (values: number[], center = median(values)) => median(values.map(value => Math.abs(value - center)));
 
 export const normalizeRecipient = (value?: string) => (value || '')
-  .normalize('NFKD')
+  .normalize('NFKC')
   .replace(/[\u0300-\u036f]/g, '')
   .toLocaleLowerCase()
-  .replace(/[^a-z0-9]+/g, ' ')
+  // Preserve letters and numbers from every script, including Ethiopic names.
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
   .trim()
   .replace(/\s+/g, ' ');
 

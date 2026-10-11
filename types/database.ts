@@ -49,6 +49,12 @@ interface TransactionBase {
   date: number; // Timestamp
   description: string;
   sender_receiver?: string;
+  /** Stable People-directory link. The observed SMS/manual name stays in sender_receiver. */
+  person_id?: string;
+  /** Name shown when this transaction was recorded, retained across later renames. */
+  person_name_snapshot?: string;
+  person_link_source?: 'MANUAL' | 'SMS_CONFIRMED' | 'HISTORICAL_REVIEW';
+  person_alias_used?: string;
   reference_number?: string;
   sms_id?: string;
   fees?: number;
@@ -114,6 +120,8 @@ export interface Loan {
   start_date: number;
   due_date: number;
   lender_borrower_name: string;
+  person_id?: string;
+  person_name_snapshot?: string;
   status: LoanStatus;
   remaining_balance: number;
   updated_at?: number;
@@ -251,7 +259,9 @@ export interface FundEntry {
   description: string;
   note?: string;
   payerName?: string;
+  payerPersonId?: string;
   recipient?: string;
+  recipientPersonId?: string;
   reference_number?: string;
   receipt_url?: string;
   sms_linked?: boolean;
@@ -341,6 +351,8 @@ export interface RecurringTransaction {
   fees?: number;
   tax?: number;
   description?: string;
+  person_id?: string;
+  person_name_snapshot?: string;
   totalRepetitions?: number;
   completedRepetitions: number;
   reminderEnabled: boolean;

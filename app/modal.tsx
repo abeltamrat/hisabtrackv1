@@ -32,6 +32,9 @@ import { useI18n } from '@/contexts/I18nContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { rankTagSuggestions } from '@/utils/tagSuggestions';
 import { InputDraftService, type SmartInputDraft } from '@/services/InputDraftService';
+import PersonPicker from '@/components/PersonPicker';
+import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
+import { normalizeRecipient } from '@/utils/phase2Intelligence';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -101,6 +104,9 @@ export default function AddTransactionScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [note, setNote] = useState('');
   const [recipient, setRecipient] = useState('');
+  const [selectedPerson, setSelectedPerson] = useState<RecipientProfile>();
+  const [selectedPersonId, setSelectedPersonId] = useState<string>();
+  const [showPersonPicker, setShowPersonPicker] = useState(false);
   const [tagsInput, setTagsInput] = useState('');
   const [transactionDate, setTransactionDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -168,6 +174,10 @@ export default function AddTransactionScreen() {
       setSelectedCategory(editingTransaction.category);
       setNote(editingTransaction.description !== editingTransaction.category ? editingTransaction.description : '');
       setRecipient(editingTransaction.sender_receiver || '');
+      setSelectedPersonId(editingTransaction.person_id);
+      if (editingTransaction.person_id) {
+        RecipientIdentityService.getAll().then(people => setSelectedPerson(people.find(person => person.id === editingTransaction.person_id)));
+      } else setSelectedPerson(undefined);
       setTagsInput(formatTagInput(editingTransaction.tags));
       setTransactionDate(new Date(editingTransaction.date));
       setSplitEnabled(!!editingTransaction.splits?.length);
@@ -235,7 +245,6 @@ export default function AddTransactionScreen() {
       Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(numericAmount)}.`);
       return;
     }
-
     // Soft guard: warn when a new expense exceeds the account's available
     // (unlocked) balance. Never hard-block — records mirror real money moves.
     if (!isEditing && type === 'EXPENSE') {
@@ -266,6 +275,10 @@ export default function AddTransactionScreen() {
       category: type === 'TRANSFER' ? 'Transfer' : selectedCategory,
       description: note || (type === 'TRANSFER' ? 'Bank transfer' : selectedCategory),
       sender_receiver: recipient.trim() || undefined,
+      person_id: selectedPersonId,
+      person_name_snapshot: selectedPersonId ? selectedPerson?.displayName || editingTransaction?.person_name_snapshot || recipient.trim() : undefined,
+      person_link_source: selectedPersonId ? (selectedPersonId === editingTransaction?.person_id ? editingTransaction.person_link_source : 'MANUAL' as const) : undefined,
+      person_alias_used: selectedPersonId ? (selectedPersonId === editingTransaction?.person_id ? editingTransaction.person_alias_used : recipient.trim() || selectedPerson?.displayName) : undefined,
       operation_id: inputDraft ? `smart-input:${inputDraft.fingerprint}` : editingTransaction?.operation_id,
       tags: parseTagInput(tagsInput),
       date: transactionDate.getTime(),
@@ -332,6 +345,8 @@ export default function AddTransactionScreen() {
           accountId: selectedAccountId,
           toAccountId: type === 'TRANSFER' ? toAccountId : undefined,
           description: note,
+          person_id: selectedPersonId,
+          person_name_snapshot: selectedPersonId ? selectedPerson?.displayName || recipient.trim() : undefined,
           tags: parseTagInput(tagsInput),
           frequency,
           startDate: transactionDate.getTime(),
@@ -796,8 +811,17 @@ export default function AddTransactionScreen() {
         </View>
 
         {type !== 'TRANSFER' && <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
-          <Text className="text-slate-900 dark:text-white text-xs font-bold mb-2">Recipient / Merchant (Optional)</Text>
-          <View className="bg-slate-50 dark:bg-slate-900 px-3 py-2 rounded-xl"><TextInput className="text-slate-900 dark:text-white text-sm" placeholder="Who received or sent the money?" placeholderTextColor="#94a3b8" value={recipient} onChangeText={setRecipient} /></View>
+          <View className="flex-row items-center justify-between mb-2">
+            <Text className="text-slate-900 dark:text-white text-xs font-bold">{type === 'INCOME' ? 'Sender' : 'Recipient / Merchant'} (Optional)</Text>
+            <TouchableOpacity onPress={() => setShowPersonPicker(true)}><Text className="text-indigo-600 dark:text-indigo-400 text-xs font-bold">{selectedPerson ? 'Change' : 'Choose saved person'}</Text></TouchableOpacity>
+          </View>
+          {selectedPerson && <View className="flex-row items-center rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 px-3 py-2 mb-2">
+            <FontAwesome name="user" size={13} color="#0d9488" />
+            <View className="flex-1 ml-2"><Text className="text-teal-800 dark:text-teal-200 font-bold text-sm">{selectedPerson.displayName}</Text>{(selectedPerson.groups || []).length > 0 && <Text className="text-teal-600 dark:text-teal-400 text-[10px]">{selectedPerson.groups!.join(' • ')}</Text>}</View>
+            <TouchableOpacity accessibilityLabel="Remove person link" onPress={() => { setSelectedPerson(undefined); setSelectedPersonId(undefined); }}><FontAwesome name="close" size={15} color="#0d9488" /></TouchableOpacity>
+          </View>}
+          <View className="bg-slate-50 dark:bg-slate-900 px-3 py-2 rounded-xl"><TextInput className="text-slate-900 dark:text-white text-sm" placeholder="Who received or sent the money?" placeholderTextColor="#94a3b8" value={recipient} onChangeText={value => { setRecipient(value); if (selectedPerson && normalizeRecipient(value) !== normalizeRecipient(selectedPerson.displayName)) { setSelectedPerson(undefined); setSelectedPersonId(undefined); } }} /></View>
+          <Text className="text-slate-500 dark:text-slate-400 text-[10px] mt-1.5">Link a saved person to see their complete financial history later.</Text>
         </View>}
 
         {/* Note Input */}
@@ -817,6 +841,7 @@ export default function AddTransactionScreen() {
           </View>
         </View>
       </ScrollView>
+      <PersonPicker visible={showPersonPicker} selectedId={selectedPersonId} suggestedName={recipient} onClose={() => setShowPersonPicker(false)} onSelect={person => { setSelectedPerson(person); setSelectedPersonId(person?.id); if (person) setRecipient(person.displayName); }} />
       <FloatingCalculator onUseAmount={setAmount} />
     </KeyboardAvoidingView>
   );

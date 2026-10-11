@@ -32,6 +32,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import { NotificationService } from '@/services/NotificationService';
 import { money, sumMoney } from '@/utils/finance';
 import { themeTokens } from '@/constants/theme';
+import PersonLinkField from '@/components/PersonLinkField';
+import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
+import { normalizeRecipient } from '@/utils/phase2Intelligence';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -211,6 +214,7 @@ export default function LoansDebtsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingItem, setEditingItem] = useState<Loan | null>(null);
+  const [selectedPerson, setSelectedPerson] = useState<RecipientProfile>();
   const { errors, validate, clearError, resetErrors } = useFormErrors<'personName' | 'accountId' | 'amount' | 'dueDate' | 'paymentAmount'>();
   const [formData, setFormData] = useState({
     personName: '',
@@ -515,6 +519,8 @@ export default function LoansDebtsScreen() {
       const created = await (await getDatabase()).createLoanWithCash({
         type: activeTab,
         lender_borrower_name: formData.personName.trim(),
+        person_id: selectedPerson?.id,
+        person_name_snapshot: selectedPerson?.displayName,
         principal_amount: amount,
         interest_rate: interestRate,
         start_date: startDate,
@@ -654,6 +660,8 @@ export default function LoansDebtsScreen() {
     const result = await dispatch(updateLoan({
       ...editingItem,
       lender_borrower_name: formData.personName.trim(),
+      person_id: selectedPerson?.id,
+      person_name_snapshot: selectedPerson?.displayName,
       principal_amount: amount,
       interest_rate: interestRate,
       due_date: dueDate,
@@ -789,6 +797,8 @@ export default function LoansDebtsScreen() {
       reminderDaysBefore: (item.reminderDaysBefore ?? 1).toString(),
       reminderTime: item.reminderTime ? new Date(item.reminderTime) : new Date(),
     });
+    setSelectedPerson(undefined);
+    if (item.person_id) void RecipientIdentityService.getAll().then(people => setSelectedPerson(people.find(person => person.id === item.person_id)));
 
     setCanEditLinkedTerms(true);
     if (item.shared_loan_id && item.link_status === 'ACCEPTED') {
@@ -806,6 +816,7 @@ export default function LoansDebtsScreen() {
 
   const openAddModal = () => {
     setEditingItem(null);
+    setSelectedPerson(undefined);
     setFormData({
       personName: selectedGroup || '',
       accountId: accounts[0]?.id || '',
@@ -825,6 +836,7 @@ export default function LoansDebtsScreen() {
     resetErrors();
     setShowAddModal(false);
     setEditingItem(null);
+    setSelectedPerson(undefined);
     setFormData({
       personName: '',
       accountId: '',
@@ -1342,6 +1354,7 @@ export default function LoansDebtsScreen() {
               )}
 
               {/* Person/Institution Name */}
+              <PersonLinkField label={activeTab === 'LENT' ? 'Saved borrower' : 'Saved lender'} person={selectedPerson} suggestedName={formData.personName} disabled={!canEditLinkedTerms} onChange={person => { setSelectedPerson(person); if (person) setFormData(current => ({ ...current, personName: person.displayName })); }} />
               <Text className="text-slate-700 dark:text-slate-300 text-sm font-bold mb-2">
                 {activeTab === 'LENT' ? 'Borrower Name' : 'Lender Name'}
               </Text>
@@ -1356,6 +1369,7 @@ export default function LoansDebtsScreen() {
                   aria-invalid={!!errors.personName}
                   onChangeText={(text) => {
                     clearError('personName');
+                    if (selectedPerson && normalizeRecipient(text) !== normalizeRecipient(selectedPerson.displayName)) setSelectedPerson(undefined);
                     setFormData({ ...formData, personName: text });
                     if (text.trim().length > 0) {
                       const matches = groupNames.filter(name =>

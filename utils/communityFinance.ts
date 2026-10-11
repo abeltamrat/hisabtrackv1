@@ -1,6 +1,7 @@
 import type { DraftTransaction } from '@/services/DraftTransactionService';
 import type { CommunityGroup, CommunityPosition } from '@/types/community';
 import { money, sumMoney } from '@/utils/finance';
+import { validateEqubCyclePlan } from '@/utils/equbModel';
 
 export function validateCommunityGroupRecord(group: CommunityGroup): boolean {
   try {
@@ -8,6 +9,14 @@ export function validateCommunityGroupRecord(group: CommunityGroup): boolean {
     if (money(group.contributionAmount) <= 0 || !Number.isInteger(group.rounds) || group.rounds < 1 || group.rounds > 600) return false;
     if (!['WEEKLY', 'MONTHLY'].includes(group.frequency) || !['GREGORIAN', 'ETHIOPIAN'].includes(group.calendarSystem) || !Array.isArray(group.schedule) || group.schedule.length !== group.rounds) return false;
     if (group.myTurn !== undefined && (!Number.isInteger(group.myTurn) || group.myTurn < 1 || group.myTurn > group.rounds)) return false;
+    if (group.kind === 'EQUB' && group.equb !== undefined) {
+      const config = group.equb;
+      if (config.schemaVersion !== 2 || !['PERSONAL_TRACKER', 'GROUP_MANAGED'].includes(config.mode) || !config.cycleId) return false;
+      if (money(config.baseContributionAmount) <= 0 || !Number.isInteger(config.memberCount) || config.memberCount < 1 || !Number.isInteger(config.totalShares) || config.totalShares < 1 || !Number.isInteger(config.myShares) || config.myShares < 1 || config.myShares > config.totalShares) return false;
+      if (config.totalShares !== group.rounds || (config.mode === 'PERSONAL_TRACKER' && money(config.baseContributionAmount * config.myShares) !== money(group.contributionAmount))) return false;
+      if (!['FIXED_ORDER', 'LOTTERY', 'NEED_BASED', 'AUCTION', 'HYBRID'].includes(config.allocationMethod) || !['NATIVE_V2', 'MIGRATED', 'REVIEW_REQUIRED'].includes(config.migrationStatus)) return false;
+      if (config.mode === 'GROUP_MANAGED' && (!group.equbCycle || group.equbCycle.id !== config.cycleId || !validateEqubCyclePlan(group.equbCycle))) return false;
+    }
     if (!Array.isArray(group.members) || new Set(group.members.map(member => member.turn)).size !== group.members.length || group.members.some(member => !member.id || !member.name?.trim() || !Number.isInteger(member.turn) || member.turn < 1 || member.turn > group.rounds)) return false;
     return group.schedule.every(item => !!item.id && Number.isFinite(item.dueDate) && money(item.amountDue) > 0 && money(item.amountPaid) >= 0 && money(item.amountPaid) <= money(item.amountDue) && ['DUE', 'PARTIAL', 'PAID', 'MISSED'].includes(item.status) && Array.isArray(item.transactionIds));
   } catch { return false; }

@@ -68,9 +68,9 @@ test('the owner mirror maps each entry to one row and asks instead of guessing',
   const plan = planFundMirror(fund(), [
     entry('sent', { kind: 'DEPOSIT', source: 'OWNER', amount: 5000, recordedByUid: 'alice', recordedByRole: 'OWNER', ownerAccountId: 'cbe' }),
     entry('claimed', { kind: 'DEPOSIT', source: 'OWNER_UNRECORDED', amount: 700 }),
-    entry('mrx', { kind: 'DEPOSIT', source: 'THIRD_PARTY', payerName: 'Mr X', amount: 10000 }),
+    entry('mrx', { kind: 'DEPOSIT', source: 'THIRD_PARTY', payerName: 'Mr X', payerPersonId: 'person-x', amount: 10000 }),
     entry('sales', { kind: 'DEPOSIT', source: 'THIRD_PARTY', payerName: 'Mr Y', amount: 300, ownerCategory: 'Sales', ownerPurpose: 'OPERATING' }),
-    entry('rent', { kind: 'SPEND', amount: 3000, category: 'Rent', recipient: 'Landlord', receipt_url: 'https://bank/r', reference_number: 'FT1', splits: [{ id: 'a', amount: 2000, category: 'Rent' }, { id: 'b', amount: 1000, category: 'Utilities' }] }),
+    entry('rent', { kind: 'SPEND', amount: 3000, category: 'Rent', recipient: 'Landlord', recipientPersonId: 'person-landlord', receipt_url: 'https://bank/r', reference_number: 'FT1', splits: [{ id: 'a', amount: 2000, category: 'Rent' }, { id: 'b', amount: 1000, category: 'Utilities' }] }),
     entry('recat', { kind: 'SPEND', amount: 50, category: 'Food', ownerCategory: 'Client meals', splits: [{ id: 'a', amount: 25, category: 'Food' }, { id: 'b', amount: 25, category: 'Taxi' }] }),
     entry('back', { kind: 'RETURN', amount: 200 }),
     entry('gone', { kind: 'SPEND', amount: 9, status: 'VOIDED' }),
@@ -90,6 +90,8 @@ test('the owner mirror maps each entry to one row and asks instead of guessing',
   assert.equal(byEntry.rent.type, 'EXPENSE');
   assert.equal(byEntry.rent.purpose, 'OPERATING');
   assert.equal(byEntry.rent.sender_receiver, 'Landlord');
+  assert.equal(byEntry.rent.person_id, 'person-landlord');
+  assert.equal(byEntry.mrx.person_id, 'person-x');
   assert.equal(byEntry.rent.receipt_url, 'https://bank/r');
   assert.equal(byEntry.rent.splits.length, 2);
   // The owner's own category replaces the custodian's split as a whole.

@@ -1,4 +1,5 @@
 import CoinLoader from '@/components/CoinLoader';
+import CloudDataStatusCard from '@/components/CloudDataStatusCard';
 import { sessionLocalStorage } from '@/services/SessionStorage';
 import { APP_FONT_SIZE_OPTIONS, type AppFontSize, useAppSettings } from '@/contexts/AppSettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1864,11 +1865,12 @@ export default function SettingsScreen() {
 
           <View className="bg-white dark:bg-slate-800 p-4 rounded-xl mb-4">
             <Text className="text-slate-900 dark:text-white font-bold">Data sharing</Text>
-            <Text className="text-slate-500 dark:text-slate-400">Cloud sync uploads your accounts, transactions, budgets and loans to Firebase. Shared loans and chat use Firebase separately when you use them.</Text>
+            <Text className="text-slate-500 dark:text-slate-400">Cloud sync uploads your ledger, Equb/Iddir groups, recurring items, goals, transaction drafts, SMS learning rules and recipient profiles to your private Firebase account. Drafts may contain original bank SMS text. Shared loans and chat use Firebase separately when you use them.</Text>
             <Switch value={privacySettings.cloudSyncEnabled} onValueChange={privacySettings.setCloudSyncEnabled} />
             <Text className="text-slate-500 dark:text-slate-400">Allow AI providers to process financial context and unparsed bank SMS, including saved examples. Only enable providers you trust. JSON backups are unencrypted and exclude API keys.</Text>
             <Switch value={privacySettings.aiSharingEnabled} onValueChange={privacySettings.setAiSharingEnabled} />
           </View>
+          {!!user && <CloudDataStatusCard />}
           {!!user && <TouchableOpacity className="p-4 mb-4 rounded-xl border border-red-500" onPress={() => {
             Alert.alert('Delete sign-in account?', 'This deletes your identity and personal cloud data. Shared loan amounts remain for the other participant, with your profile and messages anonymized. Sign in again first if your session is older than five minutes.', [
               { text: 'Cancel', style: 'cancel' },
@@ -2127,9 +2129,14 @@ export default function SettingsScreen() {
               {currencyOptions.map((currOption) => (
                 <TouchableOpacity
                   key={currOption.code}
-                  onPress={() => {
-                    setCurrency(currOption.code);
-                    setShowCurrencyModal(false);
+                  onPress={async () => {
+                    try {
+                      await setCurrency(currOption.code);
+                      setShowCurrencyModal(false);
+                      Alert.alert('Currency updated', `Amounts were relabeled as ${currOption.code}. Numeric values were not converted.`);
+                    } catch (error) {
+                      Alert.alert('Currency update failed', error instanceof Error ? error.message : 'Please try again.');
+                    }
                   }}
                   className={`py-3 px-4 rounded-xl mb-2 ${currency === currOption.code ? 'bg-teal-50 dark:bg-teal-900/20' : 'bg-slate-50 dark:bg-slate-900' }`}
                 >

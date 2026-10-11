@@ -17,6 +17,7 @@ import { UpdateService, UpdateInfo } from '@/services/UpdateService';
 import { AppDispatch, RootState } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import UpdateModal from './UpdateModal';
+import ShareAppModal from './ShareAppModal';
 import { FUNDS_ENABLED } from '@/config/features';
 
 interface DrawerMenuProps {
@@ -49,6 +50,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const [, setResetError] = React.useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = React.useState<UpdateInfo | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = React.useState(false);
+  const [isShareAppVisible, setIsShareAppVisible] = React.useState(false);
   const accounts = useSelector((state: RootState) => state.accounts.items);
   const isVerySmall = fontSize === 'V.Small';
   const drawerWidth = isVerySmall ? 300 : 320;
@@ -126,6 +128,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     { id: 'cards', title: 'Cards & Savings', icon: 'credit-card', route: '/cards', color: '#f59e0b' },
     { id: 'transfer', title: 'Transfer Money', icon: 'exchange', route: '/transfer', color: '#3b82f6' },
     { id: 'categories', title: 'Manage Categories', icon: 'tags', route: '/categories', color: '#10b981' },
+    { id: 'people', title: 'People & Relationships', icon: 'address-book', route: '/people', color: '#0d9488' },
     { id: 'loans', title: 'Loans & Debts', icon: 'line-chart', route: '/loans', color: '#ef4444' },
     ...(FUNDS_ENABLED ? [{ id: 'funds', title: 'Funds & Petty Cash', icon: 'briefcase', route: '/funds', color: '#0d9488' }] : []),
     { id: 'recurring', title: 'Recurring Payments', icon: 'refresh', route: '/recurring', color: '#14b8a6' },
@@ -146,6 +149,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     { id: 'settings', title: 'Settings', icon: 'cog', color: '#64748b' },
     { id: 'notifications', title: 'Notifications', icon: 'bell', badge: notificationCount > 0 ? notificationCount : undefined, color: '#8b5cf6' },
     { id: 'checkUpdate', title: 'Check for Updates', icon: 'refresh', color: '#10b981' },
+    { id: 'shareApp', title: 'Share Hisab Track', icon: 'share-alt', color: '#06b6d4' },
     { id: 'help', title: 'Help & Support', icon: 'question-circle', color: '#10b981' },
     { id: 'about', title: 'About HisabTrack', icon: 'info-circle', color: '#6366f1' },
     { id: 'privacy', title: 'Privacy Policy', icon: 'shield', color: '#10b981' },
@@ -493,6 +497,9 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
                       handleNavigate('/notifications');
                     } else if (item.id === 'checkUpdate') {
                       handleCheckForUpdates();
+                    } else if (item.id === 'shareApp') {
+                      onClose();
+                      setIsShareAppVisible(true);
                     } else if (item.id === 'help') {
                       handleNavigate('/help');
                     } else if (item.id === 'about') {
@@ -557,6 +564,10 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
         visible={!!updateInfo}
         updateInfo={updateInfo}
         onClose={() => setUpdateInfo(null)}
+      />
+      <ShareAppModal
+        visible={isShareAppVisible}
+        onClose={() => setIsShareAppVisible(false)}
       />
     </Modal>
   );

@@ -44,6 +44,7 @@ service cloud.firestore {
     match /users/{userId}/budgets/{id} { allow read, write: if owner(userId); }
     match /users/{userId}/loans/{id} { allow read, write: if owner(userId); }
     match /users/{userId}/meta/{id} { allow read, write: if owner(userId); }
+    match /users/{userId}/app_data/{id} { allow read, write: if owner(userId); }
     match /users/{userId} { allow read, write: if owner(userId); }
     match /phoneIndex/{phone} {
       allow get: if signedIn() && resource.data.uid == request.auth.uid;

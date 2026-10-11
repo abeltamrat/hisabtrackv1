@@ -24,7 +24,7 @@ function environment(options={}) {
    });chain=next.catch(()=>{});return next;
  }};
  const wrap=(_,fn)=>fn;
- const mocks={'firebase-admin':{initializeApp(){},firestore:()=>db,auth:()=>({getUser:async uid=>({uid,displayName:'Alice',phoneNumber:'+251911111111'})})},'expo-server-sdk':{Expo:class{static isExpoPushToken(t){return typeof t==='string'&&/^Expo(nent)?PushToken\[.+\]$/.test(t);}chunkPushNotifications(m){return m.length?[m]:[];}chunkPushNotificationReceiptIds(ids){return ids.length?[ids]:[];}async sendPushNotificationsAsync(chunk){sent.push(...chunk);return chunk.map((_,i)=>({status:'ok',id:'ticket-'+i}));}async getPushNotificationReceiptsAsync(){return {};}}},'firebase-functions':{logger:{info(){},debug(){},warn(){},error(){}}},'firebase-functions/v2/firestore':{onDocumentCreated:wrap},'firebase-functions/v2/scheduler':{onSchedule:wrap},'firebase-functions/v2/https':{onCall:wrap,HttpsError}};
+ const mocks={'firebase-admin':{initializeApp(){},firestore:()=>db,auth:()=>({getUser:async uid=>({uid,displayName:'Alice',phoneNumber:'+251911111111'}),getUserByEmail:async email=>email==='alice@example.com'?{uid:'alice',displayName:'Alice',email,emailVerified:true}:Promise.reject(Object.assign(Error('missing'),{code:'auth/user-not-found'}))})},'expo-server-sdk':{Expo:class{static isExpoPushToken(t){return typeof t==='string'&&/^Expo(nent)?PushToken\[.+\]$/.test(t);}chunkPushNotifications(m){return m.length?[m]:[];}chunkPushNotificationReceiptIds(ids){return ids.length?[ids]:[];}async sendPushNotificationsAsync(chunk){sent.push(...chunk);return chunk.map((_,i)=>({status:'ok',id:'ticket-'+i}));}async getPushNotificationReceiptsAsync(){return {};}}},'firebase-functions':{logger:{info(){},debug(){},warn(){},error(){}}},'firebase-functions/v2/firestore':{onDocumentCreated:wrap},'firebase-functions/v2/scheduler':{onSchedule:wrap},'firebase-functions/v2/https':{onCall:wrap,HttpsError}};
  const exports={};new Function('require','exports',fs.readFileSync(path.join(__dirname,'../functions/index.js'),'utf8'))(name=>mocks[name],exports);
  rows.set('sharedLoans/loan',{borrowerUid:'alice',lenderUid:'bob',linkStatus:'ACCEPTED',amount:100,interestRate:0,startDate:Date.UTC(2026,0,1),dueDate:Date.UTC(2027,0,1)});
  const request=(uid,data)=>({auth:{uid},data:{sharedLoanId:'loan',...data}});
@@ -56,6 +56,11 @@ test('phone lookup is authenticated, rate limited and does not return email',asy
  const request={auth:{uid:'bob'},data:{phone:'+251911111111'}};
  for(let i=0;i<20;i++){const result=await api.lookupLinkedUser(request);assert.equal(result.uid,'alice');assert.equal(result.email,undefined);}
  await assert.rejects(api.lookupLinkedUser(request),{code:'resource-exhausted'});
+});
+test('verified email lookup links a user without returning private contact data',async()=>{
+ const {exports:api}=environment();
+ const result=await api.lookupLinkedUser({auth:{uid:'bob'},data:{email:' Alice@Example.com '}});
+ assert.deepEqual(result,{uid:'alice',displayName:'Alice'});
 });
 
 test('confirmed interest is capped across payments and persisted for both participants',async()=>{

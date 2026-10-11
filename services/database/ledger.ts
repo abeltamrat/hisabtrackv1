@@ -209,6 +209,20 @@ export class LedgerDatabase implements IDatabase {
       await this.commit(rows);
     });
   }
+  relabelCurrency(currency: string, forceCloudWrite = false) {
+    return this.run(async () => {
+      if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Choose a valid currency code');
+      const now = Date.now();
+      const [accounts, loans] = await Promise.all([this.raw.getAccounts(), this.raw.getLoans()]);
+      const rows: Row[] = [
+        ...accounts.filter(account => forceCloudWrite || account.currency !== currency).map(account => ({ table: 'accounts' as const, id: account.id, value: { ...account, currency, updated_at: now } })),
+        ...loans.filter(loan => forceCloudWrite || loan.currency !== currency).map(loan => ({ table: 'loans' as const, id: loan.id, value: { ...loan, currency, updated_at: now } })),
+      ];
+      if (rows.length) await this.commit(rows, [], { last_currency_relabel: { currency, count: rows.length, at: now }, currency_sync_quarantine: null });
+      else await this.raw.commitRows([], { last_currency_relabel: { currency, count: 0, at: now }, currency_sync_quarantine: null });
+      return rows.length;
+    });
+  }
   deleteAccount(id: string) {
     return this.run(async () => {
       if ((await this.raw.getTransactions({ account_id: id })).length) throw new Error('This account has ledger history. Keep it to preserve financial records.');
@@ -226,6 +240,7 @@ export class LedgerDatabase implements IDatabase {
     return this.run(async () => {
       this.validateEntity(table, input);
       let extra: Record<string, any> = {};
+      let linkedRows: Row[] = [];
       if (table === 'loans') {
         const loan = input as unknown as Loan;
         extra = {
@@ -239,11 +254,27 @@ export class LedgerDatabase implements IDatabase {
         };
         if (loan.id && !loan.shared_loan_id) {
           const old = (await this.raw.getLoans()).find(l => l.id === loan.id);
-          if (old && ['principal_amount', 'interest_rate', 'start_date', 'due_date', 'remaining_balance'].some(k => (old as any)[k] !== (loan as any)[k]) && (await this.raw.getTransactions()).some(t => t.loan_id === loan.id)) throw new Error('Recorded loan amounts cannot be overwritten. Use the payment workflow.');
+          const transactions = await this.raw.getTransactions();
+          if (old && ['principal_amount', 'interest_rate', 'start_date', 'due_date', 'remaining_balance'].some(k => (old as any)[k] !== (loan as any)[k]) && transactions.some(t => t.loan_id === loan.id)) throw new Error('Recorded loan amounts cannot be overwritten. Use the payment workflow.');
+          if (old && (old.person_id !== loan.person_id || old.person_name_snapshot !== loan.person_name_snapshot || old.lender_borrower_name !== loan.lender_borrower_name)) {
+            linkedRows = transactions.filter(transaction => transaction.loan_id === loan.id).map(transaction => {
+              const value: Transaction = {
+                ...transaction,
+                sender_receiver: loan.person_name_snapshot || loan.lender_borrower_name,
+                person_id: loan.person_id,
+                person_name_snapshot: loan.person_id ? loan.person_name_snapshot || loan.lender_borrower_name : undefined,
+                person_link_source: loan.person_id ? 'MANUAL' : undefined,
+                person_alias_used: loan.person_id ? loan.lender_borrower_name : undefined,
+                updated_at: Date.now(),
+              };
+              validateTransaction(value);
+              return { table: 'transactions' as const, id: value.id, value };
+            });
+          }
         }
       }
       const value = { ...input, ...extra, id: input.id || generateUUID(), updated_at: Date.now() };
-      await this.commit([{ table, id: value.id, value }]); return value;
+      await this.commit([{ table, id: value.id, value }, ...linkedRows]); return value;
     });
   }
   createBudget(input: Omit<Budget, 'id'>): Promise<Budget> { return this.save('budgets', input as Budget); }
@@ -289,7 +320,7 @@ export class LedgerDatabase implements IDatabase {
       const loan = (await this.raw.getLoans()).find(l => l.id === loanId);
       if (!loan || loan.shared_loan_id) throw new Error('Use the shared repayment workflow for linked loans');
       if (money(amount) <= 0 || money(amount) > money(loan.remaining_balance)) throw new Error('Payment must not exceed the remaining balance');
-      const tx = await this.buildTransaction({ account_id: accountId, amount, type: loan.type === 'LENT' ? 'INCOME' : 'EXPENSE', purpose: 'FINANCING', loan_id: loan.id, operation_id: operationId, category: 'Loan Repayment', description: `Repayment ${loan.type === 'LENT' ? 'from' : 'to'} ${loan.lender_borrower_name}`, date: Date.now() });
+      const tx = await this.buildTransaction({ account_id: accountId, amount, type: loan.type === 'LENT' ? 'INCOME' : 'EXPENSE', purpose: 'FINANCING', loan_id: loan.id, operation_id: operationId, category: 'Loan Repayment', description: `Repayment ${loan.type === 'LENT' ? 'from' : 'to'} ${loan.lender_borrower_name}`, sender_receiver: loan.person_name_snapshot || loan.lender_borrower_name, person_id: loan.person_id, person_name_snapshot: loan.person_name_snapshot, person_link_source: loan.person_id ? 'MANUAL' : undefined, date: Date.now() });
       const start = new Date(loan.start_date), due = new Date(loan.due_date);
       const months = Math.max(1, (due.getFullYear() - start.getFullYear()) * 12 + due.getMonth() - start.getMonth() - (due.getDate() < start.getDate() ? 1 : 0));
       const totalInterest = loan.total_interest ?? money(loan.principal_amount * loan.interest_rate / 100 * months / 12);
@@ -320,11 +351,11 @@ export class LedgerDatabase implements IDatabase {
       if (totalInterest < 0) throw new Error('Invalid loan principal/payment total');
       const remainingBalance = money(total - paidAmount);
       const loan: Loan = { ...input, principal_amount: principal, remaining_balance: remainingBalance, currency: (await this.raw.getAccounts())[0]?.currency || 'ETB', reminder_at: reminder.getTime(), status: remainingBalance === 0 ? 'PAID' : 'ACTIVE', total_interest: totalInterest, remaining_interest: Math.max(0, money(totalInterest - paidAmount)), interest_method: 'FLAT_MONTHLY', id: generateUUID(), updated_at: Date.now() };
-      const tx = await this.buildTransaction({ account_id: accountId, amount: loan.principal_amount, type: loan.type === 'LENT' ? 'EXPENSE' : 'INCOME', purpose: 'FINANCING', loan_id: loan.id, category: 'Loans', description: `Loan ${loan.type === 'LENT' ? 'to' : 'from'} ${loan.lender_borrower_name}`, date: loan.start_date });
+      const tx = await this.buildTransaction({ account_id: accountId, amount: loan.principal_amount, type: loan.type === 'LENT' ? 'EXPENSE' : 'INCOME', purpose: 'FINANCING', loan_id: loan.id, category: 'Loans', description: `Loan ${loan.type === 'LENT' ? 'to' : 'from'} ${loan.lender_borrower_name}`, sender_receiver: loan.person_name_snapshot || loan.lender_borrower_name, person_id: loan.person_id, person_name_snapshot: loan.person_name_snapshot, person_link_source: loan.person_id ? 'MANUAL' : undefined, date: loan.start_date });
       const rows: Row[] = [{ table: 'loans', id: loan.id, value: loan }, { table: 'transactions', id: tx.id, value: tx }];
       const balances = await this.balances(undefined, tx);
       if (paidAmount > 0) {
-        const payment = await this.buildTransaction({ account_id: accountId, amount: paidAmount, type: loan.type === 'LENT' ? 'INCOME' : 'EXPENSE', purpose: 'FINANCING', loan_id: loan.id, category: 'Loan Repayment', description: 'Initial loan repayment', date: loan.start_date });
+        const payment = await this.buildTransaction({ account_id: accountId, amount: paidAmount, type: loan.type === 'LENT' ? 'INCOME' : 'EXPENSE', purpose: 'FINANCING', loan_id: loan.id, category: 'Loan Repayment', description: 'Initial loan repayment', sender_receiver: loan.person_name_snapshot || loan.lender_borrower_name, person_id: loan.person_id, person_name_snapshot: loan.person_name_snapshot, person_link_source: loan.person_id ? 'MANUAL' : undefined, date: loan.start_date });
         payment.interest_amount = money(Math.min(paidAmount, totalInterest));
         rows.push({ table: 'transactions', id: payment.id, value: payment });
         for (const row of balances) row.value.balance = money(row.value.balance + accountDelta(payment, row.id));

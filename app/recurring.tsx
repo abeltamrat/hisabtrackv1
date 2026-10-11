@@ -20,6 +20,8 @@ import React, { createElement, useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
+import PersonLinkField from '@/components/PersonLinkField';
+import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
 
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -199,6 +201,7 @@ export default function RecurringTransactionsScreen() {
   const [hasRepetitions, setHasRepetitions] = useState(false);
   const [totalRepetitions, setTotalRepetitions] = useState('');
   const [description, setDescription] = useState('');
+  const [selectedPerson, setSelectedPerson] = useState<RecipientProfile>();
 
   const [selectedAccountId, setSelectedAccountId] = useState('');
 
@@ -387,6 +390,8 @@ export default function RecurringTransactionsScreen() {
       isActive: true,
       accountId: selectedAccountId,
       description: description.trim() || undefined,
+      person_id: type === 'TRANSFER' ? undefined : selectedPerson?.id,
+      person_name_snapshot: type === 'TRANSFER' ? undefined : selectedPerson?.displayName,
       totalRepetitions: hasRepetitions && totalRepetitions ? parseInt(totalRepetitions) : undefined,
       completedRepetitions: editingId ? (recurringTransactions.find(t => t.id === editingId)?.completedRepetitions || 0) : 0,
       reminderEnabled,
@@ -457,6 +462,12 @@ export default function RecurringTransactionsScreen() {
     setHasRepetitions(!!recurring.totalRepetitions);
     setTotalRepetitions(recurring.totalRepetitions ? recurring.totalRepetitions.toString() : '');
     setDescription(recurring.description || '');
+    setSelectedPerson(undefined);
+    if (recurring.person_id) {
+      void RecipientIdentityService.getAll().then(people => {
+        setSelectedPerson(people.find(person => person.id === recurring.person_id));
+      });
+    }
     setSelectedAccountId(recurring.accountId);
     setReminderEnabled(recurring.reminderEnabled);
     setReminderDaysBefore(recurring.reminderDaysBefore.toString());
@@ -472,6 +483,7 @@ export default function RecurringTransactionsScreen() {
     setAmount('');
     setCategory('');
     setDescription('');
+    setSelectedPerson(undefined);
     setStartDate(new Date());
     setEndDate(new Date());
     setTotalRepetitions('');
@@ -525,6 +537,10 @@ export default function RecurringTransactionsScreen() {
         tax: recurring.tax,
         category: recurring.category,
         description: `${recurring.name} (Recurring)`,
+        sender_receiver: recurring.type === 'TRANSFER' ? undefined : recurring.person_name_snapshot,
+        person_id: recurring.type === 'TRANSFER' ? undefined : recurring.person_id,
+        person_name_snapshot: recurring.type === 'TRANSFER' ? undefined : recurring.person_name_snapshot,
+        person_link_source: recurring.type === 'TRANSFER' || !recurring.person_id ? undefined : 'MANUAL',
         splits: recurring.splits,
         date: Date.now(),
       }));
@@ -885,6 +901,18 @@ export default function RecurringTransactionsScreen() {
                   onChangeText={setName}
                 />
               </View>
+
+              {type !== 'TRANSFER' && (
+                <PersonLinkField
+                  label={type === 'INCOME' ? 'Received from' : 'Paid to'}
+                  person={selectedPerson}
+                  suggestedName={name}
+                  onChange={person => {
+                    setSelectedPerson(person);
+                    if (person && !name.trim()) setName(person.displayName);
+                  }}
+                />
+              )}
 
               {/* Amount */}
               <View className="mb-4">

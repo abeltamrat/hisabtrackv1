@@ -147,7 +147,9 @@ export function parseEntry(id: string, data: Record<string, any> | undefined): F
     description: str(data.description),
     note: optStr(data.note),
     payerName: optStr(data.payerName),
+    payerPersonId: optStr(data.payerPersonId),
     recipient: optStr(data.recipient),
+    recipientPersonId: optStr(data.recipientPersonId),
     reference_number: optStr(data.reference_number),
     receipt_url: optStr(data.receipt_url),
     sms_linked: data.sms_linked === true,
@@ -199,7 +201,9 @@ export interface FundEntryInput {
   description?: string;
   note?: string;
   payerName?: string;
+  payerPersonId?: string;
   recipient?: string;
+  recipientPersonId?: string;
   reference_number?: string;
   receipt_url?: string;
   sms_linked?: boolean;
@@ -233,7 +237,7 @@ export class SharedFundService {
 
   // ── Entries ───────────────────────────────────────────────────────────────
   static record(fundId: string, entryId: string, input: FundEntryInput) { return call<{ saved: boolean; existing?: boolean }>('record', { fundId, entryId, ...input }); }
-  static announce(fundId: string, entryId: string, input: { amount: number; date: number; payerName: string; note?: string; description?: string }) {
+  static announce(fundId: string, entryId: string, input: { amount: number; date: number; payerName: string; payerPersonId?: string; note?: string; description?: string }) {
     return call('announce', { fundId, entryId, ...input });
   }
   static ack(fundId: string, entryId: string, evidence: { reference_number?: string; receipt_url?: string; sms_linked?: boolean } = {}) {

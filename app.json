@@ -60,6 +60,14 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Hisab Track to choose receipt images from your photos.",
+          "cameraPermission": "Allow Hisab Track to photograph receipts for Smart Input.",
+          "microphonePermission": false
+        }
+      ],
       "./plugins/withSmsReceiver",
       "expo-sqlite",
       "expo-updates",

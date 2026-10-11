@@ -378,6 +378,8 @@ function ThemedStack() {
         <Stack.Screen name="help" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="categories" options={{ headerShown: false }} />
+        <Stack.Screen name="people/index" options={{ headerShown: false }} />
+        <Stack.Screen name="people/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="cards" options={{ headerShown: false }} />
         <Stack.Screen name="draft-transactions" options={{ headerShown: false }} />
         <Stack.Screen name="manage-sms-rules" options={{ headerShown: false }} />

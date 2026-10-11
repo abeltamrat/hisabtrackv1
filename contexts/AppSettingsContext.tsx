@@ -66,7 +66,7 @@ export interface AppSettings {
 interface AppSettingsContextType extends AppSettings {
   setCloudSyncEnabled: (enabled: boolean) => void;
   setAiSharingEnabled: (enabled: boolean) => void;
-  setCurrency: (c: AppCurrencyCode) => void;
+  setCurrency: (c: AppCurrencyCode) => Promise<void>;
   setLanguage: (l: AppLanguage) => void;
   setFontSize: (s: AppFontSize) => void;
   setPreferLocalLogos: (v: boolean) => void;
@@ -120,7 +120,7 @@ const DEFAULT_ASSISTANT_OVERLAY: AssistantOverlaySettings = {
 
 const DEFAULTS: AppSettings = {
   cloudSyncEnabled: false,
-  aiSharingEnabled: false,
+  aiSharingEnabled: true,
   currency: 'USD',
   language: 'en',
   fontSize: 'Medium',
@@ -197,6 +197,11 @@ async function saveSettings(s: AppSettings) {
   } catch { }
 }
 
+export async function saveCloudSyncPreferenceLocally(enabled: boolean) {
+  const current = await loadStoredAppSettings();
+  await saveSettings({ ...current, cloudSyncEnabled: enabled });
+}
+
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const ledgerCurrency = useSelector((state: RootState) => state.accounts.items[0]?.currency);
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
@@ -221,9 +226,10 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const setCloudSyncEnabled = (enabled: boolean) => {
     setSettings(prev => ({ ...prev, cloudSyncEnabled: enabled }));
     void import('@/services/SyncService').then(async ({ default: SyncService }) => {
-      if (!enabled) { SyncService.stopAutoSync(); return; }
       const { AuthService } = await import('@/services/AuthService');
       const uid = AuthService.getCurrentUser()?.uid;
+      if (uid) void import('@/services/CloudProfileService').then(({ default: profile }) => profile.setCloudSyncEnabled(uid, enabled)).catch(() => undefined);
+      if (!enabled) { SyncService.stopAutoSync(); return; }
       if (uid) SyncService.startAutoSync(uid);
     });
   };
@@ -231,10 +237,11 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (ledgerCurrency && settingsLoaded) setSettings(previous => previous.currency === ledgerCurrency ? previous : { ...previous, currency: ledgerCurrency });
   }, [ledgerCurrency, settingsLoaded]);
-  const setCurrency = (currency: AppCurrencyCode) => {
+  const setCurrency = async (currency: AppCurrencyCode) => {
     if (ledgerCurrency && currency !== ledgerCurrency) {
-      Alert.alert('Ledger currency', `Existing balances are recorded in ${ledgerCurrency}. Currency conversion is not supported.`);
-      return;
+      const db = await (await import('@/services/database')).getDatabase();
+      await db.relabelCurrency(currency);
+      await (await import('@/services/SyncService')).default.refreshLocalStore();
     }
     setSettings(prev => ({ ...prev, currency }));
   };

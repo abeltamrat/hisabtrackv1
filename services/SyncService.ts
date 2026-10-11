@@ -11,6 +11,7 @@ import { collection, doc, getDocs, getFirestore, onSnapshot, runTransaction, ser
 import { getAuth } from 'firebase/auth';
 
 const collections: Table[] = ['accounts', 'transactions', 'budgets', 'loans', 'meta'];
+export type CloudSyncState = 'pending' | 'syncing' | 'synced' | 'error';
 export class SyncService {
   static currentUid: string | null = null;
   static applyingRemote = false;
@@ -24,8 +25,31 @@ export class SyncService {
   private static unsubs: Array<() => void> = [];
   private static running: Promise<void> | null = null;
   private static rerun = false;
+  private static status: CloudSyncState = 'pending';
+  private static statusListeners = new Set<(status: CloudSyncState) => void>();
+  private static setStatus(status: CloudSyncState) {
+    this.status = status;
+    this.statusListeners.forEach(listener => listener(status));
+  }
+  static getStatus() { return this.status; }
+  static subscribeStatus(listener: (status: CloudSyncState) => void) {
+    this.statusListeners.add(listener);
+    listener(this.status);
+    return () => { this.statusListeners.delete(listener); };
+  }
   static getFirestore() { return getFirestore(); }
   static sanitizeForFirestore<T>(input: T): T { return JSON.parse(JSON.stringify(input)); }
+  private static async protectMixedCurrencies(db: Awaited<ReturnType<typeof getDatabase>>, changes: Array<Row & { revision: number }>) {
+    const remoteAccounts = changes.filter(change => change.table === 'accounts' && change.value).map(change => change.value);
+    const currencies = [...new Set(remoteAccounts.map(account => account.currency).filter(Boolean))] as string[];
+    if (currencies.length <= 1) return { changes, warning: null as string | null, relabelTo: null as string | null };
+    const settings = await (await import('@/contexts/AppSettingsContext')).loadStoredAppSettings();
+    const currency = settings.currency;
+    const normalized = changes.map(change => change.value && (change.table === 'accounts' || change.table === 'loans')
+      ? { ...change, value: { ...change.value, currency } }
+      : change);
+    return { changes: normalized, relabelTo: currency, warning: `Cloud currency identifiers were standardized to ${currency}; numeric amounts were not converted.` };
+  }
   static async refreshLocalStore() {
     await Promise.all([
       (store.dispatch as AppDispatch)(fetchAccounts()).unwrap(),
@@ -41,6 +65,30 @@ export class SyncService {
     const db = await getDatabase();
     if (db.scope !== uid) throw new Error('Database session is not ready');
     this.check(uid, generation);
+    // A reinstalled app starts with an empty ledger and no revision history.
+    // Pull first so local defaults cannot be seeded as competing cloud edits.
+    const firstSync = !(await db.readMeta('sync_initialized'));
+    const localLedgerEmpty = firstSync && !(await Promise.all([
+      db.getAccounts(), db.getTransactions(), db.getBudgets(), db.getLoans(),
+    ])).some(rows => rows.length > 0);
+    if (localLedgerEmpty) {
+      const initial: Array<Row & { revision: number }> = [];
+      for (const table of collections) {
+        const snapshot = await getDocs(collection(getFirestore(), `users/${uid}/${table}`));
+        this.check(uid, generation);
+        for (const item of snapshot.docs) {
+          if (table === 'meta' && item.id !== 'categories') continue;
+          const { _revision = 0, _deleted, _operation, _syncedAt, ...value } = item.data();
+          initial.push({ table, id: item.id, value: _deleted ? undefined : { ...value, id: item.id }, revision: _revision });
+        }
+      }
+      const protectedInitial = await this.protectMixedCurrencies(db, initial);
+      await db.applyRemote(protectedInitial.changes);
+      if (protectedInitial.relabelTo) await db.relabelCurrency(protectedInitial.relabelTo, true);
+      if (protectedInitial.warning) this.lastError = protectedInitial.warning;
+      await db.writeMeta('sync_initialized', true);
+      await this.refreshLocalStore();
+    }
     await db.seedOutbox();
     this.isPushing = true;
     try {
@@ -96,21 +144,26 @@ export class SyncService {
         }
       }
       this.check(uid, generation);
-      await db.applyRemote(changes);
+      const protectedChanges = await this.protectMixedCurrencies(db, changes);
+      await db.applyRemote(protectedChanges.changes);
+      if (protectedChanges.relabelTo) { await db.relabelCurrency(protectedChanges.relabelTo, true); this.rerun = true; }
       if (Object.keys(await db.readMeta('outbox') || {}).length) this.rerun = true;
+      await db.writeMeta('last_cloud_sync_at', Date.now());
       await this.refreshLocalStore();
-      this.lastPushFinishedAt = Date.now(); this.lastError = null;
+      await (await import('@/services/AuxiliarySyncService')).default.sync(uid);
+      this.lastPushFinishedAt = Date.now(); this.lastError = protectedChanges.warning;
       NativeErrorReporter.reset();
     } finally { this.applyingRemote = false; }
   }
   private static async execute(uid: string): Promise<void> {
     if (this.running) { this.rerun = true; await this.running; return; }
+    this.setStatus('syncing');
     const generation = this.generation;
     this.running = (async () => {
       do { this.rerun = false; await this.cycle(uid, generation); } while (this.rerun && generation === this.generation);
     })();
-    try { await this.running; }
-    catch (error) { this.lastError = error instanceof Error ? error.message : 'Sync failed'; throw error; }
+    try { await this.running; this.setStatus('synced'); }
+    catch (error) { this.lastError = error instanceof Error ? error.message : 'Sync failed'; this.setStatus('error'); throw error; }
     finally { this.running = null; }
   }
   static async syncNow(uid?: string | null) {
@@ -120,9 +173,27 @@ export class SyncService {
     if (!(await loadStoredAppSettings()).cloudSyncEnabled) return { cloudSynced: false };
     await this.execute(uid); return { cloudSynced: true };
   }
+  static async getDataStatus(uid: string) {
+    const db = await getDatabase();
+    const { default: AuxiliarySyncService } = await import('@/services/AuxiliarySyncService');
+    const localRows = await Promise.all([db.getAccounts(), db.getTransactions(), db.getBudgets(), db.getLoans()]);
+    const remoteRows = await Promise.all(collections.slice(0, 4).map(table => getDocs(collection(getFirestore(), `users/${uid}/${table}`))));
+    const auxiliarySnapshot = await getDocs(collection(getFirestore(), `users/${uid}/app_data`));
+    const names = ['accounts', 'transactions', 'budgets', 'loans'] as const;
+    return {
+      local: Object.fromEntries(names.map((name, index) => [name, localRows[index].length])),
+      cloud: Object.fromEntries(names.map((name, index) => [name, remoteRows[index].docs.filter(item => !item.data()._deleted).length])),
+      auxiliaryLocal: await AuxiliarySyncService.getLocalCounts(),
+      auxiliaryCloud: Object.fromEntries(auxiliarySnapshot.docs.map(item => [item.id, Number(item.data().count || 0)])),
+      lastSyncAt: Number(await db.readMeta('last_cloud_sync_at') || 0),
+      restoreReport: await db.readMeta('last_restore_report') || null,
+      currencyQuarantine: await db.readMeta('currency_sync_quarantine') || null,
+    };
+  }
   static async pushAllForUser(uid: string, _mergeOnly = false) { await this.syncNow(uid); }
   static async pullAllForUser(uid: string, _mergeOnly = false) { await this.syncNow(uid); }
   private static schedule() {
+    this.setStatus('pending');
     this.rerun = !!this.running;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
@@ -137,6 +208,9 @@ export class SyncService {
     this.stopAutoSync(); this.currentUid = uid;
     this.unsubs.push(LocalChangeEmitter.subscribe(() => { if (!this.applyingRemote) this.schedule(); }));
     for (const table of collections) this.unsubs.push(onSnapshot(collection(getFirestore(), `users/${uid}/${table}`), snapshot => {
+      if (!snapshot.metadata.hasPendingWrites) this.schedule();
+    }, error => { this.lastError = error.message; }));
+    this.unsubs.push(onSnapshot(collection(getFirestore(), `users/${uid}/app_data`), snapshot => {
       if (!snapshot.metadata.hasPendingWrites) this.schedule();
     }, error => { this.lastError = error.message; }));
     this.schedule();

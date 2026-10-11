@@ -1,4 +1,5 @@
 import RawStorage from '@react-native-async-storage/async-storage';
+import LocalChangeEmitter from './LocalChangeEmitter';
 
 let scope = 'guest';
 export const getSessionScope = () => scope;
@@ -32,18 +33,18 @@ export async function setSessionScope(uid: string | null, adoptExistingSession =
 
 const SessionStorage = {
   getItem: (key: string) => RawStorage.getItem(storageKey(key)),
-  setItem: (key: string, value: string) => RawStorage.setItem(storageKey(key), value),
-  removeItem: (key: string) => RawStorage.removeItem(storageKey(key)),
+  setItem: async (key: string, value: string) => { await RawStorage.setItem(storageKey(key), value); LocalChangeEmitter.emit(); },
+  removeItem: async (key: string) => { await RawStorage.removeItem(storageKey(key)); LocalChangeEmitter.emit(); },
   multiGet: (keys: readonly string[]) => { const p = prefix(); return RawStorage.multiGet(keys.map(key => p + key)).then(rows => rows.map(([key, value]) => [key.slice(p.length), value] as [string, string | null])); },
-  multiSet: (pairs: readonly (readonly [string, string])[]) => RawStorage.multiSet(pairs.map(([key, value]) => [storageKey(key), value])),
-  multiRemove: (keys: readonly string[]) => RawStorage.multiRemove(keys.map(storageKey)),
+  multiSet: async (pairs: readonly (readonly [string, string])[]) => { await RawStorage.multiSet(pairs.map(([key, value]) => [storageKey(key), value])); LocalChangeEmitter.emit(); },
+  multiRemove: async (keys: readonly string[]) => { await RawStorage.multiRemove(keys.map(storageKey)); LocalChangeEmitter.emit(); },
   getAllKeys: async () => { const p = prefix(); return (await RawStorage.getAllKeys()).filter(key => key.startsWith(p)).map(key => key.slice(p.length)); },
-  clear: async () => { const p = prefix(); await RawStorage.multiRemove((await RawStorage.getAllKeys()).filter(key => key.startsWith(p))); },
+  clear: async () => { const p = prefix(); await RawStorage.multiRemove((await RawStorage.getAllKeys()).filter(key => key.startsWith(p))); LocalChangeEmitter.emit(); },
 };
 export const sessionLocalStorage = {
   getItem: (key: string) => localStorage.getItem(storageKey(key)),
-  setItem: (key: string, value: string) => localStorage.setItem(storageKey(key), value),
-  removeItem: (key: string) => localStorage.removeItem(storageKey(key)),
-  clear: () => { for (const key of Object.keys(localStorage).filter(key => key.startsWith(prefix()))) localStorage.removeItem(key); },
+  setItem: (key: string, value: string) => { localStorage.setItem(storageKey(key), value); LocalChangeEmitter.emit(); },
+  removeItem: (key: string) => { localStorage.removeItem(storageKey(key)); LocalChangeEmitter.emit(); },
+  clear: () => { for (const key of Object.keys(localStorage).filter(key => key.startsWith(prefix()))) localStorage.removeItem(key); LocalChangeEmitter.emit(); },
 };
 export default SessionStorage;

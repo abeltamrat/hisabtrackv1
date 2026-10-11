@@ -14,6 +14,10 @@ export interface DraftTransaction {
   date: number; // Transaction date from SMS
   sms_id: string;
   sender_receiver?: string;
+  person_id?: string;
+  person_name_snapshot?: string;
+  person_link_source?: 'MANUAL' | 'SMS_SUGGESTED' | 'SMS_CONFIRMED' | 'HISTORICAL_REVIEW';
+  person_alias_used?: string;
   sms_sender?: string;
   reference_number?: string;
   fees?: number;
@@ -104,6 +108,11 @@ export class DraftTransactionService {
       console.error('Error loading draft transactions:', error);
       throw error;
     }
+  }
+
+  static async replaceAll(drafts: DraftTransaction[]): Promise<void> {
+    if (!Array.isArray(drafts) || drafts.some(draft => !draft?.id || !draft.account_id || !draft.status)) throw new Error('Invalid draft transaction records');
+    await this.mutate(() => this.saveAll(drafts));
   }
 
   /**

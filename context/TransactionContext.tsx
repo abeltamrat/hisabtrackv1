@@ -17,6 +17,7 @@ export interface Category {
 interface TransactionContextType {
   categories: Category[];
   addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
+  addCategoryHierarchy: (categories: Array<Omit<Category, 'id' | 'parentId'> & { tempId: string; parentTempId?: string }>) => Promise<void>;
   updateCategory: (id: string, updates: Partial<Category>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   refreshCategories: () => Promise<void>;
@@ -90,6 +91,28 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
     }
   };
 
+  const addCategoryHierarchy: TransactionContextType['addCategoryHierarchy'] = async drafts => {
+    if (!drafts.length) throw new Error('Choose at least one category');
+    const existingNames = new Set(categories.map(category => category.name.trim().toLowerCase()));
+    const draftIds = new Set<string>();
+    for (const draft of drafts) {
+      const name = draft.name.trim();
+      if (!name || existingNames.has(name.toLowerCase())) throw new Error(`Category name must be unique: ${name || 'Unnamed'}`);
+      if (!draft.tempId || draftIds.has(draft.tempId)) throw new Error('Generated category identifiers are invalid');
+      existingNames.add(name.toLowerCase()); draftIds.add(draft.tempId);
+    }
+    for (const draft of drafts) if (draft.parentTempId && !draftIds.has(draft.parentTempId)) throw new Error(`Missing parent for ${draft.name}`);
+    const stamp = Date.now();
+    const ids = Object.fromEntries(drafts.map((draft, index) => [draft.tempId, `${stamp}-${index}`]));
+    const created: Category[] = drafts.map(draft => ({
+      id: ids[draft.tempId], name: draft.name.trim(), icon: draft.icon, color: draft.color, type: draft.type,
+      parentId: draft.parentTempId ? ids[draft.parentTempId] : undefined,
+    }));
+    const next = [...categories, ...created];
+    await (await import('@/utils/storage')).StorageService.saveCategories(next);
+    setCategories(next);
+  };
+
   const assertUnused = async (names: string[]) => {
     const db = await (await import('@/services/database')).getDatabase();
     const [transactions, budgets, rules] = await Promise.all([db.getTransactions(), db.getBudgets(), (await import('@/services/SMSLearningService')).SMSLearningService.getAllRules()]);
@@ -135,6 +158,7 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
       value={{
         categories,
         addCategory,
+        addCategoryHierarchy,
         updateCategory,
         deleteCategory,
         refreshCategories,

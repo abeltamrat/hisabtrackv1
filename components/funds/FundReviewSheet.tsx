@@ -5,6 +5,7 @@ import { useDispatch } from 'react-redux';
 
 import CategoryTreeSelect from '@/components/CategoryTreeSelect';
 import FormSheet from '@/components/FormSheet';
+import PersonLinkField from '@/components/PersonLinkField';
 import FundPostingService, { custodianFundFields } from '@/services/FundPostingService';
 import FundSyncService from '@/services/FundSyncService';
 import { fundErrorMessage, SharedFundService } from '@/services/SharedFundService';
@@ -14,6 +15,7 @@ import { addTransaction, fetchTransactions } from '@/store/slices/transactionsSl
 import type { Account, FundEntry, SharedFund, Transaction } from '@/types/database';
 import { Alert } from '@/utils/alert';
 import { entryHeadline, formatDay, formatTime, setCustodianAccount, setOwnerReturnAccount } from './fundUi';
+import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
 
 type OwnCategory = { id: string; name: string; parentId?: string; color?: string; icon?: string; type: string };
 
@@ -42,6 +44,7 @@ export default function FundReviewSheet({
   const [counts, setCounts] = useState(true);
   const [accountId, setAccountId] = useState('');
   const [remember, setRemember] = useState(true);
+  const [payerPerson, setPayerPerson] = useState<RecipientProfile>();
 
   useEffect(() => {
     if (!entry) return;
@@ -52,6 +55,8 @@ export default function FundReviewSheet({
     setCounts(entry.ownerPurpose ? entry.ownerPurpose === 'OPERATING' : entry.kind === 'SPEND');
     setAccountId(entry.ownerAccountId || (isOwner ? '' : defaultAccountId || ''));
     setRemember(true);
+    setPayerPerson(undefined);
+    if (entry.payerPersonId) void RecipientIdentityService.getAll().then(people => setPayerPerson(people.find(person => person.id === entry.payerPersonId)));
   }, [entry?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const myAccounts = useMemo(() => accounts.filter(account => account.fund_id !== fund.id), [accounts, fund.id]);
@@ -104,6 +109,9 @@ export default function FundReviewSheet({
       type: 'INCOME', account_id: accountId, amount: entry.amount, date: Date.now(), category: 'Fund deposit',
       description: `For ${fund.ownerName}${entry.payerName ? ` from ${entry.payerName}` : ''}`,
       sender_receiver: entry.payerName || fund.ownerName,
+      person_id: payerPerson?.id || entry.payerPersonId,
+      person_name_snapshot: payerPerson?.displayName || entry.payerName,
+      person_link_source: payerPerson?.id || entry.payerPersonId ? 'MANUAL' : undefined,
       ...custodianFundFields(fund.id, entry.id),
     } as Omit<Transaction, 'id'>;
     await FundPostingService.submit({ id: entry.id, uid: myUid, fundId: fund.id, fundName: fund.name, kind: 'ack', evidence: {} }, () => dispatch(addTransaction(local)).unwrap());
@@ -200,6 +208,8 @@ export default function FundReviewSheet({
           </TouchableOpacity>
         ) : null}
       </View>
+
+      {canAck && thirdParty && <PersonLinkField label="Sender" person={payerPerson} suggestedName={entry.payerName} onChange={setPayerPerson} />}
 
       {entry.flag && (
         <View className="rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 mb-4">

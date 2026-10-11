@@ -316,6 +316,12 @@ export default function TransactionDetail() {
             {transaction.sender_receiver ? (
               <DetailRow label={isIncome ? 'Sender' : 'Recipient'} value={transaction.sender_receiver} lines={2} />
             ) : null}
+            {transaction.person_id ? (
+              <TouchableOpacity onPress={() => router.push(`/people/${transaction.person_id}` as any)} className="flex-row items-center justify-between rounded-xl bg-teal-50 dark:bg-teal-950/30 px-3 py-3">
+                <View className="flex-row items-center"><FontAwesome name="address-card" size={14} color="#0d9488" /><Text className="text-teal-700 dark:text-teal-300 font-bold text-sm ml-2">View financial relationship</Text></View>
+                <FontAwesome name="chevron-right" size={12} color="#0d9488" />
+              </TouchableOpacity>
+            ) : null}
 
             {transaction.reference_number ? (
               <DetailRow label="Reference" value={transaction.reference_number} />

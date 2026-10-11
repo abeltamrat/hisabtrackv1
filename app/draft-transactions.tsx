@@ -30,7 +30,9 @@ import { detectRecurringPattern } from '@/utils/recurringDetection';
 import { useI18n } from '@/contexts/I18nContext';
 import { rankTagSuggestions } from '@/utils/tagSuggestions';
 import ReconciliationService, { type BalanceGapAnalysis } from '@/services/ReconciliationService';
-import RecipientIdentityService from '@/services/RecipientIdentityService';
+import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
+import PersonPicker from '@/components/PersonPicker';
+import { normalizeRecipient } from '@/utils/phase2Intelligence';
 import SmsFundBlock from '@/components/funds/SmsFundBlock';
 import { FUNDS_ENABLED } from '@/config/features';
 import { useAuth } from '@/contexts/AuthContext';
@@ -108,6 +110,9 @@ export default function DraftTransactionsScreen() {
 
   // Edit states for confirmation
   const [editedRecipient, setEditedRecipient] = useState('');
+  const [selectedPerson, setSelectedPerson] = useState<RecipientProfile>();
+  const [selectedPersonId, setSelectedPersonId] = useState<string>();
+  const [showPersonPicker, setShowPersonPicker] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');
   const [editedCategory, setEditedCategory] = useState('');
   const [editedType, setEditedType] = useState<TransactionType>('EXPENSE');
@@ -414,6 +419,8 @@ export default function DraftTransactionsScreen() {
   const applyRecipientDefaults = async (draft: DraftTransaction) => {
     const profile = await RecipientIdentityService.resolve(draft.sender_receiver, draft.raw_sms);
     if (!profile) return;
+    setSelectedPerson(profile);
+    setSelectedPersonId(profile.id);
     const defaults = RecipientIdentityService.learnedDefaults(profile, transactions);
     setEditedRecipient(profile.displayName);
     if (defaults.category && !draft.is_transfer) setEditedCategory(defaults.category);
@@ -423,6 +430,9 @@ export default function DraftTransactionsScreen() {
   const openConfirmModal = (draft: DraftTransaction) => {
     setSelectedDraft(draft);
     setEditedRecipient(draft.sender_receiver || '');
+    setSelectedPerson(undefined);
+    setSelectedPersonId(draft.person_id);
+    if (draft.person_id) void RecipientIdentityService.getAll().then(people => setSelectedPerson(people.find(person => person.id === draft.person_id)));
     setEditedDescription(draft.description);
     setEditedCategory(draft.category);
     setEditedType(draft.is_transfer ? 'TRANSFER' : draft.type);
@@ -549,7 +559,6 @@ export default function DraftTransactionsScreen() {
         Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(selectedDraft.amount)}.`);
         return;
       }
-
       // Outgoing leg knows its destination; incoming leg knows its source —
       // either one records as a single TRANSFER from source to destination.
       const isTransferDraft = editedType === 'TRANSFER';
@@ -581,6 +590,10 @@ export default function DraftTransactionsScreen() {
         tags: parsedTags,
         date: selectedDraft.date,
         sender_receiver: editedRecipient.trim() || undefined,
+        person_id: isTransferDraft ? undefined : selectedPersonId,
+        person_name_snapshot: !isTransferDraft && selectedPersonId ? selectedPerson?.displayName || editedRecipient.trim() : undefined,
+        person_link_source: !isTransferDraft && selectedPersonId ? 'SMS_CONFIRMED' : undefined,
+        person_alias_used: !isTransferDraft && selectedPersonId ? selectedDraft.sender_receiver || editedRecipient.trim() : undefined,
         reference_number: selectedDraft.reference_number,
         sms_id: selectedDraft.sms_id,
         fees: expenseLeg.fees,
@@ -614,6 +627,12 @@ export default function DraftTransactionsScreen() {
       await dispatch(fetchAccounts());
       const counterpartId = matchedCounterpartId || selectedDraft.paired_draft_id;
       if (transactionId) {
+        await DraftTransactionService.updateMany([{ id: selectedDraft.id, patch: {
+          person_id: isTransferDraft ? undefined : selectedPersonId,
+          person_name_snapshot: !isTransferDraft && selectedPersonId ? selectedPerson?.displayName || editedRecipient.trim() : undefined,
+          person_link_source: !isTransferDraft && selectedPersonId ? 'SMS_CONFIRMED' : undefined,
+          person_alias_used: !isTransferDraft && selectedPersonId ? selectedDraft.sender_receiver || editedRecipient.trim() : undefined,
+        } }]);
         const confirmation: NonNullable<DraftTransaction['confirmation']> = {
           recorded_at: Date.now(),
           type: isTransferDraft ? 'TRANSFER' : editedType,
@@ -677,7 +696,7 @@ export default function DraftTransactionsScreen() {
       let loanCreated = false;
       let loanId: string | undefined;
       if (recordAsLoan && editedType !== 'TRANSFER' && !fundUndo) {
-        const loanPrincipal = selectedDraft.type === 'EXPENSE'
+        const loanPrincipal = editedType === 'EXPENSE'
           ? Math.max(0, Math.round((selectedDraft.amount - (selectedDraft.fees ?? 0) - (selectedDraft.tax ?? 0)) * 100) / 100)
           : selectedDraft.amount;
         const parsedDueDate = new Date(`${loanDueDate}T12:00:00`).getTime();
@@ -685,12 +704,14 @@ export default function DraftTransactionsScreen() {
           ? parsedDueDate
           : selectedDraft.date + 30 * 24 * 60 * 60 * 1000;
         const loanResult = await dispatch(addLoan({
-          type: selectedDraft.type === 'INCOME' ? 'BORROWED' : 'LENT',
+          type: editedType === 'INCOME' ? 'BORROWED' : 'LENT',
           principal_amount: loanPrincipal,
           interest_rate: 0,
           start_date: selectedDraft.date,
           due_date: dueDate,
           lender_borrower_name: loanCounterparty.trim() || selectedDraft.sender_receiver || 'SMS loan',
+          person_id: selectedPersonId,
+          person_name_snapshot: selectedPerson?.displayName,
           status: 'ACTIVE',
           remaining_balance: loanPrincipal,
         }));
@@ -704,7 +725,7 @@ export default function DraftTransactionsScreen() {
           ? `Recorded for ${fundForEntry?.name}. ${fundMessage}`
           : recordAsLoan
           ? loanCreated
-            ? `Transaction recorded and ${selectedDraft.type === 'INCOME' ? 'borrowed loan' : 'loan given'} added to Loans.`
+            ? `Transaction recorded and ${editedType === 'INCOME' ? 'borrowed loan' : 'loan given'} added to Loans.`
             : 'Transaction recorded, but the loan record could not be created. You can add it manually from Loans.'
           : recurringError
             ? `Transaction recorded. Recurring setup needs attention: ${recurringError}`
@@ -813,6 +834,10 @@ export default function DraftTransactionsScreen() {
           tags: [],
           date: draft.date,
           sender_receiver: draft.sender_receiver,
+          person_id: (isBulkTransfer || isBulkIncomingTransfer) ? undefined : draft.person_id,
+          person_name_snapshot: (isBulkTransfer || isBulkIncomingTransfer) ? undefined : draft.person_name_snapshot,
+          person_link_source: (isBulkTransfer || isBulkIncomingTransfer) || !draft.person_id ? undefined : 'SMS_CONFIRMED',
+          person_alias_used: (isBulkTransfer || isBulkIncomingTransfer) ? undefined : draft.person_alias_used,
           reference_number: draft.reference_number,
           sms_id: draft.sms_id,
           fees: draft.fees,
@@ -1596,7 +1621,11 @@ export default function DraftTransactionsScreen() {
                 <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-2 uppercase">Record as</Text>
                 <View className="flex-row gap-2">
                   {(['EXPENSE', 'INCOME', 'TRANSFER'] as TransactionType[]).map(item => (
-                    <TouchableOpacity key={item} onPress={() => { setEditedType(item); setRecordAsLoan(false); }} className={`flex-1 py-2.5 rounded-xl items-center ${editedType === item ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}>
+                    <TouchableOpacity key={item} onPress={() => {
+                      setEditedType(item);
+                      setRecordAsLoan(false);
+                      if (item === 'TRANSFER') setSplitEnabled(false);
+                    }} className={`flex-1 py-2.5 rounded-xl items-center ${editedType === item ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}>
                       <Text className={`text-[10px] font-bold ${editedType === item ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{item}</Text>
                     </TouchableOpacity>
                   ))}
@@ -1681,13 +1710,89 @@ export default function DraftTransactionsScreen() {
                 />
               )}
 
-              {editedType !== 'TRANSFER' && !fundOn && (
+              {(!fundOn || editedType !== 'TRANSFER') && (
+                <View className="mb-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                  <View className="mb-3">
+                    <Text className="text-sm font-bold text-slate-900 dark:text-white">Transaction options</Text>
+                    <Text className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      Select anything else that applies. The form will expand with the details it needs.
+                    </Text>
+                  </View>
+
+                  {editedType !== 'TRANSFER' && !fundOn && (
+                    <TouchableOpacity
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: recordAsLoan }}
+                      accessibilityLabel="This is a loan"
+                      onPress={() => setRecordAsLoan(current => !current)}
+                      className={`mb-2 min-h-[64px] flex-row items-center rounded-xl border p-3 ${recordAsLoan ? 'border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}
+                    >
+                      <View className={`h-8 w-8 items-center justify-center rounded-lg ${recordAsLoan ? 'bg-amber-500' : 'bg-slate-100 dark:bg-slate-700'}`}>
+                        <FontAwesome name="handshake-o" size={15} color={recordAsLoan ? '#fff' : '#94a3b8'} />
+                      </View>
+                      <View className="ml-3 flex-1">
+                        <Text className="font-bold text-slate-900 dark:text-white">This is a loan</Text>
+                        <Text className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          {editedType === 'INCOME' ? 'Track money you borrowed.' : 'Track money you lent.'}
+                        </Text>
+                      </View>
+                      <FontAwesome name={recordAsLoan ? 'check-circle' : 'circle-o'} size={20} color={recordAsLoan ? '#d97706' : '#94a3b8'} />
+                    </TouchableOpacity>
+                  )}
+
+                  {!fundOn && <TouchableOpacity
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: makeRecurring }}
+                    accessibilityLabel="Make this recurring"
+                    onPress={() => setMakeRecurring(current => !current)}
+                    className={`mb-2 min-h-[64px] flex-row items-center rounded-xl border p-3 ${makeRecurring ? 'border-violet-400 bg-violet-50 dark:border-violet-700 dark:bg-violet-900/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}
+                  >
+                    <View className={`h-8 w-8 items-center justify-center rounded-lg ${makeRecurring ? 'bg-violet-600' : 'bg-slate-100 dark:bg-slate-700'}`}>
+                      <FontAwesome name="repeat" size={15} color={makeRecurring ? '#fff' : '#94a3b8'} />
+                    </View>
+                    <View className="ml-3 flex-1">
+                      <Text className="font-bold text-slate-900 dark:text-white">Make this recurring</Text>
+                      <Text className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Create a schedule after recording this SMS.</Text>
+                    </View>
+                    <FontAwesome name={makeRecurring ? 'check-circle' : 'circle-o'} size={20} color={makeRecurring ? '#7c3aed' : '#94a3b8'} />
+                  </TouchableOpacity>}
+
+                  {editedType !== 'TRANSFER' && (
+                    <TouchableOpacity
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: splitEnabled }}
+                      accessibilityLabel="Split across categories"
+                      onPress={() => {
+                        const enabled = !splitEnabled;
+                        setSplitEnabled(enabled);
+                        if (enabled && splits.length === 0) setSplits([
+                          { id: `split-${Date.now()}-0`, amount: selectedDraft?.amount || 0, category: editedCategory || confirmCategories[0]?.name || 'Uncategorized' },
+                          { id: `split-${Date.now()}-1`, amount: 0, category: confirmCategories[1]?.name || confirmCategories[0]?.name || 'Uncategorized' },
+                        ]);
+                      }}
+                      className={`min-h-[64px] flex-row items-center rounded-xl border p-3 ${splitEnabled ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}
+                    >
+                      <View className={`h-8 w-8 items-center justify-center rounded-lg ${splitEnabled ? 'bg-indigo-600' : 'bg-slate-100 dark:bg-slate-700'}`}>
+                        <FontAwesome name="pie-chart" size={15} color={splitEnabled ? '#fff' : '#94a3b8'} />
+                      </View>
+                      <View className="ml-3 flex-1">
+                        <Text className="font-bold text-slate-900 dark:text-white">Split across categories</Text>
+                        <Text className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Allocate this amount across two or more categories.</Text>
+                      </View>
+                      <FontAwesome name={splitEnabled ? 'check-circle' : 'circle-o'} size={20} color={splitEnabled ? '#4f46e5' : '#94a3b8'} />
+                    </TouchableOpacity>
+                  )}
+
+                </View>
+              )}
+
+              {editedType !== 'TRANSFER' && !fundOn && recordAsLoan && (
                 <View className={`rounded-2xl p-4 mb-5 border-2 ${recordAsLoan ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 dark:border-amber-700' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
                   <TouchableOpacity
                     onPress={() => setRecordAsLoan(!recordAsLoan)}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: recordAsLoan }}
-                    className="flex-row items-center"
+                    className="hidden"
                   >
                     <View className={`w-7 h-7 rounded-lg justify-center items-center mr-3 ${recordAsLoan ? 'bg-amber-500' : 'bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600'}`}>
                       {recordAsLoan && <FontAwesome name="check" size={14} color="#fff" />}
@@ -1695,7 +1800,7 @@ export default function DraftTransactionsScreen() {
                     <View className="flex-1">
                       <Text className="text-slate-900 dark:text-white font-bold">This is a loan</Text>
                       <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-                        {selectedDraft?.type === 'INCOME'
+                        {editedType === 'INCOME'
                           ? 'Credited account → I borrowed this money'
                           : 'Debited account → I gave this loan'}
                       </Text>
@@ -1705,13 +1810,17 @@ export default function DraftTransactionsScreen() {
 
                   {recordAsLoan && (
                     <View className="mt-4 pt-4 border-t border-amber-200 dark:border-amber-800">
+                      <View className="mb-4 flex-row items-center">
+                        <FontAwesome name="handshake-o" size={16} color="#d97706" />
+                        <Text className="ml-2 font-bold text-amber-900 dark:text-amber-200">Loan details</Text>
+                      </View>
                       <Text className="text-slate-600 dark:text-slate-300 text-xs font-bold mb-1.5">
-                        {selectedDraft?.type === 'INCOME' ? 'Lender / provider' : 'Borrower'}
+                        {editedType === 'INCOME' ? 'Lender / provider' : 'Borrower'}
                       </Text>
                       <TextInput
                         value={loanCounterparty}
                         onChangeText={setLoanCounterparty}
-                        placeholder={selectedDraft?.type === 'INCOME' ? 'Who lent you the money?' : 'Who borrowed the money?'}
+                        placeholder={editedType === 'INCOME' ? 'Who lent you the money?' : 'Who borrowed the money?'}
                         placeholderTextColor="#94a3b8"
                         className="bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white mb-3"
                       />
@@ -1732,10 +1841,11 @@ export default function DraftTransactionsScreen() {
 
               {/* Editable Fields */}
               <View className="mb-6">
-                <Text className="text-slate-500 dark:text-slate-400 text-sm font-bold mb-2">{t('recipient')}</Text>
+                <View className="flex-row items-center justify-between mb-2"><Text className="text-slate-500 dark:text-slate-400 text-sm font-bold">{t('recipient')}</Text>{editedType !== 'TRANSFER' && <TouchableOpacity onPress={() => setShowPersonPicker(true)}><Text className="text-indigo-600 dark:text-indigo-400 text-xs font-bold">{selectedPersonId ? 'Change person' : 'Link or save person'}</Text></TouchableOpacity>}</View>
+                {selectedPerson && <View className="flex-row items-center rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 px-3 py-2 mb-2"><FontAwesome name="user" size={13} color="#0d9488" /><View className="flex-1 ml-2"><Text className="text-teal-800 dark:text-teal-200 font-bold">{selectedPerson.displayName}</Text><Text className="text-teal-600 dark:text-teal-400 text-[10px]">{(selectedPerson.groups || []).join(' • ') || 'Saved person'}</Text></View><TouchableOpacity accessibilityLabel="Remove person link" onPress={() => { setSelectedPerson(undefined); setSelectedPersonId(undefined); }}><FontAwesome name="close" size={14} color="#0d9488" /></TouchableOpacity></View>}
                 <TextInput
                   value={editedRecipient}
-                  onChangeText={setEditedRecipient}
+                  onChangeText={value => { setEditedRecipient(value); if (selectedPersonId && normalizeRecipient(value) !== normalizeRecipient(selectedPerson?.displayName || selectedDraft?.person_name_snapshot)) { setSelectedPerson(undefined); setSelectedPersonId(undefined); } }}
                   className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-slate-900 dark:text-white text-base border border-slate-100 dark:border-slate-700"
                   placeholder="Who received or sent the money?"
                   placeholderTextColor="#94a3b8"
@@ -1776,7 +1886,7 @@ export default function DraftTransactionsScreen() {
                 </View>
               </View>}
 
-              {editedType !== 'TRANSFER' && (
+              {editedType !== 'TRANSFER' && splitEnabled && (
                 <View className="mb-6">
                   <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: splitEnabled }} onPress={() => {
                     const enabled = !splitEnabled;
@@ -1785,13 +1895,18 @@ export default function DraftTransactionsScreen() {
                       { id: `split-${Date.now()}-0`, amount: selectedDraft?.amount || 0, category: editedCategory || confirmCategories[0]?.name || 'Uncategorized' },
                       { id: `split-${Date.now()}-1`, amount: 0, category: confirmCategories[1]?.name || confirmCategories[0]?.name || 'Uncategorized' },
                     ]);
-                  }} className="flex-row items-center rounded-2xl p-4 mb-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                  }} className="hidden">
                     <FontAwesome name={splitEnabled ? 'check-square' : 'square-o'} size={18} color={splitEnabled ? '#6366f1' : '#94a3b8'} />
                     <View className="ml-3 flex-1"><Text className="text-slate-900 dark:text-white font-bold">Split across categories</Text><Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Keep one bank debit while allocating the purchase in reports.</Text></View>
                   </TouchableOpacity>
+                  <View className="mb-3 flex-row items-center">
+                    <FontAwesome name="pie-chart" size={16} color="#6366f1" />
+                    <Text className="ml-2 font-bold text-slate-900 dark:text-white">Category split</Text>
+                  </View>
                   {splitEnabled && <TransactionSplitEditor total={selectedDraft?.amount || 0} splits={splits} categories={confirmCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} />}
                 </View>
               )}
+
 
               {/* Tags Input */}
               <View className="mb-6">
@@ -1861,8 +1976,8 @@ export default function DraftTransactionsScreen() {
                 <View className="flex-row items-start"><FontAwesome name="magic" size={16} color="#7c3aed" /><View className="flex-1 ml-3"><Text className="text-violet-900 dark:text-violet-200 font-bold">Looks {recurringSuggestion.frequency.toLowerCase()}</Text><Text className="text-violet-700 dark:text-violet-300 text-xs mt-1">{recurringSuggestion.reason} Confidence {recurringSuggestion.confidence}%.</Text><View className="flex-row mt-3 gap-2"><TouchableOpacity onPress={() => { setRecurringFrequency(recurringSuggestion.frequency); setMakeRecurring(true); }} className="bg-violet-600 px-3 py-2 rounded-xl"><Text className="text-white text-xs font-bold">{t('useSuggestion')}</Text></TouchableOpacity><TouchableOpacity onPress={() => setDismissedRecurringSuggestion(true)} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900"><Text className="text-slate-600 dark:text-slate-300 text-xs font-bold">{t('dismiss')}</Text></TouchableOpacity></View></View></View>
               </View>}
 
-              <View className="rounded-2xl p-4 mb-6 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
-                <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: makeRecurring }} onPress={() => setMakeRecurring(!makeRecurring)} className="flex-row items-center">
+              {makeRecurring && !fundOn && <View className="rounded-2xl p-4 mb-6 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: makeRecurring }} onPress={() => setMakeRecurring(!makeRecurring)} className="hidden">
                   <View className={`w-7 h-7 rounded-lg justify-center items-center mr-3 ${makeRecurring ? 'bg-indigo-600' : 'bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600'}`}>
                     {makeRecurring && <FontAwesome name="check" size={13} color="#fff" />}
                   </View>
@@ -1873,6 +1988,10 @@ export default function DraftTransactionsScreen() {
                   <FontAwesome name="repeat" size={17} color="#6366f1" />
                 </TouchableOpacity>
                 {makeRecurring && <View className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <View className="mb-4 flex-row items-center">
+                    <FontAwesome name="repeat" size={16} color="#7c3aed" />
+                    <Text className="ml-2 font-bold text-slate-900 dark:text-white">Recurring schedule</Text>
+                  </View>
                   <View className="flex-row flex-wrap gap-2 mb-4">
                     {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as RecurringFrequency[]).map(item => <TouchableOpacity key={item} onPress={() => setRecurringFrequency(item)} className={`px-3 py-2 rounded-xl ${recurringFrequency === item ? 'bg-indigo-600' : 'bg-white dark:bg-slate-900'}`}><Text className={`text-[10px] font-bold ${recurringFrequency === item ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{item}</Text></TouchableOpacity>)}
                   </View>
@@ -1887,7 +2006,7 @@ export default function DraftTransactionsScreen() {
                     <View className="flex-1"><Text className="text-slate-500 dark:text-slate-400 text-[10px] mb-1">Time (HH:MM)</Text><TextInput value={reminderTime} onChangeText={setReminderTime} keyboardType="numbers-and-punctuation" className="bg-white dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /></View>
                   </View>}
                 </View>}
-              </View>
+              </View>}
 
               {/* Technical Details */}
               <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 mb-6">
@@ -1979,6 +2098,7 @@ export default function DraftTransactionsScreen() {
             </TouchableOpacity>
         </View>
       </FormSheet>
+      <PersonPicker visible={showPersonPicker} selectedId={selectedPersonId} suggestedName={editedRecipient} onClose={() => setShowPersonPicker(false)} onSelect={person => { setSelectedPerson(person); setSelectedPersonId(person?.id); if (person) setEditedRecipient(person.displayName); }} />
     </View>
   );
 }

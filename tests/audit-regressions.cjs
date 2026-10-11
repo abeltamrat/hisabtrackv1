@@ -459,6 +459,10 @@ test('loan interest is validated and split from principal, and payment ids canno
  const payment=await db.recordLoanPayment(loan.id,a.id,100,'loan-pay');assert.equal(finance.operatingExpense(payment),70);
  await assert.rejects(db.recordLoanPayment(loan.id,a.id,99,'loan-pay'));
  await assert.rejects(db.createLoanWithCash({...input,remaining_balance:9999},a.id,50));
+ const current=(await db.getLoans()).find(item=>item.id===loan.id);
+ await db.updateLoan({...current,lender_borrower_name:'New lender name',person_id:'person-lender',person_name_snapshot:'Saved Lender'});
+ const linked=(await db.getTransactions()).filter(item=>item.loan_id===loan.id);
+ assert.ok(linked.length>=3);assert.ok(linked.every(item=>item.person_id==='person-lender'&&item.sender_receiver==='Saved Lender'));
 });
 test('persisted loan money is normalized to cents',async()=>{
  const {db}=make();await db.createAccount(account('A'));
@@ -579,6 +583,16 @@ test('old cloud accounts retain unposted balances and mixed-currency restore is 
  await db.applyRemote([{table:'accounts',id:'legacy-cloud',value:{...account('Remote',42),id:'legacy-cloud',created_at:1},revision:0}]);
  assert.equal((await db.getTransactions()).length,1);
  await assert.rejects(db.restore({accounts:[{...account('Other'),id:'usd',currency:'USD',created_at:1}],transactions:[],loans:[],budgets:[]}),/currency/);
+});
+
+test('ledger currency changes relabel identifiers without converting amounts',async()=>{
+ const {db}=make();const a=await db.createAccount(account('Birr account',500));
+ const before=await db.getTransactions();
+ await db.relabelCurrency('USD');
+ const [updated]=await db.getAccounts();
+ assert.equal(updated.currency,'USD');assert.equal(updated.balance,500);
+ const after=await db.getTransactions();assert.deepEqual(after,before);
+ const outbox=await db.readMeta('outbox');assert.equal(outbox[`accounts/${a.id}`].value.currency,'USD');
 });
 
 test('legacy cloud loans gain an indexed reminder timestamp and an outbox write',async()=>{

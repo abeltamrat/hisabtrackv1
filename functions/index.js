@@ -451,23 +451,37 @@ exports.mutateLinkedRepayment = onCall({ region: 'us-central1' }, async request 
 
 exports.lookupLinkedUser = onCall({ region: 'us-central1' }, async request => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
-  const phone = request.data?.phone, uid = request.auth.uid;
-  if (typeof phone !== 'string' || !/^\+[1-9][0-9]{7,14}$/.test(phone)) throw new HttpsError('invalid-argument', 'Use an international phone number.');
+  const phone = typeof request.data?.phone === 'string' ? request.data.phone.trim() : '';
+  const email = typeof request.data?.email === 'string' ? request.data.email.trim().toLowerCase() : '';
+  const uid = request.auth.uid;
+  if (phone && !/^\+[1-9][0-9]{7,14}$/.test(phone)) throw new HttpsError('invalid-argument', 'Use an international phone number.');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpsError('invalid-argument', 'Use a valid email address.');
+  if (!phone && !email) throw new HttpsError('invalid-argument', 'Enter a phone number or email address.');
   const limitRef = db.doc(`lookupLimits/${uid}`), now = Date.now();
   await db.runTransaction(async tx => {
     const [deleted, previous] = await Promise.all([tx.get(db.doc(`deletedAccounts/${uid}`)), tx.get(limitRef)]);
     if (deleted.exists) throw new HttpsError('permission-denied', 'Account is deleted.');
     const prior = previous.data() || {}, reset = now - Number(prior.start || 0) >= 3600000;
     const count = reset ? 0 : Number(prior.count || 0);
-    if (count >= 20) throw new HttpsError('resource-exhausted', 'Phone lookup limit reached. Try again later.');
+    if (count >= 20) throw new HttpsError('resource-exhausted', 'People lookup limit reached. Try again later.');
     tx.set(limitRef, { count: count + 1, start: reset ? now : prior.start });
   });
-  const index = await db.doc(`phoneIndex/${phone}`).get();
-  if (!index.exists || typeof index.data().uid !== 'string') return null;
-  let user;
-  try { user = await admin.auth().getUser(index.data().uid); }
-  catch (error) { if (error.code === 'auth/user-not-found') return null; throw error; }
-  if (user.disabled || user.phoneNumber !== phone || (await db.doc(`deletedAccounts/${user.uid}`).get()).exists) return null;
+  let user = null;
+  if (phone) {
+    const index = await db.doc(`phoneIndex/${phone}`).get();
+    if (index.exists && typeof index.data().uid === 'string') {
+      try { user = await admin.auth().getUser(index.data().uid); }
+      catch (error) { if (error.code !== 'auth/user-not-found') throw error; }
+      if (user && user.phoneNumber !== phone) user = null;
+    }
+  }
+  if (!user && email) {
+    try {
+      const emailUser = await admin.auth().getUserByEmail(email);
+      if (emailUser.emailVerified && emailUser.email?.toLowerCase() === email) user = emailUser;
+    } catch (error) { if (error.code !== 'auth/user-not-found') throw error; }
+  }
+  if (!user || user.disabled || (await db.doc(`deletedAccounts/${user.uid}`).get()).exists) return null;
   return { uid: user.uid, displayName: user.displayName || 'Verified account' };
 });
 
@@ -643,13 +657,16 @@ function readEntryInput(data, role) {
   const ownerAccountId = data.ownerAccountId === undefined || data.ownerAccountId === null ? undefined : data.ownerAccountId;
   if (ownerAccountId !== undefined && (role !== 'OWNER' || typeof ownerAccountId !== 'string' || !FUND_ID.test(ownerAccountId))) throw fundBad('Invalid account.');
   const payerName = fundText(data.payerName, 120) || undefined;
+  const payerPersonId = fundText(data.payerPersonId, 160) || undefined;
   if (kind === 'DEPOSIT' && source === 'THIRD_PARTY' && !payerName) throw fundBad('Enter who sent the money.');
   return fundCompact({
     kind, source, amount, date,
     description: fundText(data.description, 200) || (kind === 'SPEND' ? 'Fund payment' : kind === 'RETURN' ? 'Returned to owner' : 'Fund deposit'),
     note: fundText(data.note, 500) || undefined,
     payerName,
+    payerPersonId,
     recipient: fundText(data.recipient, 120) || undefined,
+    recipientPersonId: fundText(data.recipientPersonId, 160) || undefined,
     reference_number: fundText(data.reference_number, 80) || undefined,
     receipt_url: fundReceipt(data.receipt_url),
     sms_linked: data.sms_linked === true,

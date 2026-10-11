@@ -1,11 +1,13 @@
 import DataStatusBanner from './DataStatusBanner';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { AppNotification, AppNotificationService } from '@/services/AppNotificationService';
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import NativeErrorReporter from '@/services/NativeErrorReporter';
 import RemotePushService from '@/services/RemotePushService';
 import SyncService from '@/services/SyncService';
+import InternetStatusService from '@/services/InternetStatusService';
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -27,7 +29,10 @@ export default function AppShell({ children }: AppShellProps) {
 
   useEffect(() => drawerBus.subscribe(() => setDrawerVisible(true)), []);
   const { user } = useAuth();
+  const { cloudSyncEnabled } = useAppSettings();
   const { actualTheme, isAurora } = useTheme();
+  const [online, setOnline] = useState(InternetStatusService.getCurrent());
+  const [syncState, setSyncState] = useState(SyncService.getStatus());
 
   const [disabledUntil, setDisabledUntil] = useState<number>(SyncService.disableAutoSyncUntil || 0);
 
@@ -37,6 +42,9 @@ export default function AppShell({ children }: AppShellProps) {
   const [regularUnreadCount, setRegularUnreadCount] = useState(0);
   const [recentNotifications, setRecentNotifications] = useState<AppNotification[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+
+  useEffect(() => InternetStatusService.subscribe(setOnline), []);
+  useEffect(() => SyncService.subscribeStatus(setSyncState), []);
 
   const loadNotifications = async () => {
     const totalCount = await AppNotificationService.getUnreadCount();
@@ -148,7 +156,13 @@ export default function AppShell({ children }: AppShellProps) {
         </TouchableOpacity>
 
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text className="text-base font-bold text-slate-900 dark:text-white">Hisab Track</Text>
+          <Text
+            className="text-base font-bold text-slate-900 dark:text-white"
+            accessibilityLabel={`Hisab Track, ${online ? cloudSyncEnabled && syncState === 'synced' ? 'fully synced with cloud' : 'online, sync pending' : 'offline'}`}
+          >
+            Hisab{' '}
+            <Text style={{ color: online ? cloudSyncEnabled && syncState === 'synced' ? '#22c55e' : '#eab308' : '#475569' }}>Track</Text>
+          </Text>
         </View>
 
         <TouchableOpacity

@@ -6,15 +6,18 @@ import { generateUUID } from '@/utils/uuid';
 import { createSerialQueue } from '@/utils/asyncLock';
 import { Platform } from 'react-native';
 import { advanceEthiopianDate } from '@/utils/ethiopianCalendar';
+import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 
 const STORAGE_KEY = Platform.OS === 'web' ? 'recurring_transactions' : '@hisabtrack_recurring_transactions';
 
 const read = () => Platform.OS === 'web'
   ? Promise.resolve(sessionLocalStorage.getItem(STORAGE_KEY))
   : AsyncStorage.getItem(STORAGE_KEY);
-const write = (value: string) => Platform.OS === 'web'
-  ? Promise.resolve(sessionLocalStorage.setItem(STORAGE_KEY, value))
-  : AsyncStorage.setItem(STORAGE_KEY, value);
+const write = async (value: string) => {
+  if (Platform.OS === 'web') sessionLocalStorage.setItem(STORAGE_KEY, value);
+  else await AsyncStorage.setItem(STORAGE_KEY, value);
+  LocalChangeEmitter.emit();
+};
 const mutate = createSerialQueue();
 
 export interface CreateRecurringInput {
@@ -27,6 +30,8 @@ export interface CreateRecurringInput {
   fees?: number;
   tax?: number;
   description?: string;
+  person_id?: string;
+  person_name_snapshot?: string;
   tags?: string[];
   frequency: RecurringFrequency;
   startDate: number;
@@ -105,6 +110,8 @@ export class RecurringTransactionService {
       fees: input.type === 'TRANSFER' && fees ? fees : undefined,
       tax: input.type === 'TRANSFER' && tax ? tax : undefined,
       description: input.description?.trim() || undefined,
+      person_id: input.person_id,
+      person_name_snapshot: input.person_name_snapshot,
       completedRepetitions: 0,
       totalRepetitions: input.totalRepetitions,
       reminderEnabled: input.reminderEnabled,
