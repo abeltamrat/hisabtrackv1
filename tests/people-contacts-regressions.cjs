@@ -27,3 +27,19 @@ test('contact access is requested only by the contact service and registered con
   assert.ok(config.expo.android.permissions.includes('READ_CONTACTS'));
   assert.ok(config.expo.android.blockedPermissions.includes('android.permission.WRITE_CONTACTS'));
 });
+
+test('phone contacts render before badge discovery and use a virtualized cached list', () => {
+  const service = read('services/DeviceContactsService.ts');
+  const picker = read('components/PhoneContactPicker.tsx');
+  assert.match(service, /requestAndLoadLocal/);
+  assert.match(service, /LOCAL_CACHE_MS/);
+  assert.match(service, /DISCOVERY_CACHE_MS/);
+  assert.match(picker, /setContacts\(result\.contacts\); setLoading\(false\)/);
+  assert.match(picker, /await DeviceContactsService\.discoverLinkedContacts/);
+  assert.ok(
+    picker.indexOf('setContacts(result.contacts); setLoading(false)')
+      < picker.indexOf('await DeviceContactsService.discoverLinkedContacts'),
+  );
+  assert.match(picker, /<FlatList/);
+  assert.doesNotMatch(picker, /shown\.map\(/);
+});
