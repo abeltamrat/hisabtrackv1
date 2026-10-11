@@ -52,9 +52,9 @@ const SpinnerPickerSheet = ({
   if (!show) return null;
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: isAurora ? 'rgba(2,6,23,0.78)' : 'rgba(0,0,0,0.45)' }}>
         <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={onClose} />
-        <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+        <View style={{ backgroundColor: isAurora ? '#0f172a' : theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: 1, borderBottomWidth: 0, borderColor: isAurora ? '#334155' : theme.border }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}>
             <TouchableOpacity onPress={onClose}>
               <Text style={{ color: '#94a3b8', fontSize: 16 }}>Cancel</Text>
@@ -90,6 +90,12 @@ export default function TransactionsScreen() {
   const { actualTheme, isAurora } = useTheme();
   const isDark = actualTheme === 'dark';
   const theme = themeTokens(isDark, isAurora);
+  // Aurora's page tokens are intentionally translucent. Filter sheets need an
+  // opaque base so their controls and labels never blend into transaction rows.
+  const filterSheetBackground = isAurora ? '#0f172a' : theme.background;
+  const filterControlBackground = isAurora ? '#1e293b' : theme.surface;
+  const filterDivider = isAurora ? '#334155' : theme.border;
+  const filterBackdrop = 'rgba(2,6,23,0.78)';
   const isVerySmall = fontSize === 'V.Small';
   const headerTitleSize = fontSize === 'V.Small' ? 'text-lg' : fontSize === 'Small' ? 'text-xl' : fontSize === 'Large' ? 'text-3xl' : 'text-2xl';
   const labelSize = fontSize === 'V.Small' ? 'text-[11px]' : fontSize === 'Small' ? 'text-xs' : fontSize === 'Large' ? 'text-base' : 'text-sm';
@@ -465,7 +471,7 @@ export default function TransactionsScreen() {
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
-              backgroundColor: selectedCategories.length > 0 ? '#6366f1' : (theme.surface),
+               backgroundColor: selectedCategories.length > 0 ? '#6366f1' : filterControlBackground,
               borderWidth: 1, borderColor: selectedCategories.length > 0 ? '#6366f1' : (theme.border),
               elevation: 1,
             }}
@@ -483,7 +489,7 @@ export default function TransactionsScreen() {
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
-              backgroundColor: selectedTags.length > 0 ? '#6366f1' : (theme.surface),
+               backgroundColor: selectedTags.length > 0 ? '#6366f1' : filterControlBackground,
               borderWidth: 1, borderColor: selectedTags.length > 0 ? '#6366f1' : (theme.border),
               elevation: 1,
             }}
@@ -501,7 +507,7 @@ export default function TransactionsScreen() {
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
-              backgroundColor: filterAccountIds.length > 0 ? '#6366f1' : (theme.surface),
+               backgroundColor: filterAccountIds.length > 0 ? '#6366f1' : filterControlBackground,
               borderWidth: 1, borderColor: filterAccountIds.length > 0 ? '#6366f1' : (theme.border),
               elevation: 1,
             }}
@@ -519,7 +525,7 @@ export default function TransactionsScreen() {
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
               paddingVertical: 7, paddingHorizontal: 6, borderRadius: 10,
-              backgroundColor: (dateFrom || dateTo) ? '#6366f1' : (theme.surface),
+               backgroundColor: (dateFrom || dateTo) ? '#6366f1' : filterControlBackground,
               borderWidth: 1, borderColor: (dateFrom || dateTo) ? '#6366f1' : (theme.border),
               elevation: 1,
             }}
@@ -849,9 +855,9 @@ export default function TransactionsScreen() {
 
       {/* Category Filter Modal */}
       <Modal visible={showCategoryModal} transparent animationType="slide" onRequestClose={() => setShowCategoryModal(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowCategoryModal(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '75%' }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: filterBackdrop }} activeOpacity={1} onPress={() => setShowCategoryModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: filterSheetBackground, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '75%', borderWidth: 1, borderBottomWidth: 0, borderColor: filterDivider, elevation: 24, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 18 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: filterDivider }}>
             <TouchableOpacity onPress={() => { setSelectedCategories([]); setShowCategoryModal(false); }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
             </TouchableOpacity>
@@ -868,7 +874,7 @@ export default function TransactionsScreen() {
                 <View key={cat.id}>
                   <TouchableOpacity
                     onPress={() => setSelectedCategories(prev => prev.includes(cat.name) ? prev.filter(c => c !== cat.name) : [...prev, cat.name])}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 2, backgroundColor: isSelected ? (isDark ? '#312e81' : '#eef2ff') : 'transparent' }}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 6, backgroundColor: isSelected ? (isDark || isAurora ? '#312e81' : '#eef2ff') : (isAurora ? '#172036' : 'transparent') }}
                   >
                     <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: cat.color + '30', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
                       <CategoryIcon icon={cat.icon} size={15} color={cat.color} />
@@ -882,7 +888,7 @@ export default function TransactionsScreen() {
                       <TouchableOpacity
                         key={child.id}
                         onPress={() => setSelectedCategories(prev => prev.includes(child.name) ? prev.filter(c => c !== child.name) : [...prev, child.name])}
-                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, paddingLeft: 28, borderRadius: 12, marginBottom: 2, backgroundColor: isChildSelected ? (isDark ? '#312e81' : '#eef2ff') : 'transparent' }}
+                         style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, paddingLeft: 28, borderRadius: 12, marginBottom: 6, backgroundColor: isChildSelected ? (isDark || isAurora ? '#312e81' : '#eef2ff') : (isAurora ? '#172036' : 'transparent') }}
                       >
                         <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: child.color + '25', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
                           <CategoryIcon icon={child.icon} size={12} color={child.color} />
@@ -901,9 +907,9 @@ export default function TransactionsScreen() {
 
       {/* Tag Filter Modal */}
       <Modal visible={showTagModal} transparent animationType="slide" onRequestClose={() => setShowTagModal(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowTagModal(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%' }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: filterBackdrop }} activeOpacity={1} onPress={() => setShowTagModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: filterSheetBackground, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%', borderWidth: 1, borderBottomWidth: 0, borderColor: filterDivider, elevation: 24 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: filterDivider }}>
             <TouchableOpacity onPress={() => { setSelectedTags([]); setShowTagModal(false); }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
             </TouchableOpacity>
@@ -921,7 +927,7 @@ export default function TransactionsScreen() {
                 <TouchableOpacity
                   key={tag}
                   onPress={() => setSelectedTags(prev => prev.some(t => t.toLowerCase() === tag.toLowerCase()) ? prev.filter(t => t.toLowerCase() !== tag.toLowerCase()) : [...prev, tag])}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 2, backgroundColor: isActive ? (isDark ? '#312e81' : '#eef2ff') : 'transparent' }}
+                   style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 6, backgroundColor: isActive ? (isDark || isAurora ? '#312e81' : '#eef2ff') : (isAurora ? '#172036' : 'transparent') }}
                 >
                   <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isActive ? '#6366f1' : (isDark ? '#1e293b' : '#e2e8f0'), justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
                     <FontAwesome name="hashtag" size={14} color={isActive ? '#fff' : '#94a3b8'} />
@@ -937,9 +943,9 @@ export default function TransactionsScreen() {
 
       {/* Account Filter Modal */}
       <Modal visible={showAccountModal} transparent animationType="slide" onRequestClose={() => setShowAccountModal(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowAccountModal(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%' }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: filterBackdrop }} activeOpacity={1} onPress={() => setShowAccountModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: filterSheetBackground, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '65%', borderWidth: 1, borderBottomWidth: 0, borderColor: filterDivider, elevation: 24 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: filterDivider }}>
             <TouchableOpacity onPress={() => { setFilterAccountIds([]); setShowAccountModal(false); }}>
               <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
             </TouchableOpacity>
@@ -955,7 +961,7 @@ export default function TransactionsScreen() {
                 <TouchableOpacity
                   key={acc.id}
                   onPress={() => setFilterAccountIds(prev => prev.includes(acc.id) ? prev.filter(a => a !== acc.id) : [...prev, acc.id])}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 2, backgroundColor: isActive ? (isDark ? '#312e81' : '#eef2ff') : 'transparent' }}
+                   style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 6, backgroundColor: isActive ? (isDark || isAurora ? '#312e81' : '#eef2ff') : (isAurora ? '#172036' : 'transparent') }}
                 >
                   <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: isActive ? '#6366f1' : (isDark ? '#1e293b' : '#e2e8f0'), justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
                     <FontAwesome name="credit-card" size={14} color={isActive ? '#fff' : '#94a3b8'} />
@@ -971,9 +977,9 @@ export default function TransactionsScreen() {
 
       {/* Date Filter Modal */}
       <Modal visible={showDateModal} transparent animationType="slide" onRequestClose={() => setShowDateModal(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} activeOpacity={1} onPress={() => setShowDateModal(false)} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: filterBackdrop }} activeOpacity={1} onPress={() => setShowDateModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: filterSheetBackground, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderBottomWidth: 0, borderColor: filterDivider, elevation: 24 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: filterDivider }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>Date Range</Text>
             <TouchableOpacity onPress={() => setShowDateModal(false)}>
               <FontAwesome name="times" size={18} color="#94a3b8" />
@@ -992,7 +998,7 @@ export default function TransactionsScreen() {
                   setShowDatePicker('from');
                 }
               }}
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateFrom ? '#6366f1' : (theme.border) }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: filterControlBackground, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateFrom ? '#6366f1' : filterDivider }}
             >
               <FontAwesome name="calendar-o" size={16} color={dateFrom ? '#6366f1' : '#94a3b8'} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
@@ -1019,7 +1025,7 @@ export default function TransactionsScreen() {
                   setShowDatePicker('to');
                 }
               }}
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateTo ? '#6366f1' : (theme.border) }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: filterControlBackground, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: dateTo ? '#6366f1' : filterDivider }}
             >
               <FontAwesome name="calendar-o" size={16} color={dateTo ? '#6366f1' : '#94a3b8'} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>

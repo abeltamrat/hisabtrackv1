@@ -1576,3 +1576,13 @@ test('transaction edit defaults cannot overwrite the original bank or category',
       `${adapter} must retain fields outside its legacy transaction whitelist`);
   }
 });
+
+test('Aurora transaction filter sheets use an opaque readable surface', () => {
+  const source = fs.readFileSync(path.join(root, 'app/(tabs)/transactions.tsx'), 'utf8');
+  assert.match(source, /const filterSheetBackground = isAurora \? '#0f172a' : theme\.background/);
+  assert.match(source, /const filterBackdrop = 'rgba\(2,6,23,0\.78\)'/);
+  assert.equal((source.match(/backgroundColor: filterSheetBackground/g) || []).length, 4,
+    'category, tag, account and date sheets must all use the opaque surface');
+  assert.equal((source.match(/: filterControlBackground/g) || []).length >= 4, true,
+    'all filter buttons must use a readable Aurora surface');
+});
