@@ -27,7 +27,7 @@ import type { RecurringFrequency, TransactionType } from '@/types/database';
 import { formatCalendarDate } from '@/utils/ethiopianCalendar';
 import type { TransactionSplit } from '@/types/database';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
-import { ProjectField } from '@/components/ProjectPicker';
+import { ProjectCostToggle } from '@/components/ProjectPicker';
 import LineItemsEditor from '@/components/LineItemsEditor';
 import SupplierField from '@/components/SupplierPicker';
 import type { SupplierLink } from '@/types/database';
@@ -668,7 +668,6 @@ export default function AddTransactionScreen() {
           />
         </View>}
 
-        {type !== 'TRANSFER' && <View className="mb-3"><ProjectField value={project} onChange={setProject} /></View>}
         {type === 'EXPENSE' && <View className="mb-3"><SupplierField value={supplier} onChange={setSupplier} /></View>}
         {type !== 'TRANSFER' && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
@@ -699,6 +698,7 @@ export default function AddTransactionScreen() {
             {splitEnabled && <View className="mt-3"><TransactionSplitEditor total={parseFloat(amount) || 0} splits={splits} categories={filteredCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} /></View>}
           </View>
         )}
+        {type !== 'TRANSFER' && <ProjectCostToggle value={project} onChange={setProject} income={type === 'INCOME'} />}
 
         {!isEditing && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>

@@ -121,4 +121,62 @@ export function ProjectField({ value, onChange, compact = false }: { value?: Pro
   );
 }
 
+/**
+ * "This is a project cost" checkbox, shown under "Split across categories".
+ * Not every expense is a project cost, so the project picker stays hidden
+ * until it's ticked; unticking clears the project. Hidden without Mela.
+ */
+export function ProjectCostToggle({ value, onChange, income = false, variant = 'card' }: {
+  value?: ProjectLink;
+  onChange: (project: ProjectLink | undefined) => void;
+  income?: boolean;
+  variant?: 'card' | 'tile' | 'row';
+}) {
+  const { connected } = useMelaProjects();
+  const [on, setOn] = useState(!!value);
+  // Edits and drafts load the project after mount.
+  useEffect(() => { if (value) setOn(true); }, [value]);
+  if (!connected && !value) return null;
+  const label = income ? 'This is project income' : 'This is a project cost';
+  const hint = income ? 'Link this payment to a Mela project.' : 'Count this toward a Mela project\'s spending.';
+  const toggle = () => { const next = !on; setOn(next); if (!next) onChange(undefined); };
+  const picker = on ? <View className="mt-3"><ProjectField value={value} onChange={onChange} /></View> : null;
+
+  if (variant === 'tile') return (
+    <View>
+      <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={label} onPress={toggle}
+        className={`min-h-[64px] flex-row items-center rounded-xl border p-3 ${on ? 'border-teal-400 bg-teal-50 dark:border-teal-700 dark:bg-teal-900/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}>
+        <View className={`h-8 w-8 items-center justify-center rounded-lg ${on ? 'bg-teal-600' : 'bg-slate-100 dark:bg-slate-700'}`}>
+          <FontAwesome name="folder-open" size={14} color={on ? '#fff' : '#94a3b8'} />
+        </View>
+        <View className="ml-3 flex-1">
+          <Text className="font-bold text-slate-900 dark:text-white">{label}</Text>
+          <Text className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{hint}</Text>
+        </View>
+        <FontAwesome name={on ? 'check-circle' : 'circle-o'} size={20} color={on ? '#0d9488' : '#94a3b8'} />
+      </TouchableOpacity>
+      {picker}
+    </View>
+  );
+  if (variant === 'row') return (
+    <View>
+      <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={label} onPress={toggle} className="flex-row items-center py-2">
+        <FontAwesome name={on ? 'check-square' : 'square-o'} size={18} color={on ? '#0d9488' : '#94a3b8'} />
+        <Text className="text-slate-700 dark:text-slate-300 text-sm font-semibold ml-2">{label}</Text>
+      </TouchableOpacity>
+      {picker}
+    </View>
+  );
+  return (
+    <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+      <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={label} onPress={toggle} className="flex-row items-center">
+        <FontAwesome name={on ? 'check-square' : 'square-o'} size={18} color={on ? '#6366f1' : '#94a3b8'} />
+        <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">{label}</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">{hint}</Text></View>
+        <FontAwesome name="folder-open" size={14} color="#6366f1" />
+      </TouchableOpacity>
+      {picker}
+    </View>
+  );
+}
+
 export default ProjectPicker;

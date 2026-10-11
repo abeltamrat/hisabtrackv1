@@ -26,7 +26,8 @@ import { findTransferCandidates } from '@/utils/transferPairing';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import LineItemsEditor from '@/components/LineItemsEditor';
 import SupplierField from '@/components/SupplierPicker';
-import type { SupplierLink } from '@/types/database';
+import { ProjectCostToggle } from '@/components/ProjectPicker';
+import type { ProjectLink, SupplierLink } from '@/types/database';
 import type { PurchaseLine } from '@/types/database';
 import type { TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
@@ -135,6 +136,7 @@ export default function DraftTransactionsScreen() {
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [itemize, setItemize] = useState(false);
+  const [project, setProject] = useState<ProjectLink | undefined>();
   const [supplier, setSupplier] = useState<SupplierLink | undefined>();
   const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [dismissedRecurringSuggestion, setDismissedRecurringSuggestion] = useState(false);
@@ -256,7 +258,7 @@ export default function DraftTransactionsScreen() {
       setRememberOwnedRecipient(false);
       setSplitEnabled(!!target.suggested_splits?.length);
       setSplits(target.suggested_splits || []);
-      setItemize(false); setLines([]); setSupplier(undefined);
+      setItemize(false); setLines([]); setSupplier(undefined); setProject(undefined);
       setDismissedRecurringSuggestion(false);
       setNote('');
       setTagsInput('');
@@ -458,7 +460,7 @@ export default function DraftTransactionsScreen() {
     setRecurringOccurrences('');
     setSplitEnabled(!!draft.suggested_splits?.length);
     setSplits(draft.suggested_splits || []);
-    setItemize(false); setLines([]); setSupplier(undefined);
+    setItemize(false); setLines([]); setSupplier(undefined); setProject(undefined);
     setDismissedRecurringSuggestion(false);
     setNote('');
     setTagsInput('');
@@ -509,7 +511,9 @@ export default function DraftTransactionsScreen() {
     let entry: FundEntryInput | undefined;
     if (!match && isSpend) {
       const parts = input.splits?.length ? [...input.splits, ...(fee > 0 ? [{ id: 'bank-fees', amount: fee, category: 'Bank Fees' }] : [])] : undefined;
-      entry = { kind: 'SPEND', amount: money(draft.amount + fee), date: draft.date, description, recipient: input.sender_receiver, category, splits: parts, tags, ...evidence };
+      entry = { kind: 'SPEND', amount: money(draft.amount + fee), date: draft.date, description, recipient: input.sender_receiver, category, splits: parts, tags, ...evidence,
+        // Items, project and supplier reach the owner's reports like a manual fund payment.
+        ...(input.lines?.length ? { lines: input.lines } : {}), ...(input.project ? { project: input.project } : {}), ...(input.supplier ? { supplier: input.supplier } : {}) };
     } else if (!match) {
       entry = {
         kind: 'DEPOSIT', source: fundSource === 'third' ? 'THIRD_PARTY' : 'OWNER_UNRECORDED',
@@ -629,6 +633,7 @@ export default function DraftTransactionsScreen() {
         ...(finalSplits ? { splits: finalSplits } : {}),
         ...(editedType !== 'TRANSFER' && purchaseLines.length ? { lines: purchaseLines } : {}),
         ...(editedType === 'EXPENSE' && supplier ? { supplier } : {}),
+        ...(editedType !== 'TRANSFER' && project ? { project } : {}),
       } as Omit<Transaction, 'id'>;
 
       let transactionId: string | undefined;
@@ -1769,6 +1774,8 @@ export default function DraftTransactionsScreen() {
                       <FontAwesome name={splitEnabled ? 'check-circle' : 'circle-o'} size={20} color={splitEnabled ? '#4f46e5' : '#94a3b8'} />
                     </TouchableOpacity>
                   )}
+
+                  {editedType !== 'TRANSFER' && <ProjectCostToggle value={project} onChange={setProject} income={editedType === 'INCOME'} variant="tile" />}
 
                   {editedType !== 'TRANSFER' && (
                     <TouchableOpacity

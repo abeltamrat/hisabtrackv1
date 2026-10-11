@@ -11,7 +11,7 @@ import { mergeSplitTags, pushTagsIntoSplits } from '@/utils/tags';
 import PersonLinkField from '@/components/PersonLinkField';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import LineItemsEditor from '@/components/LineItemsEditor';
-import { MelaCatalogContext, ProjectField, useSharedCatalog } from '@/components/ProjectPicker';
+import { MelaCatalogContext, ProjectCostToggle, useSharedCatalog } from '@/components/ProjectPicker';
 import SupplierField from '@/components/SupplierPicker';
 import { useFormErrors } from '@/hooks/useFormErrors';
 import FundPostingService, { custodianFundFields } from '@/services/FundPostingService';
@@ -376,7 +376,7 @@ export default function FundEntrySheet({
         // Inside the provider, pickers read the owner's shared lists instead of this device's own.
         <MelaCatalogContext.Provider value={sharedCatalog ?? EMPTY_CATALOG}>
           <View className="mb-4 gap-3">
-            <ProjectField value={project} onChange={setProject} />
+            <ProjectCostToggle value={project} onChange={setProject} variant="row" />
             <SupplierField value={supplier} onChange={setSupplier} />
             <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: itemize }} onPress={() => setItemize(!itemize)} className="flex-row items-center py-2">
               <FontAwesome name={itemize ? 'check-square' : 'square-o'} size={18} color={itemize ? '#0d9488' : '#94a3b8'} />

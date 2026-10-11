@@ -168,3 +168,18 @@ test('projects show the customer name next to the Mela customer id', async () =>
     assert.equal(project.customerId, 'C-12');
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('project is an opt-in "project cost" toggle under split, not a field on every expense', () => {
+  const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+  const picker = read('components/ProjectPicker.tsx');
+  assert.match(picker, /export function ProjectCostToggle/);
+  assert.match(picker, /if \(!next\) onChange\(undefined\)/, 'unticking clears the project');
+  const modal = read('app/modal.tsx');
+  assert.ok(!/<ProjectField /.test(modal), 'no always-on project field');
+  assert.ok(modal.indexOf('<ProjectCostToggle') > modal.indexOf('Split across categories'), 'toggle sits under split');
+  const drafts = read('app/draft-transactions.tsx');
+  assert.ok(drafts.indexOf('<ProjectCostToggle') > drafts.indexOf('accessibilityLabel="Split across categories"'));
+  assert.match(drafts, /editedType !== 'TRANSFER' && project \? \{ project \}/);
+  assert.match(drafts, /input\.project \? \{ project: input\.project \}/, 'fund entries from SMS carry the project');
+  assert.match(read('components/funds/FundEntrySheet.tsx'), /<ProjectCostToggle value=\{project\}/);
+});
