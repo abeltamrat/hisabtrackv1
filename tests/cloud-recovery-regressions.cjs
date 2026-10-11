@@ -13,11 +13,12 @@ test('critical auxiliary datasets are versioned, hashed and restored', () => {
   assert.match(source, /Local data is preserved/);
 });
 
-test('fresh login restores before opening and cloud preference follows the user', () => {
+test('fresh login opens local data before cloud restore and cloud preference follows the user', () => {
   const auth = fs.readFileSync(path.join(root, 'contexts/AuthContext.tsx'), 'utf8');
   const profile = fs.readFileSync(path.join(root, 'services/CloudProfileService.ts'), 'utf8');
   assert.match(auth, /Restoring your cloud data/);
-  assert.ok(auth.indexOf('await SyncService.syncNow') < auth.lastIndexOf('setLoading(false)'));
+  const userReady = auth.indexOf('setUser(firebaseUser ?');
+  assert.ok(auth.indexOf('setLoading(false)', userReady) < auth.indexOf('await SyncService.syncNow', userReady));
   assert.match(profile, /cloudSyncEnabled/);
 });
 

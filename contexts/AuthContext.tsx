@@ -62,6 +62,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await SyncService.refreshLocalStore();
         if (disposed || currentGeneration !== generation) return;
         setUser(firebaseUser ? { uid: firebaseUser.uid, email: firebaseUser.email, displayName: firebaseUser.displayName } : null);
+        // The device database is ready at this point. Let the dashboard render
+        // while the slower cloud preference/restore work continues. Keeping the
+        // full-screen opening gate up for Firestore can look like a white crash
+        // on slower devices and can block the app indefinitely on a weak link.
+        setLoading(false);
         if (firebaseUser) {
           SMSSyncService.resume(); BackgroundService.resume();
           void import('@/services/LinkedPaymentService').then(m => { if (disposed || currentGeneration !== generation) return; m.default.resume(); return m.default.retryPending(); }).catch(() => undefined);

@@ -28,7 +28,7 @@ import Icon3D from '@/components/three-d/Icon3D';
 import { formatEthiopianDate } from '@/utils/ethiopianCalendar';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { InteractionManager, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 
 // Throttle the AI notification check to once every 10 minutes across mounts (e.g. tab switches)
@@ -52,6 +52,7 @@ export default function DashboardScreen() {
     (s.accounts.loading || s.transactions.loading) && s.accounts.items.length === 0 && s.transactions.items.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maintenanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // The Aurora "More" tile is two-stage: the first tap reveals a second row
   // of less-frequent actions in place; only once those are visible does a
@@ -100,16 +101,26 @@ export default function DashboardScreen() {
     dispatch(fetchLoans());
     refreshDraftCount();
 
-    // AI Insights check: throttle to once per 10 min so tab switches don't re-run it
-    const now = Date.now();
-    if (now - lastAICheck > 10 * 60 * 1000) {
-      lastAICheck = now;
-      import('@/services/AppNotificationService').then(({ AppNotificationService }) => {
-        AppNotificationService.checkAll();
-      });
-      // Refresh Mela projects (no-op unless connected and older than 6 hours).
-      import('@/services/MelaService').then(({ default: MelaService }) => MelaService.syncIfStale()).catch(() => undefined);
-    }
+    // Startup already opens SQLite and may restore several cloud datasets.
+    // Run optional analysis only after navigation has settled, and run Mela
+    // afterwards instead of loading both jobs concurrently on low-memory devices.
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      maintenanceTimer.current = setTimeout(async () => {
+        const now = Date.now();
+        if (now - lastAICheck <= 10 * 60 * 1000) return;
+        lastAICheck = now;
+        await import('@/services/AppNotificationService')
+          .then(({ AppNotificationService }) => AppNotificationService.checkAll())
+          .catch(() => undefined);
+        await import('@/services/MelaService')
+          .then(({ default: MelaService }) => MelaService.syncIfStale())
+          .catch(() => undefined);
+      }, 15_000);
+    });
+    return () => {
+      interaction.cancel();
+      if (maintenanceTimer.current) clearTimeout(maintenanceTimer.current);
+    };
   }, [dispatch, refreshDraftCount]);
 
   const handleRefresh = async () => {

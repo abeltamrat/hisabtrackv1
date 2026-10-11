@@ -12,18 +12,28 @@ import {
 } from '@expo-google-fonts/manrope';
 import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import 'react-native-reanimated';
-import { AppState } from 'react-native';
+import { AppState, Text, TouchableOpacity, View } from 'react-native';
 import "../global.css";
 
 import { Provider } from 'react-redux';
 import { store } from '../store';
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary
-} from 'expo-router';
+// Keep production failures actionable. The router's default boundary can be a
+// blank surface on some older Android builds, which makes a render error look
+// as if the process disappeared.
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', padding: 28, backgroundColor: '#0f172a' }}>
+      <Text style={{ color: '#f8fafc', fontSize: 22, fontWeight: '800', marginBottom: 10 }}>HisabTrack needs to reopen this screen</Text>
+      <Text accessibilityRole="alert" style={{ color: '#cbd5e1', fontSize: 14, marginBottom: 20 }}>{error.message || 'An unexpected display error occurred.'}</Text>
+      <TouchableOpacity accessibilityRole="button" onPress={retry} style={{ minHeight: 50, borderRadius: 14, backgroundColor: '#4f46e5', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: '#ffffff', fontWeight: '800' }}>Reopen screen</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
@@ -65,6 +75,7 @@ export default function RootLayout() {
 
 import AppLockScreen from '@/components/AppLockScreen';
 import AppShell from '@/components/AppShell';
+import CoinLoader from '@/components/CoinLoader';
 import { TransactionProvider } from '@/context/TransactionContext';
 import { AppSettingsProvider } from '@/contexts/AppSettingsContext';
 import { AppLockProvider } from '@/contexts/AppLockContext';
@@ -83,7 +94,6 @@ import { UpdateInfo, UpdateService } from '@/services/UpdateService';
 import OnboardingScreen from '@/components/OnboardingScreen';
 import OnboardingService from '@/services/OnboardingService';
 import { useState, useRef, useCallback } from 'react';
-import { Text, View } from 'react-native';
 
 // ...
 
@@ -269,7 +279,12 @@ function RootLayoutNav() {
 
   // Don't render anything until onboarding check is complete
   if (!onboardingChecked) {
-    return null;
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a' }}>
+        <CoinLoader size={72} accessibilityLabel="Preparing HisabTrack" />
+        <Text style={{ color: '#cbd5e1', marginTop: 12 }}>Preparing HisabTrack…</Text>
+      </View>
+    );
   }
 
   // Show onboarding if needed
