@@ -141,6 +141,8 @@ export interface UpdateInstallProgress {
   progress?: number;
 }
 
+let activeBinaryInstall: Promise<void> | null = null;
+
 export const UpdateService = {
   compareVersions(v1: string, v2: string): number {
     const v1Parts = v1.split('.').map(Number);
@@ -371,6 +373,16 @@ export const UpdateService = {
     }
   },
 
+  /** Deletes the APK this version was installed from (it lives in app storage, not cache). */
+  async removeDownloadedApk(version: string): Promise<void> {
+    const FileSystem = this.getLegacyFileSystem();
+    if (!FileSystem?.deleteAsync) return;
+    const name = `hisabtrack-${version.replace(/[^a-zA-Z0-9._-]+/g, '_')}.apk`;
+    for (const directory of [FileSystem.documentDirectory, FileSystem.cacheDirectory]) {
+      if (directory) await FileSystem.deleteAsync(`${directory}${name}`, { idempotent: true }).catch(() => undefined);
+    }
+  },
+
   async checkForBinaryUpdate(): Promise<UpdateInfo | null> {
     try {
       if (Platform.OS === 'web') return null;
@@ -415,6 +427,7 @@ export const UpdateService = {
       );
 
       if (!hasNewerBinary && !isRequired) {
+        void this.removeDownloadedApk(currentVersion);
         return null;
       }
 
@@ -493,6 +506,21 @@ export const UpdateService = {
   },
 
   async installUpdate(
+    updateInfo: UpdateInfo,
+    onProgress?: (progress: UpdateInstallProgress) => void
+  ): Promise<void> {
+    if (updateInfo.updateType === 'ota') return this.runInstall(updateInfo, onProgress);
+    // The update dialog exists in more than one place; a second download used
+    // to delete the first one's APK mid-verification. Share the running one.
+    if (activeBinaryInstall) {
+      onProgress?.({ phase: 'downloading', message: 'The update is already downloading...' });
+      return activeBinaryInstall;
+    }
+    activeBinaryInstall = this.runInstall(updateInfo, onProgress).finally(() => { activeBinaryInstall = null; });
+    return activeBinaryInstall;
+  },
+
+  async runInstall(
     updateInfo: UpdateInfo,
     onProgress?: (progress: UpdateInstallProgress) => void
   ) {
@@ -594,13 +622,19 @@ export const UpdateService = {
       throw new InstallPermissionRequiredError();
     }
 
-    const targetDirectory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+    // App storage, not cache: Android may empty the cache at any time when the
+    // phone is low on space, which removed the ~100 MB APK mid-verification.
+    const targetDirectory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
     if (!targetDirectory) {
       throw new Error('No writable directory is available for the update download.');
     }
 
     const safeVersion = updateInfo.latestVersion.replace(/[^a-zA-Z0-9._-]+/g, '_');
     const targetUri = `${targetDirectory}hisabtrack-${safeVersion}.apk`;
+    // An earlier attempt may have left a copy in the cache; free that space.
+    if (FileSystem.cacheDirectory && FileSystem.cacheDirectory !== targetDirectory) {
+      await FileSystem.deleteAsync?.(`${FileSystem.cacheDirectory}hisabtrack-${safeVersion}.apk`, { idempotent: true }).catch(() => undefined);
+    }
     const existingFile = await FileSystem.getInfoAsync?.(targetUri).catch(() => undefined);
     const canReuseDownload = Boolean(existingFile?.exists)
       && updateInfo.expectedSize !== undefined
