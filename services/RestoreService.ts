@@ -51,7 +51,8 @@ export class RestoreService {
     }
     if (backup.settings) {
       const current = await loadStoredAppSettings(); check();
-      const settings = { ...current, ...BackupService.safeSettings(backup.settings) };
+      // Backups never carry the sharing switches; restoring keeps this device's choices.
+      const settings = { ...current, ...BackupService.safeSettings(backup.settings), cloudSyncEnabled: current.cloudSyncEnabled, aiSharingEnabled: current.aiSharingEnabled, puterJsEnabled: current.puterJsEnabled };
       if (Platform.OS === 'web') sessionLocalStorage.setItem('app_settings', JSON.stringify(settings));
       else {
         const user = await SecureStorageService.getUserData(); check();

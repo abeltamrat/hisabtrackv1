@@ -47,6 +47,8 @@ export interface AssistantOverlaySettings {
 
 export interface AppSettings {
   cloudSyncEnabled: boolean;
+  /** Set once cloud sync and AI sharing were switched on by default (new installs, or the one-time upgrade). */
+  sharingDefaultsApplied?: boolean;
   aiSharingEnabled: boolean;
   currency: AppCurrencyCode;
   language: AppLanguage;
@@ -119,8 +121,9 @@ const DEFAULT_ASSISTANT_OVERLAY: AssistantOverlaySettings = {
 };
 
 const DEFAULTS: AppSettings = {
-  cloudSyncEnabled: false,
+  cloudSyncEnabled: true,
   aiSharingEnabled: true,
+  sharingDefaultsApplied: true,
   currency: 'USD',
   language: 'en',
   fontSize: 'Medium',
@@ -135,6 +138,15 @@ const DEFAULTS: AppSettings = {
   backgroundReminders: DEFAULT_BACKGROUND_REMINDERS,
   assistantOverlay: DEFAULT_ASSISTANT_OVERLAY,
 };
+
+/**
+ * Cloud sync and AI sharing are on by default. Settings saved before that
+ * default existed get both switched on once; after that the user's choice sticks.
+ */
+function applySharingDefaults(saved: unknown, merged: AppSettings): AppSettings {
+  if (!saved || (saved as AppSettings).sharingDefaultsApplied) return merged;
+  return { ...merged, cloudSyncEnabled: true, aiSharingEnabled: true, sharingDefaultsApplied: true };
+}
 
 // simple storage helpers
 export async function loadStoredAppSettings(): Promise<AppSettings> {
@@ -156,7 +168,8 @@ export async function loadStoredAppSettings(): Promise<AppSettings> {
           },
         }
         : DEFAULTS;
-      return { ...merged, fontSize: normalizeAppFontSize((merged as AppSettings).fontSize), calendarSystem: normalizeCalendarSystem((merged as AppSettings).calendarSystem) };
+      const withDefaults = applySharingDefaults(parsed, merged as AppSettings);
+      return { ...withDefaults, fontSize: normalizeAppFontSize(withDefaults.fontSize), calendarSystem: normalizeCalendarSystem(withDefaults.calendarSystem) };
     } else {
       const { SecureStorageService } = await import('@/services/SecureStorageService');
       const raw = await SecureStorageService.getUserData();
@@ -175,7 +188,8 @@ export async function loadStoredAppSettings(): Promise<AppSettings> {
           },
         }
         : DEFAULTS;
-      return { ...merged, fontSize: normalizeAppFontSize((merged as AppSettings).fontSize), calendarSystem: normalizeCalendarSystem((merged as AppSettings).calendarSystem) };
+      const withDefaults = applySharingDefaults(saved, merged as AppSettings);
+      return { ...withDefaults, fontSize: normalizeAppFontSize(withDefaults.fontSize), calendarSystem: normalizeCalendarSystem(withDefaults.calendarSystem) };
     }
   } catch {
     return DEFAULTS;
