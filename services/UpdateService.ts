@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import { Linking, Platform } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { sha256 } from '@noble/hashes/sha256';
+import { toByteArray } from 'base64-js';
 
 const DEFAULT_UPDATE_JSON_URL = 'https://www.hisab.nonstopplc.com/update.json';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
@@ -96,6 +97,11 @@ type FileSystemLegacyModule = {
     downloadAsync: () => Promise<FileSystemDownloadResult | undefined>;
   };
   deleteAsync?: (fileUri: string, options?: { idempotent?: boolean }) => Promise<void>;
+  getInfoAsync?: (fileUri: string) => Promise<{ exists: boolean; size?: number }>;
+  readAsStringAsync?: (
+    fileUri: string,
+    options: { encoding: 'base64'; position: number; length: number }
+  ) => Promise<string>;
   getContentUriAsync: (fileUri: string) => Promise<string>;
 };
 
@@ -263,51 +269,52 @@ export const UpdateService = {
       throw new Error('This update is missing its SHA-256 checksum, so it cannot be verified. Update was not installed.');
     }
 
-    const { File } = require('expo-file-system') as {
-      File: new (uri: string) => {
-        exists: boolean;
-        size: number;
-        open(): {
-          readBytes(length: number): Uint8Array;
-          close(): void;
-        };
-        delete(): void;
-      };
+    const FileSystem = this.getLegacyFileSystem();
+    if (!FileSystem?.getInfoAsync || !FileSystem.readAsStringAsync) {
+      throw new Error('This app version cannot safely verify the downloaded update.');
+    }
+    const fileInfo = await FileSystem.getInfoAsync(fileUri);
+    const fileSize = Number(fileInfo.size ?? 0);
+    if (!fileInfo.exists || !Number.isFinite(fileSize) || fileSize <= 0) {
+      throw new Error('The downloaded update could not be read for verification. Please retry the download.');
+    }
+    const discardFile = async () => {
+      await FileSystem.deleteAsync?.(fileUri, { idempotent: true }).catch(() => undefined);
     };
 
-    const file = new File(fileUri);
-    if (!file.exists) throw new Error('The downloaded update could not be read for verification.');
-
     // Cheap check first: a size mismatch means there is no point hashing.
-    if (expected.size !== undefined && file.size !== expected.size) {
-      file.delete();
+    if (expected.size !== undefined && fileSize !== expected.size) {
+      await discardFile();
       throw new Error('The downloaded update is the wrong size and was discarded. Please try again.');
     }
 
-    // File.bytes() materializes the complete APK in Java memory. A 103 MB APK
-    // can exceed the heap limit on entry-level phones, so hash it through the
-    // native file handle in small chunks and yield between reads.
+    // Whole-file reads materialize the complete APK in Java memory. A 103 MB
+    // APK can exceed the heap limit on entry-level phones. The legacy native
+    // reader is available in both 1.0.4 and 1.0.5 and supports bounded reads.
     const hasher = sha256.create();
-    const handle = file.open();
     const chunkSize = 1024 * 1024;
     let bytesRead = 0;
-    try {
-      while (bytesRead < file.size) {
-        const chunk = handle.readBytes(Math.min(chunkSize, file.size - bytesRead));
-        if (!chunk.length) throw new Error('The downloaded update ended before verification finished.');
-        hasher.update(chunk);
-        bytesRead += chunk.length;
-        onProgress?.(bytesRead / file.size);
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
+    while (bytesRead < fileSize) {
+      const requestedLength = Math.min(chunkSize, fileSize - bytesRead);
+      const encoded = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: 'base64',
+        position: bytesRead,
+        length: requestedLength,
+      });
+      const chunk = toByteArray(encoded);
+      if (!chunk.length || chunk.length > requestedLength) {
+        throw new Error('The downloaded update ended before verification finished. Please retry the download.');
       }
-    } finally {
-      handle.close();
+      hasher.update(chunk);
+      bytesRead += chunk.length;
+      onProgress?.(Math.min(1, bytesRead / fileSize));
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
 
     const actual = this.toHex(hasher.digest());
     if (actual !== expected.sha256) {
       // Never leave an unverified APK on disk where a later run might use it.
-      file.delete();
+      await discardFile();
       throw new Error('The downloaded update failed its integrity check and was discarded. It was not installed.');
     }
   },
@@ -594,13 +601,10 @@ export const UpdateService = {
 
     const safeVersion = updateInfo.latestVersion.replace(/[^a-zA-Z0-9._-]+/g, '_');
     const targetUri = `${targetDirectory}hisabtrack-${safeVersion}.apk`;
-    const { File: DownloadedFile } = require('expo-file-system') as {
-      File: new (uri: string) => { exists: boolean; size: number };
-    };
-    const existingFile = new DownloadedFile(targetUri);
-    const canReuseDownload = existingFile.exists
+    const existingFile = await FileSystem.getInfoAsync?.(targetUri).catch(() => undefined);
+    const canReuseDownload = Boolean(existingFile?.exists)
       && updateInfo.expectedSize !== undefined
-      && existingFile.size === updateInfo.expectedSize;
+      && existingFile?.size === updateInfo.expectedSize;
 
     if (!canReuseDownload && FileSystem.deleteAsync) {
       await FileSystem.deleteAsync(targetUri, { idempotent: true }).catch(() => undefined);

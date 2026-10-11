@@ -57,16 +57,20 @@ test('APK verification hashes bounded chunks instead of loading the whole file',
   const service = read('services/UpdateService.ts');
   assert.match(service, /sha256\.create\(\)/);
   assert.match(service, /const chunkSize = 1024 \* 1024/);
-  assert.match(service, /handle\.readBytes\(Math\.min\(chunkSize, file\.size - bytesRead\)\)/);
-  assert.match(service, /handle\.close\(\)/);
+  assert.match(service, /readAsStringAsync\(fileUri/);
+  assert.match(service, /encoding: 'base64'/);
+  assert.match(service, /toByteArray\(encoded\)/);
+  assert.match(service, /const fileSize = Number\(fileInfo\.size \?\? 0\)/);
+  assert.match(service, /Math\.min\(1, bytesRead \/ fileSize\)/);
   assert.doesNotMatch(service, /await file\.bytes\(\)/);
 });
 
 test('a complete cached APK is verified and reused after a failed install attempt', () => {
   const service = read('services/UpdateService.ts');
-  assert.match(service, /const canReuseDownload = existingFile\.exists/);
-  assert.match(service, /existingFile\.size === updateInfo\.expectedSize/);
+  assert.match(service, /const canReuseDownload = Boolean\(existingFile\?\.exists\)/);
+  assert.match(service, /existingFile\?\.size === updateInfo\.expectedSize/);
   assert.match(service, /if \(!canReuseDownload && FileSystem\.deleteAsync\)/);
   assert.match(service, /message: 'Using the completed update download\.\.\.'/);
   assert.match(service, /verifyDownloadedPackage\(downloadedUri/);
+  assert.match(service, /deleteAsync\?\.\(fileUri, \{ idempotent: true \}\)\.catch/);
 });
