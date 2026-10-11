@@ -7,6 +7,18 @@ const DEFAULT_UPDATE_JSON_URL = 'https://www.hisab.nonstopplc.com/update.json';
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const FLAG_GRANT_READ_URI_PERMISSION = 1;
 
+// Runtime 1.0.4 needs a browser bridge to the first APK that contains the
+// guarded native installer. Prefer a same/newer server manifest as soon as it
+// is deployed; this record only covers a stale or temporarily unavailable host.
+const BUNDLED_ANDROID_BRIDGE_RELEASE: BinaryUpdateManifest = {
+  latestVersion: '1.0.5',
+  latestBuildNumber: 103,
+  androidDownloadUrl: 'https://github.com/abeltamrat/hisabtrackv1/releases/download/v1.0.5/hisabtrack-1.0.5-build-103.apk',
+  forceUpdate: false,
+  releaseNotes: 'Secure app updates, messaging, people and category improvements.',
+  browserOnly: true,
+};
+
 type UpdateType = 'ota' | 'binary';
 type UpdatePhase = 'checking' | 'permission' | 'downloading' | 'verifying' | 'installing' | 'browser' | 'reloading' | 'completed';
 
@@ -31,6 +43,8 @@ interface BinaryUpdateManifest {
   /** Expected APK size in bytes. Checked before hashing to fail fast. */
   androidSize?: number;
   size?: number;
+  /** Open the system browser; used by bridge releases for older native shells. */
+  browserOnly?: boolean;
 }
 
 type ExpoUpdatesModule = {
@@ -102,6 +116,7 @@ export interface UpdateInfo {
   /** Expected APK digest, verified before the installer is opened. */
   expectedSha256?: string;
   expectedSize?: number;
+  browserOnly?: boolean;
 }
 
 export interface UpdateInstallProgress {
@@ -319,18 +334,27 @@ export const UpdateService = {
     try {
       if (Platform.OS === 'web') return null;
 
-      const response = await fetch(this.getUpdateManifestUrl(), {
-        headers: {
-          'Cache-Control': 'no-cache',
-        },
-      });
-
-      if (!response.ok) {
-        console.warn('[UpdateService] Failed to fetch update info');
-        return null;
+      let data: BinaryUpdateManifest | null = Platform.OS === 'android'
+        ? BUNDLED_ANDROID_BRIDGE_RELEASE
+        : null;
+      try {
+        const response = await fetch(this.getUpdateManifestUrl(), {
+          headers: {
+            'Cache-Control': 'no-cache',
+          },
+        });
+        if (response.ok) {
+          const remote = await response.json() as BinaryUpdateManifest;
+          // The server wins for an equal version so it can replace the bridge
+          // URL with a checksum-protected first-party APK without another OTA.
+          if (!data || this.compareVersions(remote.latestVersion, data.latestVersion) >= 0) {
+            data = remote;
+          }
+        }
+      } catch {
+        // Android still has the signed bridge release when the host is offline.
       }
-
-      const data = await response.json() as BinaryUpdateManifest;
+      if (!data) return null;
       const currentVersion = this.getCurrentVersion();
       const currentBuildNumber = this.getCurrentBuildNumber();
       const latestBuildNumber = this.getBinaryLatestBuild(data);
@@ -359,6 +383,7 @@ export const UpdateService = {
         releaseNotes: data.releaseNotes,
         expectedSha256: this.getExpectedSha256(data),
         expectedSize: this.getExpectedSize(data),
+        browserOnly: Boolean(data.browserOnly),
         updateType: 'binary',
         currentVersion,
         currentBuildNumber,
@@ -476,6 +501,13 @@ export const UpdateService = {
 
     if (Platform.OS !== 'android') {
       await this.openUpdateUrl(updateInfo.downloadUrl);
+      return;
+    }
+
+    if (updateInfo.browserOnly) {
+      onProgress?.({ phase: 'browser', message: 'Opening the secure download in your browser...' });
+      await this.openUpdateUrl(updateInfo.downloadUrl);
+      onProgress?.({ phase: 'completed', message: 'Download opened in your browser.', progress: 1 });
       return;
     }
 

@@ -37,3 +37,14 @@ test('the update notice uses the coin and provides browser fallback', () => {
   assert.match(modal, /Check Permission & Continue/);
   assert.match(modal, /status\.progress/);
 });
+
+test('runtime 1.0.4 has a committed browser bridge to the signed 1.0.5 APK', () => {
+  const config = read('app.config.js');
+  const service = read('services/UpdateService.ts');
+  assert.match(config, /HISAB_RUNTIME_VERSION_OVERRIDE/);
+  assert.match(service, /latestVersion: '1\.0\.5'/);
+  assert.match(service, /latestBuildNumber: 103/);
+  assert.match(service, /releases\/download\/v1\.0\.5\/hisabtrack-1\.0\.5-build-103\.apk/);
+  assert.match(service, /browserOnly: true/);
+  assert.match(service, /if \(updateInfo\.browserOnly\)[\s\S]*?openUpdateUrl/);
+});
