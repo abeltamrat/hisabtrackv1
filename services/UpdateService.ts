@@ -14,9 +14,11 @@ const BUNDLED_ANDROID_BRIDGE_RELEASE: BinaryUpdateManifest = {
   latestVersion: '1.0.5',
   latestBuildNumber: 103,
   androidDownloadUrl: 'https://github.com/abeltamrat/hisabtrackv1/releases/download/v1.0.5/hisabtrack-1.0.5-build-103.apk',
+  androidSha256: 'a9e4ef028d71166714008ea44eba4062fcdd191e102829110091c14f9e77098a',
+  androidSize: 103295634,
   forceUpdate: false,
   releaseNotes: 'Secure app updates, messaging, people and category improvements.',
-  browserOnly: true,
+  legacyVerifiedInstaller: true,
 };
 
 type UpdateType = 'ota' | 'binary';
@@ -45,6 +47,12 @@ interface BinaryUpdateManifest {
   size?: number;
   /** Open the system browser; used by bridge releases for older native shells. */
   browserOnly?: boolean;
+  /**
+   * A checksum-pinned release that an older native shell may pass to Android's
+   * installer without the 1.0.5 package inspector. Android still enforces the
+   * installed app's package name, increasing version code, and signing key.
+   */
+  legacyVerifiedInstaller?: boolean;
 }
 
 type ExpoUpdatesModule = {
@@ -117,6 +125,7 @@ export interface UpdateInfo {
   expectedSha256?: string;
   expectedSize?: number;
   browserOnly?: boolean;
+  legacyVerifiedInstaller?: boolean;
 }
 
 export interface UpdateInstallProgress {
@@ -337,6 +346,7 @@ export const UpdateService = {
       let data: BinaryUpdateManifest | null = Platform.OS === 'android'
         ? BUNDLED_ANDROID_BRIDGE_RELEASE
         : null;
+      let usingBundledBridge = data === BUNDLED_ANDROID_BRIDGE_RELEASE;
       try {
         const response = await fetch(this.getUpdateManifestUrl(), {
           headers: {
@@ -349,6 +359,7 @@ export const UpdateService = {
           // URL with a checksum-protected first-party APK without another OTA.
           if (!data || this.compareVersions(remote.latestVersion, data.latestVersion) >= 0) {
             data = remote;
+            usingBundledBridge = false;
           }
         }
       } catch {
@@ -384,6 +395,10 @@ export const UpdateService = {
         expectedSha256: this.getExpectedSha256(data),
         expectedSize: this.getExpectedSize(data),
         browserOnly: Boolean(data.browserOnly),
+        // Never let a remote manifest opt an older native shell out of native
+        // package inspection. This exception belongs only to the exact APK
+        // whose size and digest are compiled into this bridge OTA.
+        legacyVerifiedInstaller: usingBundledBridge && Boolean(data.legacyVerifiedInstaller),
         updateType: 'binary',
         currentVersion,
         currentBuildNumber,
@@ -518,7 +533,12 @@ export const UpdateService = {
     // Older APKs do not contain the native permission/package inspector. They
     // must use the browser and Android's normal download/install UI instead of
     // receiving an OTA that assumes native code they do not have.
-    if (!FileSystem?.createDownloadResumable || !FileSystem.getContentUriAsync || !IntentLauncher?.startActivityAsync || !NativeInstaller) {
+    if (
+      !FileSystem?.createDownloadResumable
+      || !FileSystem.getContentUriAsync
+      || !IntentLauncher?.startActivityAsync
+      || (!NativeInstaller && !updateInfo.legacyVerifiedInstaller)
+    ) {
       onProgress?.({ phase: 'browser', message: 'Opening the secure download in your browser...' });
       await this.openUpdateUrl(updateInfo.downloadUrl);
       onProgress?.({ phase: 'completed', message: 'Download opened in your browser.', progress: 1 });
@@ -603,11 +623,15 @@ export const UpdateService = {
     const expectedBuild = updateInfo.latestBuildNumber === undefined
       ? undefined
       : Number(updateInfo.latestBuildNumber);
-    await NativeInstaller.validateApk(
-      result.uri,
-      updateInfo.latestVersion,
-      expectedBuild !== undefined && Number.isFinite(expectedBuild) ? expectedBuild : undefined,
-    );
+    if (NativeInstaller) {
+      await NativeInstaller.validateApk(
+        result.uri,
+        updateInfo.latestVersion,
+        expectedBuild !== undefined && Number.isFinite(expectedBuild) ? expectedBuild : undefined,
+      );
+    } else if (!updateInfo.legacyVerifiedInstaller) {
+      throw new Error('This app version cannot validate the Android update package. Use the browser download instead.');
+    }
 
     onProgress?.({
       phase: 'installing',
@@ -625,6 +649,10 @@ export const UpdateService = {
     } catch (error) {
       const stillAllowed = await this.canRequestPackageInstalls().catch(() => null);
       if (stillAllowed === false) {
+        await this.openAndroidInstallPermissionSettings().catch(() => undefined);
+        throw new InstallPermissionRequiredError();
+      }
+      if (updateInfo.legacyVerifiedInstaller && stillAllowed === null) {
         await this.openAndroidInstallPermissionSettings().catch(() => undefined);
         throw new InstallPermissionRequiredError();
       }

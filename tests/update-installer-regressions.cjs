@@ -38,13 +38,17 @@ test('the update notice uses the coin and provides browser fallback', () => {
   assert.match(modal, /status\.progress/);
 });
 
-test('runtime 1.0.4 has a committed browser bridge to the signed 1.0.5 APK', () => {
+test('runtime 1.0.4 has a checksum-pinned installer bridge to the signed 1.0.5 APK', () => {
   const config = read('app.config.js');
   const service = read('services/UpdateService.ts');
   assert.match(config, /HISAB_RUNTIME_VERSION_OVERRIDE/);
   assert.match(service, /latestVersion: '1\.0\.5'/);
   assert.match(service, /latestBuildNumber: 103/);
   assert.match(service, /releases\/download\/v1\.0\.5\/hisabtrack-1\.0\.5-build-103\.apk/);
-  assert.match(service, /browserOnly: true/);
-  assert.match(service, /if \(updateInfo\.browserOnly\)[\s\S]*?openUpdateUrl/);
+  assert.match(service, /androidSha256: 'a9e4ef028d71166714008ea44eba4062fcdd191e102829110091c14f9e77098a'/);
+  assert.match(service, /androidSize: 103295634/);
+  assert.match(service, /legacyVerifiedInstaller: true/);
+  assert.match(service, /legacyVerifiedInstaller: usingBundledBridge && Boolean\(data\.legacyVerifiedInstaller\)/);
+  assert.match(service, /\(!NativeInstaller && !updateInfo\.legacyVerifiedInstaller\)/);
+  assert.match(service, /if \(NativeInstaller\)[\s\S]*?NativeInstaller\.validateApk/);
 });
