@@ -485,6 +485,60 @@ exports.lookupLinkedUser = onCall({ region: 'us-central1' }, async request => {
   return { uid: user.uid, displayName: user.displayName || 'Verified account' };
 });
 
+// Contact discovery accepts only identifiers already present in the caller's
+// address book. It returns no phone or email data and omits ambiguous matches.
+exports.discoverLinkedContacts = onCall({ region: 'us-central1' }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const uid = request.auth.uid;
+  const rawContacts = request.data?.contacts;
+  if (!Array.isArray(rawContacts) || rawContacts.length > 1000) throw new HttpsError('invalid-argument', 'Use up to 1,000 contacts.');
+
+  const contacts = rawContacts.map(value => {
+    const key = typeof value?.key === 'string' ? value.key.trim() : '';
+    const phones = Array.isArray(value?.phones) ? [...new Set(value.phones.filter(phone => typeof phone === 'string').map(phone => phone.trim()).filter(phone => /^\+[1-9][0-9]{7,14}$/.test(phone)))].slice(0, 3) : [];
+    const emails = Array.isArray(value?.emails) ? [...new Set(value.emails.filter(email => typeof email === 'string').map(email => email.trim().toLowerCase()).filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))].slice(0, 3) : [];
+    if (!key || key.length > 160 || (!phones.length && !emails.length)) throw new HttpsError('invalid-argument', 'Every contact needs a key and a valid phone or email.');
+    return { key, phones, emails };
+  });
+  const phoneValues = [...new Set(contacts.flatMap(contact => contact.phones))];
+  const emailValues = [...new Set(contacts.flatMap(contact => contact.emails))];
+  const identifiers = [...phoneValues.map(phoneNumber => ({ phoneNumber })), ...emailValues.map(email => ({ email }))];
+  if (identifiers.length > 2000) throw new HttpsError('invalid-argument', 'Too many contact identifiers.');
+
+  const limitRef = db.doc(`contactDiscoveryLimits/${uid}`), now = Date.now();
+  await db.runTransaction(async tx => {
+    const [deleted, previous] = await Promise.all([tx.get(db.doc(`deletedAccounts/${uid}`)), tx.get(limitRef)]);
+    if (deleted.exists) throw new HttpsError('permission-denied', 'Account is deleted.');
+    const prior = previous.data() || {}, reset = now - Number(prior.start || 0) >= 3600000;
+    const count = reset ? 0 : Number(prior.count || 0);
+    if (count >= 6) throw new HttpsError('resource-exhausted', 'Contact discovery limit reached. Try again later.');
+    tx.set(limitRef, { count: count + 1, start: reset ? now : prior.start });
+  });
+
+  const foundUsers = [];
+  for (let offset = 0; offset < identifiers.length; offset += 100) {
+    const result = await admin.auth().getUsers(identifiers.slice(offset, offset + 100));
+    foundUsers.push(...result.users);
+  }
+  const eligible = [];
+  for (const user of foundUsers) {
+    if (user.uid === uid || user.disabled || (await db.doc(`deletedAccounts/${user.uid}`).get()).exists) continue;
+    eligible.push(user);
+  }
+  const byPhone = new Map(eligible.filter(user => user.phoneNumber).map(user => [user.phoneNumber, user]));
+  const byEmail = new Map(eligible.filter(user => user.emailVerified && user.email).map(user => [user.email.toLowerCase(), user]));
+  const matches = [];
+  for (const contact of contacts) {
+    const candidates = new Map();
+    for (const phone of contact.phones) { const user = byPhone.get(phone); if (user) candidates.set(user.uid, user); }
+    for (const email of contact.emails) { const user = byEmail.get(email); if (user) candidates.set(user.uid, user); }
+    if (candidates.size !== 1) continue;
+    const user = [...candidates.values()][0];
+    matches.push({ key: contact.key, uid: user.uid, displayName: user.displayName || 'Verified account' });
+  }
+  return { matches };
+});
+
 // Notification content is generated here, never accepted from the client: the
 // job document is handed verbatim to Expo, so a client-supplied title/body
 // combined with a planted device token would deliver arbitrary text to another

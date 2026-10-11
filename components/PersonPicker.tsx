@@ -3,7 +3,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
-import RecipientIdentityService, { DEFAULT_PERSON_GROUPS, type RecipientProfile } from '@/services/RecipientIdentityService';
+import PhoneContactPicker from '@/components/PhoneContactPicker';
+import type { DeviceContact, LinkedContactMatch } from '@/services/DeviceContactsService';
+import RecipientIdentityService, { DEFAULT_PERSON_GROUPS, normalizePersonEmail, normalizePersonPhone, type RecipientProfile } from '@/services/RecipientIdentityService';
 import { normalizeRecipient } from '@/utils/phase2Intelligence';
 
 interface Props {
@@ -24,6 +26,8 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
+  const [contactsOpen, setContactsOpen] = useState(false);
+  const [importedLinkedAccount, setImportedLinkedAccount] = useState<LinkedContactMatch>();
 
   useEffect(() => {
     if (!visible) return;
@@ -34,6 +38,8 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
     setCustomGroup('');
     setPhone('');
     setEmail('');
+    setContactsOpen(false);
+    setImportedLinkedAccount(undefined);
     RecipientIdentityService.getAll().then(setPeople);
   }, [suggestedName, visible]);
 
@@ -50,7 +56,7 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
     if (!phone.trim() && !email.trim()) return Alert.alert('Contact required', 'Enter a phone number or email address to identify this person.');
     setSaving(true);
     try {
-      let person = await RecipientIdentityService.create({ displayName: name, phone, email, groups: [...groups, ...(customGroup.trim() ? [customGroup.trim()] : [])] });
+      let person = await RecipientIdentityService.create({ displayName: name, phone, email, groups: [...groups, ...(customGroup.trim() ? [customGroup.trim()] : [])], linkedUid: importedLinkedAccount?.uid, linkedDisplayName: importedLinkedAccount?.displayName, linkCheckedAt: importedLinkedAccount ? Date.now() : undefined });
       try { person = await RecipientIdentityService.refreshLinkedAccount(person.id); } catch { /* An offline or unregistered contact remains a valid local person. */ }
       setPeople(current => [...current, person]);
       onSelect(person);
@@ -60,8 +66,25 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
     } finally { setSaving(false); }
   };
 
-  return (
-    <FormSheet visible={visible} onClose={onClose} accessibilityLabel="Choose a person" maxHeight="88%" scrollable={false}>
+  const chooseContact = (contact: DeviceContact) => {
+    const contactPhone = normalizePersonPhone(contact.phone);
+    const contactEmail = normalizePersonEmail(contact.email);
+    const existing = people.find(person => (contactPhone && person.phone === contactPhone) || (contactEmail && person.email === contactEmail));
+    setContactsOpen(false);
+    if (existing) {
+      onSelect(existing);
+      onClose();
+      return;
+    }
+    setName(contact.name);
+    setPhone(contact.phone || '');
+    setEmail(contact.email || '');
+    setImportedLinkedAccount(contact.linkedAccount);
+    setCreating(true);
+  };
+
+  return <>
+    <FormSheet visible={visible && !contactsOpen} onClose={onClose} accessibilityLabel="Choose a person" maxHeight="88%" scrollable={false}>
           <View className="flex-row items-center justify-between mb-4">
             <View>
               <Text className="text-xl font-extrabold text-slate-900 dark:text-white">Choose a person</Text>
@@ -74,11 +97,12 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
 
           {creating ? (
             <View>
+              <TouchableOpacity onPress={() => setContactsOpen(true)} className="flex-row items-center p-3 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 mb-4"><View className="w-10 h-10 rounded-full bg-teal-600 items-center justify-center mr-3"><FontAwesome name="address-book" size={15} color="#fff" /></View><View className="flex-1"><Text className="font-bold text-teal-800 dark:text-teal-200">Choose from phone contacts</Text><Text className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">Fill the name, phone and email automatically</Text></View><FontAwesome name="chevron-right" size={12} color="#0d9488" /></TouchableOpacity>
               <Text className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">Name</Text>
-              <TextInput value={name} onChangeText={setName} autoFocus placeholder="Person or organization" placeholderTextColor="#94a3b8" className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 text-slate-900 dark:text-white" />
+              <TextInput value={name} onChangeText={value => { setName(value); setImportedLinkedAccount(undefined); }} autoFocus placeholder="Person or organization" placeholderTextColor="#94a3b8" className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 text-slate-900 dark:text-white" />
               <Text className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-4 mb-2">Phone or email</Text>
-              <TextInput value={phone} onChangeText={setPhone} placeholder="Phone, e.g. 0912345678" placeholderTextColor="#94a3b8" keyboardType="phone-pad" className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 text-slate-900 dark:text-white" />
-              <TextInput value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#94a3b8" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 mt-3 text-slate-900 dark:text-white" />
+              <TextInput value={phone} onChangeText={value => { setPhone(value); setImportedLinkedAccount(undefined); }} placeholder="Phone, e.g. 0912345678" placeholderTextColor="#94a3b8" keyboardType="phone-pad" className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 text-slate-900 dark:text-white" />
+              <TextInput value={email} onChangeText={value => { setEmail(value); setImportedLinkedAccount(undefined); }} placeholder="Email address" placeholderTextColor="#94a3b8" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 mt-3 text-slate-900 dark:text-white" />
               <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">At least one is required. It prevents duplicates and can link a registered Hisab Track user.</Text>
               <Text className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-4 mb-2">Groups (optional)</Text>
               <View className="flex-row flex-wrap gap-2">
@@ -97,6 +121,7 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
             </View>
           ) : (
             <>
+              <TouchableOpacity onPress={() => setContactsOpen(true)} className="flex-row items-center p-3 rounded-2xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 mb-3"><View className="w-10 h-10 rounded-full bg-teal-600 items-center justify-center mr-3"><FontAwesome name="address-book" size={15} color="#fff" /></View><View className="flex-1"><Text className="font-bold text-teal-800 dark:text-teal-200">Add from phone contacts</Text><Text className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">HisabTrack users have a coin-and-link badge</Text></View><FontAwesome name="chevron-right" size={12} color="#0d9488" /></TouchableOpacity>
               <View className="flex-row items-center bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 mb-3">
                 <FontAwesome name="search" size={16} color="#94a3b8" />
                 <TextInput value={query} onChangeText={setQuery} placeholder="Search names, aliases or groups" placeholderTextColor="#94a3b8" className="flex-1 px-3 py-3 text-slate-900 dark:text-white" />
@@ -119,5 +144,6 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
             </>
           )}
     </FormSheet>
-  );
+    <PhoneContactPicker visible={visible && contactsOpen} onClose={() => setContactsOpen(false)} onSelect={chooseContact} />
+  </>;
 }

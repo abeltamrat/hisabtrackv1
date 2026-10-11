@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hisab Track",
     "slug": "hisabtrackv1",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -18,11 +18,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "1.0.3",
+      "buildNumber": "1.0.4",
       "bundleIdentifier": "com.abeltamrat.hisabtrackv1"
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/hisab-coin-adaptive.png",
         "backgroundColor": "#0f172a"
@@ -33,11 +33,13 @@
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
         "REQUEST_INSTALL_PACKAGES",
+        "READ_CONTACTS",
         "READ_SMS",
         "RECEIVE_SMS"
       ],
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_CONTACTS",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
@@ -66,6 +68,12 @@
           "photosPermission": "Allow Hisab Track to choose receipt images from your photos.",
           "cameraPermission": "Allow Hisab Track to photograph receipts for Smart Input.",
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow Hisab Track to show your phone contacts so you can add people quickly and identify contacts who use HisabTrack."
         }
       ],
       "./plugins/withSmsReceiver",

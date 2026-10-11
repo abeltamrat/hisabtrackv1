@@ -125,6 +125,7 @@ export class RecipientIdentityService {
         verifiedHints: unique(input.verifiedHints || []),
         kind: input.kind || 'PERSON', groups: input.groups || [],
         phone: input.phone, email: input.email, notes: input.notes,
+        linkedUid: input.linkedUid, linkedDisplayName: input.linkedDisplayName, linkCheckedAt: input.linkCheckedAt,
         createdAt: now, updatedAt: now,
       });
       assertContact(profile);

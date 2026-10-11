@@ -24,7 +24,8 @@ function environment(options={}) {
    });chain=next.catch(()=>{});return next;
  }};
  const wrap=(_,fn)=>fn;
- const mocks={'firebase-admin':{initializeApp(){},firestore:()=>db,auth:()=>({getUser:async uid=>({uid,displayName:'Alice',phoneNumber:'+251911111111'}),getUserByEmail:async email=>email==='alice@example.com'?{uid:'alice',displayName:'Alice',email,emailVerified:true}:Promise.reject(Object.assign(Error('missing'),{code:'auth/user-not-found'}))})},'expo-server-sdk':{Expo:class{static isExpoPushToken(t){return typeof t==='string'&&/^Expo(nent)?PushToken\[.+\]$/.test(t);}chunkPushNotifications(m){return m.length?[m]:[];}chunkPushNotificationReceiptIds(ids){return ids.length?[ids]:[];}async sendPushNotificationsAsync(chunk){sent.push(...chunk);return chunk.map((_,i)=>({status:'ok',id:'ticket-'+i}));}async getPushNotificationReceiptsAsync(){return {};}}},'firebase-functions':{logger:{info(){},debug(){},warn(){},error(){}}},'firebase-functions/v2/firestore':{onDocumentCreated:wrap},'firebase-functions/v2/scheduler':{onSchedule:wrap},'firebase-functions/v2/https':{onCall:wrap,HttpsError}};
+ const authUsers=[{uid:'alice',displayName:'Alice',phoneNumber:'+251911111111',email:'alice@example.com',emailVerified:true},{uid:'carol',displayName:'Carol',phoneNumber:'+251922222222',email:'carol@example.com',emailVerified:true},{uid:'unverified',displayName:'Unverified',email:'unverified@example.com',emailVerified:false}];
+ const mocks={'firebase-admin':{initializeApp(){},firestore:()=>db,auth:()=>({getUser:async uid=>authUsers.find(user=>user.uid===uid)||Promise.reject(Object.assign(Error('missing'),{code:'auth/user-not-found'})),getUserByEmail:async email=>authUsers.find(user=>user.email===email)||Promise.reject(Object.assign(Error('missing'),{code:'auth/user-not-found'})),getUsers:async identifiers=>({users:authUsers.filter(user=>identifiers.some(identifier=>(identifier.phoneNumber&&identifier.phoneNumber===user.phoneNumber)||(identifier.email&&identifier.email===user.email))),notFound:[]})})},'expo-server-sdk':{Expo:class{static isExpoPushToken(t){return typeof t==='string'&&/^Expo(nent)?PushToken\[.+\]$/.test(t);}chunkPushNotifications(m){return m.length?[m]:[];}chunkPushNotificationReceiptIds(ids){return ids.length?[ids]:[];}async sendPushNotificationsAsync(chunk){sent.push(...chunk);return chunk.map((_,i)=>({status:'ok',id:'ticket-'+i}));}async getPushNotificationReceiptsAsync(){return {};}}},'firebase-functions':{logger:{info(){},debug(){},warn(){},error(){}}},'firebase-functions/v2/firestore':{onDocumentCreated:wrap},'firebase-functions/v2/scheduler':{onSchedule:wrap},'firebase-functions/v2/https':{onCall:wrap,HttpsError}};
  const exports={};new Function('require','exports',fs.readFileSync(path.join(__dirname,'../functions/index.js'),'utf8'))(name=>mocks[name],exports);
  rows.set('sharedLoans/loan',{borrowerUid:'alice',lenderUid:'bob',linkStatus:'ACCEPTED',amount:100,interestRate:0,startDate:Date.UTC(2026,0,1),dueDate:Date.UTC(2027,0,1)});
  const request=(uid,data)=>({auth:{uid},data:{sharedLoanId:'loan',...data}});
@@ -61,6 +62,22 @@ test('verified email lookup links a user without returning private contact data'
  const {exports:api}=environment();
  const result=await api.lookupLinkedUser({auth:{uid:'bob'},data:{email:' Alice@Example.com '}});
  assert.deepEqual(result,{uid:'alice',displayName:'Alice'});
+});
+
+test('contact discovery identifies verified users without returning contact details',async()=>{
+ const {exports:api}=environment();
+ await assert.rejects(api.discoverLinkedContacts({data:{contacts:[]}}),{code:'unauthenticated'});
+ const result=await api.discoverLinkedContacts({auth:{uid:'bob'},data:{contacts:[
+  {key:'phone-contact',phones:['+251922222222'],emails:[]},
+  {key:'email-contact',phones:[],emails:['CAROL@example.com']},
+  {key:'unverified-contact',phones:[],emails:['unverified@example.com']},
+ ]}});
+ assert.deepEqual(result,{matches:[
+  {key:'phone-contact',uid:'carol',displayName:'Carol'},
+  {key:'email-contact',uid:'carol',displayName:'Carol'},
+ ]});
+ assert.equal(JSON.stringify(result).includes('+251'),false);
+ assert.equal(JSON.stringify(result).includes('@example.com'),false);
 });
 
 test('confirmed interest is capped across payments and persisted for both participants',async()=>{
