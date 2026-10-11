@@ -150,3 +150,21 @@ test('a Mela supplier is used in price history, and supplier links are validated
   assert.throws(() => validateTransaction({ ...base, supplier: { source: 'mela', id: 'x', name: 'n' } }), /Invalid supplier link/);
   assert.doesNotThrow(() => validateTransaction({ ...base, supplier: { source: 'mela', id: 2, name: 'Abebe' } }));
 });
+
+test('projects show the customer name next to the Mela customer id', async () => {
+  const { customerLabel } = load('./services/MelaService.ts');
+  assert.equal(customerLabel('Abebe Kebede', 'C-12'), 'Abebe Kebede (C-12)');
+  assert.equal(customerLabel(null, 'C-12'), 'C-12', 'older Mela without names still shows the id');
+  assert.equal(customerLabel('C-12', 'C-12'), 'C-12', 'unresolved id is not repeated');
+  store.clear(); secure.clear();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => url.endsWith('action=login')
+    ? reply(200, { token: 't.s', expires_at: 2000000000, company: 'k', user: { name: 'A' }, permissions: { projects: true, items: false, suppliers: false } })
+    : url.endsWith('action=projects') ? reply(200, { projects: [{ id: 1, title: 'Villa', customer: 'Abebe Kebede', customer_id: 'C-12' }] }) : reply(403, { error: 'no_item_access' });
+  try {
+    await MelaService.connect('k', 'a', 'pw');
+    const [project] = await MelaService.getProjects();
+    assert.equal(project.customer, 'Abebe Kebede (C-12)');
+    assert.equal(project.customerId, 'C-12');
+  } finally { globalThis.fetch = originalFetch; }
+});

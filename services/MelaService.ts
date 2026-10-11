@@ -18,7 +18,7 @@ const ITEMS_KEY = 'mela_items';
 const SUPPLIERS_KEY = 'mela_suppliers';
 const AUTO_SYNC_AFTER_MS = 6 * 60 * 60 * 1000;
 
-export interface MelaProject { id: number; code: string | null; title: string; status: string | null; customer: string | null }
+export interface MelaProject { id: number; code: string | null; title: string; status: string | null; customer: string | null; customerId?: string | null }
 export interface MelaItem { id: number; code: string | null; name: string; type: string | null; category: string | null; unit: string | null }
 export interface MelaSupplier { id: number; name: string; store: string | null }
 export interface MelaConnection {
@@ -91,6 +91,13 @@ export function projectLink(project: MelaProject): ProjectLink {
 }
 
 /** Active work first, then by title — finished projects stay findable but out of the way. */
+/** Shown as "Abebe Kebede (CUST-12)"; falls back to whichever part Mela has. */
+export function customerLabel(name?: string | null, id?: string | null): string | null {
+  const n = name?.trim() || null, i = id?.trim() || null;
+  if (n && i && n !== i) return `${n} (${i})`;
+  return n || i;
+}
+
 export function sortProjects(projects: MelaProject[]): MelaProject[] {
   const closed = (status: string | null) => /^(done|completed|terminated|cancel)/i.test(status || '');
   return [...projects].sort((a, b) => Number(closed(a.status)) - Number(closed(b.status)) || a.title.localeCompare(b.title));
@@ -159,7 +166,9 @@ export class MelaService {
   static async syncIfStale(): Promise<void> {
     const connection = await this.getConnection();
     if (!connection || connection.needsReconnect) return;
-    if (connection.lastSyncAt && Date.now() - connection.lastSyncAt < AUTO_SYNC_AFTER_MS) return;
+    // Projects cached before customer names were sent re-sync once to pick them up.
+    const needsCustomers = (await this.getProjects()).some(p => p.customerId === undefined);
+    if (!needsCustomers && connection.lastSyncAt && Date.now() - connection.lastSyncAt < AUTO_SYNC_AFTER_MS) return;
     await this.syncProjects().catch(() => undefined);
   }
 
@@ -183,7 +192,7 @@ export class MelaService {
       };
       const projects: MelaProject[] = (await fetchList('projects', PROJECTS_KEY, 'projects'))
         .filter((p: any) => Number.isFinite(p?.id) && typeof p?.title === 'string')
-        .map((p: any) => ({ id: p.id, code: p.code ?? null, title: p.title.trim() || `Project ${p.id}`, status: p.status ?? null, customer: p.customer ?? null }));
+        .map((p: any) => ({ id: p.id, code: p.code ?? null, title: p.title.trim() || `Project ${p.id}`, status: p.status ?? null, customer: customerLabel(p.customer, p.customer_id), customerId: p.customer_id ?? null }));
       const items: MelaItem[] = (await fetchList('items', ITEMS_KEY, 'items'))
         .filter((i: any) => Number.isFinite(i?.id) && typeof i?.name === 'string' && i.name.trim())
         .map((i: any) => ({ id: i.id, code: i.code ?? null, name: i.name.trim(), type: i.type ?? null, category: i.category ?? null, unit: i.unit ?? null }));
