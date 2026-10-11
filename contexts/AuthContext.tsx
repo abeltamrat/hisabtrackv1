@@ -83,7 +83,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             } catch (syncError) {
               // Cloud recovery problems must not lock the owner out of data
               // already stored safely on this device.
-              SyncService.lastError = syncError instanceof Error ? syncError.message : 'Cloud restore needs attention';
+              // Can't reach the cloud right now: keep retrying quietly in the background.
+              if (SyncService.isConnectivityError(syncError)) SyncService.startAutoSync(firebaseUser.uid);
+              else SyncService.lastError = syncError instanceof Error ? syncError.message : 'Cloud restore needs attention';
             }
           }
           void RemotePushService.syncCurrentDevice(firebaseUser.uid).catch(() => undefined);

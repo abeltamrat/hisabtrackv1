@@ -18,6 +18,16 @@ export class SyncService {
   static isPushing = false;
   static lastPushFinishedAt = 0;
   static lastError: string | null = null;
+  /**
+   * Firestore unreachable (no internet, or the connection to Google is flaky or
+   * blocked). That is "not synced yet", not a data problem: no error banner,
+   * and auto-sync keeps retrying.
+   */
+  static isConnectivityError(error: unknown): boolean {
+    const { code, message } = (error ?? {}) as { code?: string; message?: string };
+    return code === 'unavailable' || code === 'deadline-exceeded'
+      || /client is offline|could not reach cloud firestore|network ?error|failed to fetch|timed? ?out/i.test(message || '');
+  }
   static disableAutoSyncUntil = 0;
   static consecutiveNativeErrors = 0;
   private static generation = 0;
@@ -163,7 +173,10 @@ export class SyncService {
       do { this.rerun = false; await this.cycle(uid, generation); } while (this.rerun && generation === this.generation);
     })();
     try { await this.running; this.setStatus('synced'); }
-    catch (error) { this.lastError = error instanceof Error ? error.message : 'Sync failed'; this.setStatus('error'); throw error; }
+    catch (error) {
+      if (this.isConnectivityError(error)) { this.setStatus('pending'); throw error; }
+      this.lastError = error instanceof Error ? error.message : 'Sync failed'; this.setStatus('error'); throw error;
+    }
     finally { this.running = null; }
   }
   static async syncNow(uid?: string | null) {
@@ -209,10 +222,10 @@ export class SyncService {
     this.unsubs.push(LocalChangeEmitter.subscribe(() => { if (!this.applyingRemote) this.schedule(); }));
     for (const table of collections) this.unsubs.push(onSnapshot(collection(getFirestore(), `users/${uid}/${table}`), snapshot => {
       if (!snapshot.metadata.hasPendingWrites) this.schedule();
-    }, error => { this.lastError = error.message; }));
+    }, error => { if (!this.isConnectivityError(error)) this.lastError = error.message; }));
     this.unsubs.push(onSnapshot(collection(getFirestore(), `users/${uid}/app_data`), snapshot => {
       if (!snapshot.metadata.hasPendingWrites) this.schedule();
-    }, error => { this.lastError = error.message; }));
+    }, error => { if (!this.isConnectivityError(error)) this.lastError = error.message; }));
     this.schedule();
   }
   static stopAutoSync() {
