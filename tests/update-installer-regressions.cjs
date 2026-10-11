@@ -61,3 +61,12 @@ test('APK verification hashes bounded chunks instead of loading the whole file',
   assert.match(service, /handle\.close\(\)/);
   assert.doesNotMatch(service, /await file\.bytes\(\)/);
 });
+
+test('a complete cached APK is verified and reused after a failed install attempt', () => {
+  const service = read('services/UpdateService.ts');
+  assert.match(service, /const canReuseDownload = existingFile\.exists/);
+  assert.match(service, /existingFile\.size === updateInfo\.expectedSize/);
+  assert.match(service, /if \(!canReuseDownload && FileSystem\.deleteAsync\)/);
+  assert.match(service, /message: 'Using the completed update download\.\.\.'/);
+  assert.match(service, /verifyDownloadedPackage\(downloadedUri/);
+});

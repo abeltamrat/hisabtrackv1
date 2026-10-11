@@ -594,39 +594,56 @@ export const UpdateService = {
 
     const safeVersion = updateInfo.latestVersion.replace(/[^a-zA-Z0-9._-]+/g, '_');
     const targetUri = `${targetDirectory}hisabtrack-${safeVersion}.apk`;
+    const { File: DownloadedFile } = require('expo-file-system') as {
+      File: new (uri: string) => { exists: boolean; size: number };
+    };
+    const existingFile = new DownloadedFile(targetUri);
+    const canReuseDownload = existingFile.exists
+      && updateInfo.expectedSize !== undefined
+      && existingFile.size === updateInfo.expectedSize;
 
-    if (FileSystem.deleteAsync) {
+    if (!canReuseDownload && FileSystem.deleteAsync) {
       await FileSystem.deleteAsync(targetUri, { idempotent: true }).catch(() => undefined);
     }
 
-    onProgress?.({
-      phase: 'downloading',
-      message: 'Downloading the Android update package...',
-      progress: 0,
-    });
+    let downloadedUri = targetUri;
+    if (canReuseDownload) {
+      onProgress?.({
+        phase: 'downloading',
+        message: 'Using the completed update download...',
+        progress: 1,
+      });
+    } else {
+      onProgress?.({
+        phase: 'downloading',
+        message: 'Downloading the Android update package...',
+        progress: 0,
+      });
 
-    const downloadTask = FileSystem.createDownloadResumable(
-      updateInfo.downloadUrl,
-      targetUri,
-      {},
-      (progress) => {
-        const total = progress.totalBytesExpectedToWrite;
-        const value = total > 0 ? progress.totalBytesWritten / total : undefined;
-        const percentage = value !== undefined ? Math.round(value * 100) : null;
+      const downloadTask = FileSystem.createDownloadResumable(
+        updateInfo.downloadUrl,
+        targetUri,
+        {},
+        (progress) => {
+          const total = progress.totalBytesExpectedToWrite;
+          const value = total > 0 ? progress.totalBytesWritten / total : undefined;
+          const percentage = value !== undefined ? Math.round(value * 100) : null;
 
-        onProgress?.({
-          phase: 'downloading',
-          message: percentage !== null
-            ? `Downloading the Android update package... ${percentage}%`
-            : 'Downloading the Android update package...',
-          progress: value,
-        });
+          onProgress?.({
+            phase: 'downloading',
+            message: percentage !== null
+              ? `Downloading the Android update package... ${percentage}%`
+              : 'Downloading the Android update package...',
+            progress: value,
+          });
+        }
+      );
+
+      const result = await downloadTask.downloadAsync();
+      if (!result?.uri) {
+        throw new Error('The APK download did not finish correctly.');
       }
-    );
-
-    const result = await downloadTask.downloadAsync();
-    if (!result?.uri) {
-      throw new Error('The APK download did not finish correctly.');
+      downloadedUri = result.uri;
     }
 
     onProgress?.({
@@ -636,7 +653,7 @@ export const UpdateService = {
     });
 
     // Fails closed: nothing reaches the installer without a matching digest.
-    await this.verifyDownloadedPackage(result.uri, {
+    await this.verifyDownloadedPackage(downloadedUri, {
       sha256: updateInfo.expectedSha256,
       size: updateInfo.expectedSize,
     }, (progress) => {
@@ -656,7 +673,7 @@ export const UpdateService = {
       : Number(updateInfo.latestBuildNumber);
     if (NativeInstaller) {
       await NativeInstaller.validateApk(
-        result.uri,
+        downloadedUri,
         updateInfo.latestVersion,
         expectedBuild !== undefined && Number.isFinite(expectedBuild) ? expectedBuild : undefined,
       );
@@ -671,7 +688,7 @@ export const UpdateService = {
     });
 
     try {
-      const contentUri = await FileSystem.getContentUriAsync(result.uri);
+      const contentUri = await FileSystem.getContentUriAsync(downloadedUri);
       await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
         data: contentUri,
         flags: FLAG_GRANT_READ_URI_PERMISSION,
