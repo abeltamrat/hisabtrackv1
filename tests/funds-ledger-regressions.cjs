@@ -34,7 +34,7 @@ function load(name, parent = root) {
 }
 const finance = load('./utils/finance.ts');
 const { LedgerDatabase } = load('./services/database/ledger.ts');
-const { planFundMirror, mirrorTransactionId } = load('./utils/fundLedger.ts');
+const { planFundMirror, mirrorTransactionId, mirrorSignature } = load('./utils/fundLedger.ts');
 const FundLedgerService = load('./services/FundLedgerService.ts').default;
 const { BackupService } = load('./services/BackupService.ts');
 
@@ -214,4 +214,18 @@ test('backups keep fund fields and still validate', async () => {
   assert.equal(mirrored.fund_id, 'f1');
   assert.ok(backup.accounts.some(account => account.fund_id === 'f1'));
   assert.ok(backup.accounts.some(account => account.id === cbe.id));
+});
+
+test('an assistant\'s items, project and supplier reach the owner\'s books, and changes re-sync', () => {
+  const villa = { source: 'mela', id: 7, title: 'Bole villa' };
+  const lines = [{ id: 'l1', item: { source: 'mela', id: '5', name: 'Cement' }, quantity: 2, unit: 'bag', unit_price: 1100, amount: 2200 }];
+  const plan = planFundMirror(fund(), [entry('buy', { kind: 'SPEND', amount: 2400, category: 'Materials', lines, project: villa, supplier: { source: 'mela', id: 3, name: 'Abebe Hardware' } })],
+    { fundAccountId: 'fund-acct', accountIds: new Set(['fund-acct']) });
+  const row = plan.rows[0].input;
+  assert.deepEqual(row.lines, lines);
+  assert.deepEqual(row.project, villa);
+  assert.equal(row.supplier.name, 'Abebe Hardware');
+  // Editing the items must change the signature, so the mirrored row is updated.
+  const changed = { ...row, lines: [{ ...lines[0], quantity: 3, amount: 3300 }] };
+  assert.notEqual(mirrorSignature(row), mirrorSignature(changed));
 });

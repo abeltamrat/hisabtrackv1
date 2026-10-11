@@ -110,6 +110,21 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+    // Mela projects/items/suppliers (and Mela-item prices) an owner shares
+    // with the assistants who hold their funds. Only the owner writes; only
+    // the owner and the uids they listed read. Chunks follow the meta doc.
+    match /sharedCatalogs/{ownerUid} {
+      allow read: if signedIn() && (request.auth.uid == ownerUid || request.auth.uid in resource.data.allowedUids);
+      allow create, update: if signedIn() && request.auth.uid == ownerUid
+        && request.resource.data.ownerUid == ownerUid
+        && request.resource.data.allowedUids is list && request.resource.data.allowedUids.size() <= 50;
+      allow delete: if signedIn() && request.auth.uid == ownerUid;
+      match /chunks/{chunkId} {
+        allow read: if signedIn() && (request.auth.uid == ownerUid
+          || request.auth.uid in get(/databases/$(database)/documents/sharedCatalogs/$(ownerUid)).data.allowedUids);
+        allow write: if signedIn() && request.auth.uid == ownerUid;
+      }
+    }
     // Shared funds: both people read, only the mutateSharedFund callable writes,
     // so balances, role rules and the audit log cannot be bypassed.
     match /sharedFunds/{fundId} {

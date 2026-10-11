@@ -335,3 +335,31 @@ test('fund rules let members read and nobody write', () => {
   assert.match(block, /allow write: if false;/);
   assert.ok(!/allow (create|update|write): if (?!false)/.test(block.slice(0, block.indexOf('match /pushDevices'))), 'clients must never write fund data directly');
 });
+
+test('an assistant payment can carry items, a project and a supplier, validated on the server', async () => {
+  const env = environment();
+  await acceptedFund(env);
+  const villa = { source: 'mela', id: 7, code: 'P-7', title: 'Bole villa' };
+  await env.call('bob', {
+    action: 'record', fundId: 'f1', entryId: 'buy', kind: 'SPEND', amount: 2400, date: day, category: 'Materials',
+    project: villa, supplier: { source: 'mela', id: 3, name: 'Abebe Hardware' },
+    lines: [
+      { id: 'l1', item: { source: 'mela', id: '5', name: 'Cement 50kg', kind: 'MATERIAL' }, quantity: 2, unit: 'bag', unit_price: 1100, amount: 2200 },
+      { id: 'l2', item: { source: 'local', id: 'nails', name: 'Nails', kind: 'BOGUS' }, quantity: 1, unit_price: 150, amount: 150, project: { source: 'mela', id: 9, title: 'Office' } },
+    ],
+  });
+  const saved = env.rows.get('sharedFunds/f1/entries/buy');
+  assert.deepEqual(saved.project, villa);
+  assert.equal(saved.supplier.name, 'Abebe Hardware');
+  assert.equal(saved.lines.length, 2);
+  assert.equal(saved.lines[1].item.kind, undefined, 'an unknown kind is dropped, not stored');
+  assert.equal(saved.lines[1].project.title, 'Office');
+
+  const spend = { action: 'record', fundId: 'f1', kind: 'SPEND', date: day, amount: 100 };
+  const item = { source: 'local', id: 'x', name: 'X' };
+  await assert.rejects(env.call('bob', { ...spend, entryId: 'a', lines: [{ id: 'l', item, quantity: 2, unit_price: 10, amount: 25 }] }), { code: 'invalid-argument' });
+  await assert.rejects(env.call('bob', { ...spend, entryId: 'b', lines: [{ id: 'l', item, quantity: 20, unit_price: 10, amount: 200 }] }), { code: 'invalid-argument' });
+  await assert.rejects(env.call('bob', { ...spend, entryId: 'c', lines: [{ id: 'l', item: { ...item, name: ' ' }, quantity: 1, unit_price: 1, amount: 1 }] }), { code: 'invalid-argument' });
+  await assert.rejects(env.call('bob', { ...spend, entryId: 'd', project: { source: 'mela', id: 'seven', title: 'x' } }), { code: 'invalid-argument' });
+  await assert.rejects(env.call('bob', { ...spend, entryId: 'e', supplier: { source: 'other', id: 1, name: 'x' } }), { code: 'invalid-argument' });
+});

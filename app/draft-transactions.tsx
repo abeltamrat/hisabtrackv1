@@ -24,6 +24,10 @@ import { RecurringTransactionService } from '@/services/RecurringTransactionServ
 import type { RecurringFrequency, TransactionType } from '@/types/database';
 import { findTransferCandidates } from '@/utils/transferPairing';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
+import LineItemsEditor from '@/components/LineItemsEditor';
+import SupplierField from '@/components/SupplierPicker';
+import type { SupplierLink } from '@/types/database';
+import type { PurchaseLine } from '@/types/database';
 import type { TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 import { detectRecurringPattern } from '@/utils/recurringDetection';
@@ -130,6 +134,9 @@ export default function DraftTransactionsScreen() {
   const [recurringOccurrences, setRecurringOccurrences] = useState('');
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
+  const [itemize, setItemize] = useState(false);
+  const [supplier, setSupplier] = useState<SupplierLink | undefined>();
+  const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [dismissedRecurringSuggestion, setDismissedRecurringSuggestion] = useState(false);
   const [note, setNote] = useState('');
   const [tagsInput, setTagsInput] = useState('');
@@ -249,6 +256,7 @@ export default function DraftTransactionsScreen() {
       setRememberOwnedRecipient(false);
       setSplitEnabled(!!target.suggested_splits?.length);
       setSplits(target.suggested_splits || []);
+      setItemize(false); setLines([]); setSupplier(undefined);
       setDismissedRecurringSuggestion(false);
       setNote('');
       setTagsInput('');
@@ -450,6 +458,7 @@ export default function DraftTransactionsScreen() {
     setRecurringOccurrences('');
     setSplitEnabled(!!draft.suggested_splits?.length);
     setSplits(draft.suggested_splits || []);
+    setItemize(false); setLines([]); setSupplier(undefined);
     setDismissedRecurringSuggestion(false);
     setNote('');
     setTagsInput('');
@@ -559,6 +568,17 @@ export default function DraftTransactionsScreen() {
         Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(selectedDraft.amount)}.`);
         return;
       }
+      // Rows left completely blank are ignored; a row with an amount needs a name.
+      const purchaseLines = itemize && editedType !== 'TRANSFER' ? lines.filter(line => line.item.name.trim() || line.amount > 0) : [];
+      if (purchaseLines.some(line => !line.item.name.trim() || !(line.quantity > 0))) {
+        Alert.alert('Check items', 'Give every item a name and a quantity above zero, or remove the empty row.');
+        return;
+      }
+      if (sumMoney(purchaseLines.map(line => line.amount)) > money(selectedDraft.amount)) {
+        Alert.alert('Check items', `Items add up to more than the ${formatCurrency(selectedDraft.amount)} in this SMS.`);
+        return;
+      }
+
       // Outgoing leg knows its destination; incoming leg knows its source —
       // either one records as a single TRANSFER from source to destination.
       const isTransferDraft = editedType === 'TRANSFER';
@@ -604,6 +624,8 @@ export default function DraftTransactionsScreen() {
         disaster_recovery_fee: expenseLeg.disaster_recovery_fee,
         receipt_url: expenseLeg.receipt_url || selectedDraft.receipt_url,
         ...(editedType !== 'TRANSFER' && splitEnabled ? { splits } : {}),
+        ...(editedType !== 'TRANSFER' && purchaseLines.length ? { lines: purchaseLines } : {}),
+        ...(editedType === 'EXPENSE' && supplier ? { supplier } : {}),
       } as Omit<Transaction, 'id'>;
 
       let transactionId: string | undefined;
@@ -1783,6 +1805,24 @@ export default function DraftTransactionsScreen() {
                     </TouchableOpacity>
                   )}
 
+                  {editedType !== 'TRANSFER' && (
+                    <TouchableOpacity
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: itemize }}
+                      accessibilityLabel="Itemize purchase"
+                      onPress={() => setItemize(!itemize)}
+                      className={`min-h-[64px] flex-row items-center rounded-xl border p-3 ${itemize ? 'border-orange-400 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}
+                    >
+                      <View className={`h-8 w-8 items-center justify-center rounded-lg ${itemize ? 'bg-orange-500' : 'bg-slate-100 dark:bg-slate-700'}`}>
+                        <FontAwesome name="shopping-basket" size={14} color={itemize ? '#fff' : '#94a3b8'} />
+                      </View>
+                      <View className="ml-3 flex-1">
+                        <Text className="font-bold text-slate-900 dark:text-white">Itemize purchase</Text>
+                        <Text className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Add items, quantities and unit prices.</Text>
+                      </View>
+                      <FontAwesome name={itemize ? 'check-circle' : 'circle-o'} size={20} color={itemize ? '#f97316' : '#94a3b8'} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
 
@@ -1907,6 +1947,16 @@ export default function DraftTransactionsScreen() {
                 </View>
               )}
 
+              {editedType !== 'TRANSFER' && itemize && (
+                <View className="mb-6">
+                  <View className="mb-3 flex-row items-center">
+                    <FontAwesome name="shopping-basket" size={15} color="#f97316" />
+                    <Text className="ml-2 font-bold text-slate-900 dark:text-white">Items</Text>
+                  </View>
+                  {editedType === 'EXPENSE' && <View className="mb-3"><SupplierField value={supplier} onChange={setSupplier} /></View>}
+                  <LineItemsEditor lines={lines} onChange={setLines} total={selectedDraft?.amount || 0} formatCurrency={formatCurrency} />
+                </View>
+              )}
 
               {/* Tags Input */}
               <View className="mb-6">

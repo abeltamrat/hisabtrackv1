@@ -107,6 +107,8 @@ export default function DashboardScreen() {
       import('@/services/AppNotificationService').then(({ AppNotificationService }) => {
         AppNotificationService.checkAll();
       });
+      // Refresh Mela projects (no-op unless connected and older than 6 hours).
+      import('@/services/MelaService').then(({ default: MelaService }) => MelaService.syncIfStale()).catch(() => undefined);
     }
   }, [dispatch, refreshDraftCount]);
 

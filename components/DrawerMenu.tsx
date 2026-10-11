@@ -19,6 +19,7 @@ import { fetchAccounts } from '@/store/slices/accountsSlice';
 import UpdateModal from './UpdateModal';
 import ShareAppModal from './ShareAppModal';
 import { FUNDS_ENABLED } from '@/config/features';
+import { useMelaProjects } from '@/components/ProjectPicker';
 
 interface DrawerMenuProps {
   visible: boolean;
@@ -51,6 +52,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const [updateInfo, setUpdateInfo] = React.useState<UpdateInfo | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = React.useState(false);
   const [isShareAppVisible, setIsShareAppVisible] = React.useState(false);
+  const { connected: melaConnected } = useMelaProjects();
   const accounts = useSelector((state: RootState) => state.accounts.items);
   const isVerySmall = fontSize === 'V.Small';
   const drawerWidth = isVerySmall ? 300 : 320;
@@ -129,6 +131,8 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     { id: 'transfer', title: 'Transfer Money', icon: 'exchange', route: '/transfer', color: '#3b82f6' },
     { id: 'categories', title: 'Manage Categories', icon: 'tags', route: '/categories', color: '#10b981' },
     { id: 'people', title: 'People & Relationships', icon: 'address-book', route: '/people', color: '#0d9488' },
+    ...(melaConnected ? [{ id: 'projects', title: 'Projects (Mela)', icon: 'folder-open', route: '/projects', color: '#6366f1' }] : []),
+    { id: 'items', title: 'Items & Prices', icon: 'shopping-basket', route: '/items', color: '#f97316' },
     { id: 'loans', title: 'Loans & Debts', icon: 'line-chart', route: '/loans', color: '#ef4444' },
     ...(FUNDS_ENABLED ? [{ id: 'funds', title: 'Funds & Petty Cash', icon: 'briefcase', route: '/funds', color: '#0d9488' }] : []),
     { id: 'recurring', title: 'Recurring Payments', icon: 'refresh', route: '/recurring', color: '#14b8a6' },
@@ -143,6 +147,7 @@ export default function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
     { id: 'backup', title: 'Backup & Restore', icon: 'cloud', color: '#14b8a6' },
     { id: 'calculator', title: 'Calculator', icon: 'calculator', route: '/calculator', color: '#f97316' },
     { id: 'goals', title: 'Financial Goals', icon: 'star', route: '/goals', color: '#eab308' },
+    { id: 'connections', title: 'Connections', icon: 'plug', route: '/connections', color: '#6366f1' },
   ];
 
   const moreItems: MenuItem[] = [

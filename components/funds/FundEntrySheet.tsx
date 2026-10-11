@@ -9,6 +9,9 @@ import FormSheet from '@/components/FormSheet';
 import TagInputField from '@/components/TagInputField';
 import PersonLinkField from '@/components/PersonLinkField';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
+import LineItemsEditor from '@/components/LineItemsEditor';
+import { MelaCatalogContext, ProjectField, useSharedCatalog } from '@/components/ProjectPicker';
+import SupplierField from '@/components/SupplierPicker';
 import { useFormErrors } from '@/hooks/useFormErrors';
 import FundPostingService, { custodianFundFields } from '@/services/FundPostingService';
 import FundSyncService from '@/services/FundSyncService';
@@ -16,7 +19,7 @@ import { fundErrorMessage, SharedFundService, type FundEntryInput } from '@/serv
 import type { AppDispatch } from '@/store';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addTransaction } from '@/store/slices/transactionsSlice';
-import type { Account, SharedFund, Transaction, TransactionSplit } from '@/types/database';
+import type { Account, ProjectLink, PurchaseLine, SharedFund, SupplierLink, Transaction, TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 import { generateUUID } from '@/utils/uuid';
 import type { RecipientProfile } from '@/services/RecipientIdentityService';
@@ -47,6 +50,9 @@ const TITLES: Record<FundEntryMode, { title: string; button: string; icon: strin
 };
 
 type Field = 'amount' | 'account' | 'payer' | 'receipt' | 'splits';
+// Not shared yet: an empty catalog, so this fund never borrows the assistant's own Mela lists.
+const EMPTY_CATALOG = { projects: [], items: [], suppliers: [] };
+
 export default function FundEntrySheet({
   visible, mode, fund, myUid, accounts, defaultAccountId, tagSuggestions, fallbackCategories, prefill,
   formatCurrency, onClose, onSaved,
@@ -84,7 +90,13 @@ export default function FundEntrySheet({
   const [recipientPerson, setRecipientPerson] = useState<RecipientProfile>();
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
+  const [project, setProject] = useState<ProjectLink | undefined>();
+  const [supplier, setSupplier] = useState<SupplierLink | undefined>();
+  const [itemize, setItemize] = useState(false);
+  const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [saving, setSaving] = useState(false);
+  // Projects, items, suppliers and Mela-item prices the owner chose to share with me.
+  const sharedCatalog = useSharedCatalog(ownerMode ? undefined : fund.ownerUid);
 
   const categoryTree = useMemo(() => {
     const shared = fundCategoryTree(fund.categories, 'expense');
@@ -98,6 +110,7 @@ export default function FundEntrySheet({
   useEffect(() => {
     if (!visible) return;
     resetErrors();
+    setProject(undefined); setSupplier(undefined); setItemize(false); setLines([]);
     setAmount(prefill?.amount ? String(prefill.amount) : mode === 'send' && fund.floatTarget && fund.balance < fund.floatTarget ? String(money(fund.floatTarget - fund.balance)) : '');
     setAccountId(defaultAccountId && pickable.some(account => account.id === defaultAccountId) ? defaultAccountId : pickable[0]?.id || '');
     setRecipient(prefill?.recipient || '');
@@ -130,6 +143,11 @@ export default function FundEntrySheet({
       receipt: receiptLink && !/^https:\/\/\S+$/i.test(receiptLink) ? 'Receipt links must start with https://' : false,
       splits: mode === 'pay' && splitEnabled && (splits.length < 2 || sumMoney(splits.map(item => Number(item.amount) || 0)) !== money(value)) ? 'Split parts must add up to the amount.' : false,
     });
+    const purchaseLines = mode === 'pay' && itemize ? lines.filter(line => line.item.name.trim() || line.amount > 0) : [];
+    if (ok && (purchaseLines.some(line => !line.item.name.trim() || !(line.quantity > 0)) || sumMoney(purchaseLines.map(line => line.amount)) > money(value))) {
+      setError('splits', 'Give every item a name and quantity, and keep items within the amount.');
+      return;
+    }
     if (!ok) return;
 
     setSaving(true);
@@ -163,6 +181,9 @@ export default function FundEntrySheet({
         recipientPersonId: mode === 'pay' ? recipientPerson?.id : undefined,
         category: mode === 'pay' ? category || undefined : undefined,
         splits: mode === 'pay' && splitEnabled ? splits : undefined,
+        lines: purchaseLines.length ? purchaseLines : undefined,
+        project: mode === 'pay' ? project : undefined,
+        supplier: mode === 'pay' ? supplier : undefined,
         tags,
         reference_number: reference.trim() || undefined,
         receipt_url: receiptLink || undefined,
@@ -344,6 +365,20 @@ export default function FundEntrySheet({
         </View>
       )}
 
+      {mode === 'pay' && (
+        // Inside the provider, pickers read the owner's shared lists instead of this device's own.
+        <MelaCatalogContext.Provider value={sharedCatalog ?? EMPTY_CATALOG}>
+          <View className="mb-4 gap-3">
+            <ProjectField value={project} onChange={setProject} />
+            <SupplierField value={supplier} onChange={setSupplier} />
+            <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: itemize }} onPress={() => setItemize(!itemize)} className="flex-row items-center py-2">
+              <FontAwesome name={itemize ? 'check-square' : 'square-o'} size={18} color={itemize ? '#0d9488' : '#94a3b8'} />
+              <Text className="text-slate-700 dark:text-slate-300 text-sm font-semibold ml-2">Itemize purchase</Text>
+            </TouchableOpacity>
+            {itemize && <LineItemsEditor lines={lines} onChange={setLines} total={Number(amount.replace(',', '.')) || 0} formatCurrency={formatCurrency} />}
+          </View>
+        </MelaCatalogContext.Provider>
+      )}
 
       {!ownerMode && (
         <Text className="text-slate-500 dark:text-slate-400 text-[11px] mb-4">

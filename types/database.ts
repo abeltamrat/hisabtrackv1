@@ -46,6 +46,12 @@ interface TransactionBase {
   tags?: string[];
   /** Reporting allocations that sum to amount; they never move cash again. */
   splits?: TransactionSplit[];
+  /** External project this was paid or received for (whole transaction; splits may override). */
+  project?: ProjectLink;
+  /** Itemized purchase (item × quantity × unit price). Lines may cover part of the amount. */
+  lines?: PurchaseLine[];
+  /** Supplier from a connected system's supplier list (otherwise sender_receiver / People). */
+  supplier?: SupplierLink;
   date: number; // Timestamp
   description: string;
   sender_receiver?: string;
@@ -80,6 +86,52 @@ export interface TransactionSplit {
   category: string;
   description?: string;
   tags?: string[];
+  project?: ProjectLink;
+}
+
+/**
+ * Link to a project in a connected system. The title is a snapshot taken when
+ * the link was made, so history still reads correctly if the project is later
+ * renamed, closed, or the connection is removed.
+ */
+export interface ProjectLink {
+  source: 'mela';
+  id: number;
+  code?: string;
+  title: string;
+}
+
+export interface SupplierLink {
+  source: 'mela';
+  id: number;
+  name: string;
+}
+
+export type ItemKind = 'MATERIAL' | 'TOOL' | 'OTHER';
+
+/**
+ * What was bought. Personal items are identified by their normalized name
+ * ('local'), Mela catalog items by their Mela id ('mela'). Name, kind, unit and
+ * category are snapshots, so the catalog can be rebuilt from purchase lines.
+ */
+export interface ItemLink {
+  source: 'local' | 'mela';
+  id: string;
+  name: string;
+  kind?: ItemKind;
+  category?: string;
+}
+
+export interface PurchaseLine {
+  id: string;
+  item: ItemLink;
+  quantity: number;
+  unit?: string;
+  unit_price: number;
+  /** quantity × unit_price, rounded to cents. */
+  amount: number;
+  /** Overrides the transaction's project for this line. */
+  project?: ProjectLink;
 }
 
 export interface StandardTransaction extends TransactionBase {
@@ -267,6 +319,9 @@ export interface FundEntry {
   sms_linked?: boolean;
   category?: string;
   splits?: TransactionSplit[];
+  lines?: PurchaseLine[];
+  project?: ProjectLink;
+  supplier?: SupplierLink;
   tags?: string[];
   recordedByUid: string;
   recordedByRole: FundRole;

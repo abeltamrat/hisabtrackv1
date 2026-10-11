@@ -1,6 +1,7 @@
 import type { Account, Budget, Loan, RecurringTransaction, Transaction } from '@/types/database';
 import type { AssistantProposal } from './AssistantActionService';
 import { money, operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
+import { buildCatalog, priceInsight, purchaseRecords, supplierStats } from '@/utils/itemFinance';
 
 /**
  * Tool-calling financial agent. Instead of sending the model a fixed summary
@@ -54,11 +55,22 @@ function categoryAmount(tx: Transaction, category: string): number {
 }
 
 /** Category slices of a transaction, so splits are counted where they belong. */
-function slices(tx: Transaction): Array<{ category: string; amount: number }> {
+function slices(tx: Transaction): Array<{ category: string; amount: number; project?: string }> {
   const total = tx.type === 'EXPENSE' ? operatingExpense(tx) : tx.type === 'INCOME' ? operatingIncome(tx) : 0;
   if (!total) return [];
-  if (!tx.splits?.length) return [{ category: tx.category, amount: total }];
-  return tx.splits.map(s => ({ category: s.category, amount: s.amount }));
+  if (!tx.splits?.length) return [{ category: tx.category, amount: total, project: tx.project?.title }];
+  return tx.splits.map(s => ({ category: s.category, amount: s.amount, project: (s.project ?? tx.project)?.title }));
+}
+
+const projectMatches = (link: { id: number; code?: string; title: string } | undefined, wanted: unknown) => {
+  const w = lower(wanted).trim();
+  return !!link && !!w && (lower(link.title).includes(w) || lower(link.code) === w || String(link.id) === w);
+};
+
+/** Amount of a transaction attributable to a project (a split's own project wins over the transaction's). */
+function projectAmount(tx: Transaction, project: unknown): number {
+  if (tx.splits?.length) return sumMoney(tx.splits.filter(s => projectMatches(s.project ?? tx.project, project)).map(s => s.amount));
+  return projectMatches(tx.project, project) ? tx.amount : 0;
 }
 
 export const AGENT_TOOLS = [
@@ -70,6 +82,7 @@ export const AGENT_TOOLS = [
         type: 'object', properties: {
           text: { type: 'string', description: 'Words to match in description, counterparty, category or tags' },
           category: { type: 'string' },
+          project: { type: 'string', description: 'Project title or ID (from Mela). Matches split parts tagged with it.' },
           account: { type: 'string', description: 'Account name' },
           type: { type: 'string', enum: ['INCOME', 'EXPENSE', 'TRANSFER'] },
           from: { type: 'string', description: 'YYYY-MM-DD inclusive' },
@@ -83,15 +96,22 @@ export const AGENT_TOOLS = [
   {
     type: 'function', function: {
       name: 'spending_breakdown',
-      description: 'Totals grouped by category, merchant, account, month or weekday for a period. Excludes transfers between own accounts and loan principal. Use it for "where does my money go", comparisons and trends.',
+      description: 'Totals grouped by category, merchant, account, month, weekday or project for a period. Excludes transfers between own accounts and loan principal. Use it for "where does my money go", comparisons and trends.',
       parameters: {
         type: 'object', required: ['group_by'], properties: {
-          group_by: { type: 'string', enum: ['category', 'merchant', 'account', 'month', 'weekday'] },
+          group_by: { type: 'string', enum: ['category', 'merchant', 'account', 'month', 'weekday', 'project'] },
           type: { type: 'string', enum: ['EXPENSE', 'INCOME'], description: 'Default EXPENSE' },
           from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' },
           category: { type: 'string', description: 'Restrict to one category' },
         },
       },
+    },
+  },
+  {
+    type: 'function', function: {
+      name: 'item_prices',
+      description: 'Prices and quantities for an item the user buys (materials, tools, groceries...): last price with supplier and date, cheapest in 90 days, usual price, totals, suppliers ranked by average price, and spend per project. Matches item names partially.',
+      parameters: { type: 'object', required: ['item'], properties: { item: { type: 'string' }, project: { type: 'string', description: 'Optional: only purchases for this project' } } },
     },
   },
   { type: 'function', function: { name: 'get_accounts', description: 'Accounts with type and current balance.', parameters: { type: 'object', properties: {} } } },
@@ -142,8 +162,8 @@ export function runAgentTool(name: string, args: Record<string, any>, scope: Age
         if (from !== undefined && tx.date < from) return false;
         if (to !== undefined && tx.date > to) return false;
         if (account && tx.account_id !== account.id && tx.to_account_id !== account.id) return false;
-        const amount = args.category ? categoryAmount(tx, args.category) : tx.amount;
-        if (args.category && !amount) return false;
+        const amount = args.category ? categoryAmount(tx, args.category) : args.project ? projectAmount(tx, args.project) : tx.amount;
+        if ((args.category || args.project) && !amount) return false;
         if (Number.isFinite(args.min_amount) && amount < args.min_amount) return false;
         if (Number.isFinite(args.max_amount) && amount > args.max_amount) return false;
         if (words.length) {
@@ -154,7 +174,7 @@ export function runAgentTool(name: string, args: Record<string, any>, scope: Age
       }).sort((a, b) => b.date - a.date);
       const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
       rows.slice(0, 200).forEach(tx => state.evidence.add(tx.id));
-      const amountOf = (tx: Transaction) => (args.category ? categoryAmount(tx, args.category) : tx.amount);
+      const amountOf = (tx: Transaction) => (args.category ? categoryAmount(tx, args.category) : args.project ? projectAmount(tx, args.project) : tx.amount);
       return {
         count: rows.length,
         total: fmt(sumMoney(rows.map(amountOf))),
@@ -162,8 +182,10 @@ export function runAgentTool(name: string, args: Record<string, any>, scope: Age
           date: iso(tx.date), description: tx.description, amount: money(amountOf(tx)), type: tx.type, category: tx.category,
           account: accountName.get(tx.account_id), ...(tx.to_account_id ? { to_account: accountName.get(tx.to_account_id) } : {}),
           ...(tx.sender_receiver ? { counterparty: tx.sender_receiver } : {}),
-          ...(tx.splits?.length ? { splits: tx.splits.map(s => ({ category: s.category, amount: s.amount, ...(s.description ? { note: s.description } : {}) })) } : {}),
+          ...(tx.splits?.length ? { splits: tx.splits.map(s => ({ category: s.category, amount: s.amount, ...(s.description ? { note: s.description } : {}), ...((s.project ?? tx.project) ? { project: (s.project ?? tx.project)!.title } : {}) })) } : {}),
           ...(tx.tags?.length ? { tags: tx.tags } : {}),
+          ...(tx.project ? { project: tx.project.title } : {}),
+          ...(tx.lines?.length ? { items: tx.lines.map(l => `${l.item.name} ${l.quantity}${l.unit ? ` ${l.unit}` : ''} × ${l.unit_price}`) } : {}),
         })),
         ...(rows.length > limit ? { note: `Showing ${limit} of ${rows.length}; totals cover all.` } : {}),
       };
@@ -184,6 +206,7 @@ export function runAgentTool(name: string, args: Record<string, any>, scope: Age
             : args.group_by === 'account' ? (accountName.get(tx.account_id) || 'Unknown')
             : args.group_by === 'month' ? iso(tx.date).slice(0, 7)
             : args.group_by === 'weekday' ? weekdays[new Date(tx.date).getDay()]
+            : args.group_by === 'project' ? (slice.project || 'No project')
             : slice.category;
           const entry = groups.get(key) ?? { total: [], count: 0 };
           entry.total.push(slice.amount); entry.count += 1; groups.set(key, entry);
@@ -196,6 +219,32 @@ export function runAgentTool(name: string, args: Record<string, any>, scope: Age
       return {
         type, period: `${args.from || 'start'} to ${args.to || 'today'}`, total: fmt(grand),
         groups: sorted.slice(0, 30).map(g => ({ [args.group_by]: g.key, total: money(g.total), count: g.count, share_pct: grand ? Math.round((g.total / grand) * 1000) / 10 : 0 })),
+      };
+    }
+
+    case 'item_prices': {
+      const wanted = lower(args.item).trim();
+      let records = purchaseRecords(scope.transactions);
+      if (args.project) records = records.filter(r => projectMatches(r.project, args.project));
+      const matches = buildCatalog(records).filter(e => lower(e.item.name).includes(wanted));
+      if (!wanted || !matches.length) return { error: `No purchases of "${args.item}" found. Items are recorded when an expense is itemized.` };
+      return {
+        items: matches.slice(0, 5).map(entry => {
+          const insight = priceInsight(records, entry.key);
+          const rows = records.filter(r => r.key === entry.key && r.type === 'EXPENSE');
+          rows.forEach(r => state.evidence.add(r.transactionId));
+          const perProject = new Map<string, number[]>();
+          for (const r of rows) perProject.set(r.project?.title || 'No project', [...(perProject.get(r.project?.title || 'No project') ?? []), r.amount]);
+          return {
+            item: entry.item.name, kind: entry.item.kind ?? 'OTHER', unit: entry.unit, purchases: entry.purchases,
+            total_quantity: entry.totalQuantity, total_spent: entry.totalSpent,
+            last: insight.last && { price: insight.last.unitPrice, supplier: insight.last.supplier, date: iso(insight.last.date) },
+            cheapest_90_days: insight.best && { price: insight.best.unitPrice, supplier: insight.best.supplier, date: iso(insight.best.date) },
+            usual_price: insight.typical !== undefined ? money(insight.typical) : undefined,
+            suppliers: supplierStats(records, entry.key).slice(0, 5).map(s => ({ supplier: s.supplier, average_price: s.averagePrice, purchases: s.purchases })),
+            by_project: [...perProject].map(([project, amounts]) => ({ project, spent: sumMoney(amounts) })),
+          };
+        }),
       };
     }
 

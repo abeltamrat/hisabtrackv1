@@ -203,6 +203,17 @@ export default function TransactionDetail() {
             {/* Falls back to the raw id, which is a 36-character UUID. */}
             <DetailRow label="Account" value={account?.name || transaction.account_id} />
 
+            {transaction.supplier && <DetailRow label="Supplier" value={transaction.supplier.name} />}
+
+            {transaction.project && (
+              <View className="flex-row justify-between items-center">
+                <Text className="text-slate-500 dark:text-slate-400 text-sm">Project</Text>
+                <TouchableOpacity accessibilityRole="link" onPress={() => router.push(`/projects/${transaction.project!.id}` as any)} className="flex-1 ml-4 items-end">
+                  <Text numberOfLines={1} className="text-indigo-600 dark:text-indigo-400 font-medium">{transaction.project.code ? `${transaction.project.code} · ` : ''}{transaction.project.title}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {isTransfer && toAccount && (
               <DetailRow label="To Account" value={toAccount.name} />
             )}
@@ -293,6 +304,12 @@ export default function TransactionDetail() {
                     <View className="flex-1 mr-3">
                       <Text className="text-slate-900 dark:text-white text-sm font-semibold">{split.category}</Text>
                       {split.description ? <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{split.description}</Text> : null}
+                      {split.project ? (
+                        <TouchableOpacity onPress={() => router.push(`/projects/${split.project!.id}` as any)} className="flex-row items-center mt-1">
+                          <FontAwesome name="folder-open" size={10} color="#6366f1" />
+                          <Text numberOfLines={1} className="text-indigo-600 dark:text-indigo-300 text-xs font-semibold ml-1">{split.project.title}</Text>
+                        </TouchableOpacity>
+                      ) : null}
                       {split.tags?.length ? (
                         <View className="flex-row flex-wrap mt-1">
                           {split.tags.map(tag => (
@@ -309,6 +326,22 @@ export default function TransactionDetail() {
                     </View>
                     <Text className="text-slate-900 dark:text-white text-sm font-bold">{formatCurrency(split.amount)}</Text>
                   </View>
+                ))}
+              </View>
+            ) : null}
+
+            {transaction.lines?.length ? (
+              <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-3">
+                <Text className="text-slate-700 dark:text-slate-300 text-xs font-bold uppercase mb-2">Items</Text>
+                {transaction.lines.map(line => (
+                  <TouchableOpacity key={line.id} onPress={() => router.push(`/items/${encodeURIComponent(`${line.item.source}:${line.item.id}`)}` as any)} className="flex-row justify-between items-start py-2 border-b border-slate-200 dark:border-slate-700">
+                    <View className="flex-1 mr-3">
+                      <Text className="text-slate-900 dark:text-white text-sm font-semibold">{line.item.name}</Text>
+                      <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{line.quantity}{line.unit ? ` ${line.unit}` : ''} × {formatCurrency(line.unit_price)}{line.item.kind && line.item.kind !== 'OTHER' ? ` · ${line.item.kind === 'TOOL' ? 'Tool' : 'Material'}` : ''}</Text>
+                      {line.project ? <Text numberOfLines={1} className="text-indigo-600 dark:text-indigo-300 text-xs font-semibold mt-0.5">{line.project.title}</Text> : null}
+                    </View>
+                    <Text className="text-slate-900 dark:text-white text-sm font-bold">{formatCurrency(line.amount)}</Text>
+                  </TouchableOpacity>
                 ))}
               </View>
             ) : null}

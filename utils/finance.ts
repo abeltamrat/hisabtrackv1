@@ -84,6 +84,20 @@ export function validateTransaction(t: Partial<Transaction>, accounts?: Account[
     if (t.type === 'TRANSFER' || t.splits.length < 2 || t.splits.some(split => !split.id || !split.category.trim() || minor(split.amount) <= 0 || (split.description !== undefined && typeof split.description !== 'string') || (split.tags !== undefined && (!Array.isArray(split.tags) || split.tags.length > 12 || split.tags.some(tag => typeof tag !== 'string' || !tag.trim() || tag.length > 40))))) throw new Error('Invalid transaction splits');
     if (sumMoney(t.splits.map(split => split.amount)) !== money(t.amount!)) throw new Error('Split amounts must equal the transaction amount');
   }
+  const badProject = (p: any) => p !== undefined && (!p || p.source !== 'mela' || !Number.isFinite(p.id) || typeof p.title !== 'string' || !p.title.trim());
+  if (badProject(t.project) || t.splits?.some(split => badProject(split.project))) throw new Error('Invalid project link');
+  if (t.supplier !== undefined && (!t.supplier || t.supplier.source !== 'mela' || !Number.isFinite(t.supplier.id) || typeof t.supplier.name !== 'string' || !t.supplier.name.trim())) throw new Error('Invalid supplier link');
+  if (t.lines !== undefined) {
+    if (t.type === 'TRANSFER' || !Array.isArray(t.lines)) throw new Error('Line items apply to income and expenses only');
+    for (const line of t.lines) {
+      const item: any = line?.item;
+      if (!line?.id || !item || !['local', 'mela'].includes(item.source) || typeof item.id !== 'string' || !item.id || typeof item.name !== 'string' || !item.name.trim()) throw new Error('Invalid line item');
+      if (!(Number(line.quantity) > 0) || !(Number(line.unit_price) >= 0) || !Number.isFinite(line.amount)) throw new Error('Line quantity must be positive and price zero or more');
+      if (Math.abs(minor(line.amount) - minor(line.quantity * line.unit_price)) > 1) throw new Error('Line amount must equal quantity × unit price');
+      if (badProject(line.project)) throw new Error('Invalid project link');
+    }
+    if (minor(sumMoney(t.lines.map(line => line.amount))) > minor(t.amount!)) throw new Error('Line items exceed the transaction amount');
+  }
   if (t.gross_amount !== undefined && minor(t.gross_amount) < minor(t.amount!)) throw new Error('Total debit cannot be less than transaction amount');
   if (minor((t.fees || 0) + (t.tax || 0)) > minor(t.amount)) throw new Error('Fees exceed the amount');
   if (t.type === 'TRANSFER' && (!t.to_account_id || t.account_id === t.to_account_id)) throw new Error('Choose distinct transfer accounts');

@@ -567,6 +567,40 @@ function fundSplits(splits, amount) {
   return out;
 }
 
+function fundProject(project) {
+  if (project === undefined || project === null) return undefined;
+  if (typeof project !== 'object' || project.source !== 'mela' || !Number.isInteger(project.id) || project.id <= 0 || !fundText(project.title, 200)) throw fundBad('Invalid project.');
+  return fundCompact({ source: 'mela', id: project.id, code: fundText(project.code, 80) || undefined, title: fundText(project.title, 200) });
+}
+
+function fundSupplier(supplier) {
+  if (supplier === undefined || supplier === null) return undefined;
+  if (typeof supplier !== 'object' || supplier.source !== 'mela' || !Number.isInteger(supplier.id) || supplier.id <= 0 || !fundText(supplier.name, 200)) throw fundBad('Invalid supplier.');
+  return { source: 'mela', id: supplier.id, name: fundText(supplier.name, 200) };
+}
+
+/** Itemized purchase lines: quantity × unit price, never more than the payment itself. */
+function fundLines(lines, amount) {
+  if (lines === undefined || lines === null) return undefined;
+  if (!Array.isArray(lines) || lines.length < 1 || lines.length > 50) throw fundBad('Use 1 to 50 items.');
+  const out = lines.map(line => {
+    const item = line && line.item;
+    if (!line || typeof line.id !== 'string' || !FUND_ID.test(line.id) || !item || !['local', 'mela'].includes(item.source)
+      || typeof item.id !== 'string' || !item.id.trim() || item.id.length > 200 || !fundText(item.name, 120)) throw fundBad('Each item needs a name.');
+    const quantity = line.quantity, unitPrice = line.unit_price;
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9 || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1e11) throw fundBad('Each item needs a quantity and a price.');
+    if (!Number.isFinite(line.amount) || Math.abs(fundCents(line.amount) - Math.round(quantity * unitPrice * 100)) > 1) throw fundBad('Item amount must equal quantity × price.');
+    return fundCompact({
+      id: line.id,
+      item: fundCompact({ source: item.source, id: item.id.trim().slice(0, 200), name: fundText(item.name, 120), kind: ['MATERIAL', 'TOOL', 'OTHER'].includes(item.kind) ? item.kind : undefined, category: fundText(item.category, 80) || undefined }),
+      quantity, unit: fundText(line.unit, 20) || undefined, unit_price: unitPrice, amount: line.amount,
+      project: fundProject(line.project),
+    });
+  });
+  if (out.reduce((sum, line) => sum + fundCents(line.amount), 0) > fundCents(amount)) throw fundBad('Items add up to more than the payment.');
+  return out;
+}
+
 function fundReceipt(url) {
   if (url === undefined || url === null || url === '') return undefined;
   if (typeof url !== 'string' || url.length > 2000 || !/^https:\/\/\S+$/i.test(url.trim())) throw fundBad('Receipt links must start with https://');
@@ -672,6 +706,9 @@ function readEntryInput(data, role) {
     sms_linked: data.sms_linked === true,
     category: kind === 'SPEND' ? fundText(data.category, 80) || 'Uncategorized' : undefined,
     splits: kind === 'SPEND' ? fundSplits(data.splits, amount) : undefined,
+    lines: kind === 'SPEND' ? fundLines(data.lines, amount) : undefined,
+    project: kind === 'SPEND' ? fundProject(data.project) : undefined,
+    supplier: kind === 'SPEND' ? fundSupplier(data.supplier) : undefined,
     tags: fundTags(data.tags),
     ownerAccountId,
   });

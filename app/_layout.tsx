@@ -380,6 +380,11 @@ function ThemedStack() {
         <Stack.Screen name="categories" options={{ headerShown: false }} />
         <Stack.Screen name="people/index" options={{ headerShown: false }} />
         <Stack.Screen name="people/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="projects/index" options={{ headerShown: false }} />
+        <Stack.Screen name="projects/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="connections" options={{ headerShown: false }} />
+        <Stack.Screen name="items/index" options={{ headerShown: false }} />
+        <Stack.Screen name="items/[key]" options={{ headerShown: false }} />
         <Stack.Screen name="cards" options={{ headerShown: false }} />
         <Stack.Screen name="draft-transactions" options={{ headerShown: false }} />
         <Stack.Screen name="manage-sms-rules" options={{ headerShown: false }} />

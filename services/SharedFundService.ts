@@ -7,7 +7,10 @@ import type {
   FundEntryFlag,
   FundEntryKind,
   FundType,
+  ProjectLink,
+  PurchaseLine,
   SharedFund,
+  SupplierLink,
   TransactionSplit,
 } from '@/types/database';
 import { collection, doc, getFirestore, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
@@ -125,6 +128,25 @@ export function parseFund(id: string, data: Record<string, any> | undefined): Sh
   };
 }
 
+function parseProject(value: any): ProjectLink | undefined {
+  return value && value.source === 'mela' && Number.isFinite(value.id) && typeof value.title === 'string'
+    ? { source: 'mela', id: value.id, ...(typeof value.code === 'string' ? { code: value.code } : {}), title: value.title } : undefined;
+}
+
+/** Server-validated purchase lines; anything malformed is dropped rather than trusted. */
+function parseLines(value: any): PurchaseLine[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const lines = value.filter(line => line && typeof line.id === 'string' && line.item && ['local', 'mela'].includes(line.item.source)
+    && typeof line.item.id === 'string' && typeof line.item.name === 'string' && num(line.quantity) > 0 && Number.isFinite(line.unit_price) && Number.isFinite(line.amount))
+    .map(line => ({
+      id: line.id,
+      item: { source: line.item.source, id: line.item.id, name: line.item.name, ...(line.item.kind ? { kind: line.item.kind } : {}), ...(line.item.category ? { category: line.item.category } : {}) },
+      quantity: line.quantity, ...(typeof line.unit === 'string' ? { unit: line.unit } : {}), unit_price: line.unit_price, amount: line.amount,
+      ...(parseProject(line.project) ? { project: parseProject(line.project) } : {}),
+    })) as PurchaseLine[];
+  return lines.length ? lines : undefined;
+}
+
 export function parseEntry(id: string, data: Record<string, any> | undefined): FundEntry | null {
   if (!data || !['DEPOSIT', 'SPEND', 'RETURN'].includes(data.kind) || !(num(data.amount) > 0) || !num(data.date)) return null;
   const flag: FundEntryFlag | undefined = data.flag && typeof data.flag.note === 'string'
@@ -155,6 +177,10 @@ export function parseEntry(id: string, data: Record<string, any> | undefined): F
     sms_linked: data.sms_linked === true,
     category: optStr(data.category),
     splits: parseSplits(data.splits),
+    lines: parseLines(data.lines),
+    project: parseProject(data.project),
+    supplier: data.supplier && data.supplier.source === 'mela' && Number.isFinite(data.supplier.id) && typeof data.supplier.name === 'string'
+      ? { source: 'mela', id: data.supplier.id, name: data.supplier.name } : undefined,
     tags: Array.isArray(data.tags) ? data.tags.filter((tag: unknown) => typeof tag === 'string') : undefined,
     recordedByUid: str(data.recordedByUid),
     recordedByRole: data.recordedByRole === 'OWNER' ? 'OWNER' : 'CUSTODIAN',
@@ -209,6 +235,9 @@ export interface FundEntryInput {
   sms_linked?: boolean;
   category?: string;
   splits?: TransactionSplit[];
+  lines?: PurchaseLine[];
+  project?: ProjectLink;
+  supplier?: SupplierLink;
   tags?: string[];
   ownerAccountId?: string;
 }

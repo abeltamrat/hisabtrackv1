@@ -4,6 +4,7 @@ import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import CategoryTreeSelect, { type TreeCategory } from '@/components/CategoryTreeSelect';
 import TagInputField from '@/components/TagInputField';
+import { ProjectField } from '@/components/ProjectPicker';
 import type { TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 
@@ -99,6 +100,8 @@ export default function TransactionSplitEditor({
             savedLabel="Saved tags"
             compact
           />
+          {/* Hidden unless Mela is connected; a part without its own project uses the transaction's. */}
+          <View className="mt-2"><ProjectField value={split.project} onChange={value => update(split.id, { project: value })} compact /></View>
         </View>
       ))}
       {splits.length === 1 && <Text className="text-amber-600 text-[10px]">Add at least one more part, or remove this split.</Text>}

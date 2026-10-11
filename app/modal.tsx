@@ -27,6 +27,12 @@ import type { RecurringFrequency, TransactionType } from '@/types/database';
 import { formatCalendarDate } from '@/utils/ethiopianCalendar';
 import type { TransactionSplit } from '@/types/database';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
+import { ProjectField } from '@/components/ProjectPicker';
+import LineItemsEditor from '@/components/LineItemsEditor';
+import SupplierField from '@/components/SupplierPicker';
+import type { SupplierLink } from '@/types/database';
+import type { PurchaseLine } from '@/types/database';
+import type { ProjectLink } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 import { useI18n } from '@/contexts/I18nContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -120,6 +126,10 @@ export default function AddTransactionScreen() {
   const [recurringOccurrences, setRecurringOccurrences] = useState('');
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
+  const [project, setProject] = useState<ProjectLink | undefined>();
+  const [itemize, setItemize] = useState(false);
+  const [supplier, setSupplier] = useState<SupplierLink | undefined>();
+  const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [kbdHeight, setKbdHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -182,6 +192,10 @@ export default function AddTransactionScreen() {
       setTransactionDate(new Date(editingTransaction.date));
       setSplitEnabled(!!editingTransaction.splits?.length);
       setSplits(editingTransaction.splits || []);
+      setProject(editingTransaction.project);
+      setLines(editingTransaction.lines || []);
+      setSupplier(editingTransaction.supplier);
+      setItemize(!!editingTransaction.lines?.length);
     }
   }, [isEditing, editingTransaction]);
 
@@ -245,6 +259,17 @@ export default function AddTransactionScreen() {
       Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(numericAmount)}.`);
       return;
     }
+    // Rows left completely blank are ignored; a row with an amount needs a name.
+    const purchaseLines = itemize && type !== 'TRANSFER' ? lines.filter(line => line.item.name.trim() || line.amount > 0) : [];
+    if (purchaseLines.some(line => !line.item.name.trim() || !(line.quantity > 0))) {
+      Alert.alert('Check items', 'Give every item a name and a quantity above zero, or remove the empty row.');
+      return;
+    }
+    if (sumMoney(purchaseLines.map(line => line.amount)) > money(numericAmount)) {
+      Alert.alert('Check items', `Items add up to ${formatCurrency(sumMoney(purchaseLines.map(line => line.amount)))}, more than the ${formatCurrency(numericAmount)} amount.`);
+      return;
+    }
+
     // Soft guard: warn when a new expense exceeds the account's available
     // (unlocked) balance. Never hard-block — records mirror real money moves.
     if (!isEditing && type === 'EXPENSE') {
@@ -284,6 +309,9 @@ export default function AddTransactionScreen() {
       date: transactionDate.getTime(),
       ...(type === 'TRANSFER' ? { to_account_id: toAccountId } : {}),
       ...(type !== 'TRANSFER' && splitEnabled ? { splits } : { splits: undefined }),
+      project: type !== 'TRANSFER' ? project : undefined,
+      lines: purchaseLines.length ? purchaseLines : undefined,
+      supplier: type === 'EXPENSE' ? supplier : undefined,
     };
 
     if (type === 'EXPENSE') {
@@ -696,6 +724,17 @@ export default function AddTransactionScreen() {
           </ScrollView>
         </View>}
 
+        {type !== 'TRANSFER' && <View className="mb-3"><ProjectField value={project} onChange={setProject} /></View>}
+        {type === 'EXPENSE' && <View className="mb-3"><SupplierField value={supplier} onChange={setSupplier} /></View>}
+        {type !== 'TRANSFER' && (
+          <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+            <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: itemize }} onPress={() => setItemize(!itemize)} className="flex-row items-center">
+              <FontAwesome name={itemize ? 'check-square' : 'square-o'} size={18} color={itemize ? '#6366f1' : '#94a3b8'} />
+              <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">Itemize purchase</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">Quantities and unit prices, with your last and best prices.</Text></View>
+            </TouchableOpacity>
+            {itemize && <View className="mt-3"><LineItemsEditor lines={lines} onChange={setLines} total={parseFloat(amount) || 0} formatCurrency={formatCurrency} onUseTotal={value => setAmount(String(value))} /></View>}
+          </View>
+        )}
         {type !== 'TRANSFER' && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
             <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: splitEnabled }} onPress={() => {
