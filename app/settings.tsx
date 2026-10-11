@@ -94,6 +94,8 @@ export default function SettingsScreen() {
 
   // Phone profile state
   const [userPhone, setUserPhone] = useState<string | null>(null);
+  const verifiedProfilePhone = normalizePhone(AuthService.getCurrentUser()?.phoneNumber ?? '');
+  const isProfilePhoneVerified = !!userPhone && verifiedProfilePhone === normalizePhone(userPhone);
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
   const [savingPhone, setSavingPhone] = useState(false);
@@ -979,9 +981,9 @@ export default function SettingsScreen() {
                 {userPhone
                   ? <View className="flex-row items-center gap-2">
                       <Text className="text-slate-900 dark:text-white text-sm font-semibold">{userPhone}</Text>
-                      <View className="flex-row items-center bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">
-                        <FontAwesome name="link" size={9} color="#16a34a" />
-                        <Text className="text-green-700 dark:text-green-400 text-[10px] font-bold ml-1">Linked</Text>
+                      <View className={`flex-row items-center px-2 py-0.5 rounded-full ${isProfilePhoneVerified ? 'bg-green-100 dark:bg-green-900/30' : 'bg-amber-100 dark:bg-amber-900/30'}`}>
+                        <FontAwesome name={isProfilePhoneVerified ? 'link' : 'bookmark'} size={9} color={isProfilePhoneVerified ? '#16a34a' : '#d97706'} />
+                        <Text className={`text-[10px] font-bold ml-1 ${isProfilePhoneVerified ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'}`}>{isProfilePhoneVerified ? 'Verified' : 'Saved'}</Text>
                       </View>
                     </View>
                   : <Text className="text-slate-500 text-sm dark:text-slate-400">Tap to add phone number</Text>

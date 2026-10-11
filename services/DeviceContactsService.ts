@@ -1,6 +1,8 @@
 import type * as ContactsModule from 'expo-contacts';
+import { getAuth } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getFirebaseApp } from '@/config/firebaseApp';
+import { AuthService } from '@/services/AuthService';
 import { normalizePersonEmail, normalizePersonPhone } from '@/services/RecipientIdentityService';
 
 export interface LinkedContactMatch {
@@ -94,17 +96,44 @@ export class DeviceContactsService {
       };
     }
 
+    const currentUser = getAuth(getFirebaseApp()).currentUser;
+    const selfMatches = new Map<string, LinkedContactMatch>();
+    if (currentUser) {
+      const verifiedPhone = normalizePersonPhone(currentUser.phoneNumber ?? undefined);
+      const verifiedEmail = currentUser.emailVerified ? normalizePersonEmail(currentUser.email ?? undefined) : undefined;
+      const savedPhone = normalizePersonPhone((await AuthService.getUserPhone(currentUser.uid)) ?? undefined);
+      for (const contact of contacts) {
+        const matchesVerifiedPhone = !!verifiedPhone && contact.phones.includes(verifiedPhone);
+        const matchesVerifiedEmail = !!verifiedEmail && contact.emails.includes(verifiedEmail);
+        const matchesSavedPhone = !!savedPhone && contact.phones.includes(savedPhone);
+        if (matchesVerifiedPhone || matchesVerifiedEmail || matchesSavedPhone) {
+          selfMatches.set(contact.id, {
+            uid: currentUser.uid,
+            displayName: currentUser.displayName || 'Your HisabTrack profile',
+            verified: matchesVerifiedPhone || matchesVerifiedEmail,
+          });
+        }
+      }
+    }
+
     try {
       const callable = httpsCallable(getFunctions(getFirebaseApp()), 'discoverLinkedContacts');
       const discovery = await callable({
         contacts: contacts.slice(0, 1000).map(contact => ({ key: contact.id, phones: contact.phones, emails: contact.emails })),
       });
       const matches = (discovery.data as { matches?: Array<{ key: string; uid: string; displayName: string; verified?: boolean }> } | null)?.matches || [];
-      const byKey = new Map(matches.map(match => [match.key, { uid: match.uid, displayName: match.displayName, verified: match.verified !== false }]));
+      const byKey = new Map(selfMatches);
+      for (const match of matches) {
+        byKey.set(match.key, { uid: match.uid, displayName: match.displayName, verified: match.verified !== false });
+      }
       discoveryCache = { loadedAt: Date.now(), matches: byKey };
       return { contacts: contacts.map(contact => ({ ...contact, linkedAccount: byKey.get(contact.id) })), discoveryFailed: false };
     } catch {
-      return { contacts, discoveryFailed: true };
+      discoveryCache = { loadedAt: Date.now(), matches: selfMatches };
+      return {
+        contacts: contacts.map(contact => ({ ...contact, linkedAccount: selfMatches.get(contact.id) })),
+        discoveryFailed: true,
+      };
     }
   }
 }

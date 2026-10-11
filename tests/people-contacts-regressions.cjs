@@ -55,3 +55,13 @@ test('a number saved in Settings gives a weaker, non-linking HisabTrack badge', 
   assert.match(read('components/PhoneContactPicker.tsx'), /<HisabContactBadge verified=\{contact\.linkedAccount\.verified\} \/>/);
   assert.match(read('components/PersonPicker.tsx'), /setImportedLinkedAccount\(contact\.linkedAccount\?\.verified \? contact\.linkedAccount : undefined\)/, 'only verified matches link accounts');
 });
+
+test('the signed-in user is recognized locally and saved phones are not shown as verified', () => {
+  const service = read('services/DeviceContactsService.ts');
+  const settings = read('app/settings.tsx');
+  assert.match(service, /const savedPhone = normalizePersonPhone\(\(await AuthService\.getUserPhone\(currentUser\.uid\)\) \?\? undefined\)/);
+  assert.match(service, /contact\.phones\.includes\(savedPhone\)/);
+  assert.match(service, /verified: matchesVerifiedPhone \|\| matchesVerifiedEmail/);
+  assert.match(service, /contacts: contacts\.map\(contact => \(\{ \.\.\.contact, linkedAccount: selfMatches\.get\(contact\.id\) \}\)\)/);
+  assert.match(settings, /isProfilePhoneVerified \? 'Verified' : 'Saved'/);
+});
