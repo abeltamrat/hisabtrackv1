@@ -1,5 +1,5 @@
 import { useTransactions } from '@/context/TransactionContext';
-import CategoryIcon from '@/components/CategoryIcon';
+import CategoryTreeSelect from '@/components/CategoryTreeSelect';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
@@ -130,7 +130,6 @@ export default function AddTransactionScreen() {
   const [itemize, setItemize] = useState(false);
   const [supplier, setSupplier] = useState<SupplierLink | undefined>();
   const [lines, setLines] = useState<PurchaseLine[]>([]);
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [kbdHeight, setKbdHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const [inputDraft, setInputDraft] = useState<SmartInputDraft>();
@@ -159,14 +158,6 @@ export default function AddTransactionScreen() {
       ? currentTags.filter(t => t.toLowerCase() !== tagToToggle.toLowerCase())
       : [...currentTags, tagToToggle];
     setTagsInput(newTags.join(', '));
-  };
-
-  const toggleCollapse = (id: string) => {
-    setCollapsedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
   };
 
   useEffect(() => {
@@ -446,58 +437,6 @@ export default function AddTransactionScreen() {
 
   const parsedTags = useMemo(() => parseTagInput(tagsInput) || [], [tagsInput]);
 
-  const renderCategoryTree = (parentId: string | undefined, depth: number): React.ReactNode => {
-    const cats = filteredCategories.filter(c => (c.parentId ?? undefined) === parentId);
-    return cats.map(category => {
-      const children = filteredCategories.filter(c => c.parentId === category.id);
-      const hasChildren = children.length > 0;
-      const isCollapsed = collapsedCategories.has(category.id);
-      const indentLeft = depth * 14;
-      const iconSize = depth === 0 ? 32 : 26;
-      const iconInnerSize = depth === 0 ? 15 : 12;
-
-      return (
-        <View key={category.id}>
-          <TouchableOpacity
-            className={`flex-row items-center py-2 px-3 rounded-xl mb-1 border ${ selectedCategory === category.name ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : 'bg-slate-50 dark:bg-slate-900 border-transparent' }`}
-            style={{ marginLeft: indentLeft }}
-            onPress={() => { clearError('category'); setSelectedCategory(category.name); }}
-          >
-            {depth > 0 && (
-              <View className="w-0.5 h-3 bg-slate-300 dark:bg-slate-600 mr-2 rounded-full" />
-            )}
-            <View
-              className="rounded-xl justify-center items-center mr-2"
-              style={{ width: iconSize, height: iconSize, backgroundColor: category.color + '20' }}
-            >
-              <CategoryIcon icon={category.icon} size={iconInnerSize} color={category.color} />
-            </View>
-            <Text
-              className={`flex-1 text-slate-900 dark:text-white font-semibold ${depth === 0 ? 'text-sm' : 'text-xs'}`}
-              numberOfLines={1}
-            >
-              {category.name}
-            </Text>
-            {hasChildren && (
-              <TouchableOpacity
-                onPress={() => toggleCollapse(category.id)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="flex-row items-center px-1"
-              >
-                <Text className="text-slate-500 text-[10px] mr-1 dark:text-slate-400">{children.length}</Text>
-                <FontAwesome name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={9} color="#94a3b8" />
-              </TouchableOpacity>
-            )}
-            {selectedCategory === category.name && (
-              <FontAwesome name="check" size={11} color="#6366f1" style={{ marginLeft: 4 }} />
-            )}
-          </TouchableOpacity>
-          {hasChildren && !isCollapsed && renderCategoryTree(category.id, depth + 1)}
-        </View>
-      );
-    });
-  };
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -721,9 +660,12 @@ export default function AddTransactionScreen() {
               );
             })()}
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} className="max-h-52" nestedScrollEnabled={true}>
-            {renderCategoryTree(undefined, 0)}
-          </ScrollView>
+          <CategoryTreeSelect
+            categories={filteredCategories}
+            value={selectedCategory}
+            onChange={name => { clearError('category'); setSelectedCategory(name); }}
+            accessibilityLabel="Category"
+          />
         </View>}
 
         {type !== 'TRANSFER' && <View className="mb-3"><ProjectField value={project} onChange={setProject} /></View>}

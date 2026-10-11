@@ -1,6 +1,6 @@
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { useTransactions } from '@/context/TransactionContext';
-import CategoryIcon from '@/components/CategoryIcon';
+import CategoryTreeSelect from '@/components/CategoryTreeSelect';
 import ScreenInfoCard from '@/components/ScreenInfoCard';
 import { BackgroundService } from '@/services/BackgroundService';
 import { DraftTransaction, DraftTransactionService } from '@/services/DraftTransactionService';
@@ -955,48 +955,6 @@ export default function DraftTransactionsScreen() {
   const transferCandidates = selectedDraft ? findTransferCandidates(selectedDraft, drafts) : [];
   const confirmCategoryType = editedType === 'INCOME' ? 'income' : 'expense';
   const confirmCategories = categories.filter((category) => category.type === confirmCategoryType);
-  const getConfirmChildCategories = (parentId: string | undefined) =>
-    confirmCategories.filter((category) => (category.parentId ?? undefined) === parentId);
-
-  const renderConfirmCategoryTree = (parentId: string | undefined, depth: number): React.ReactNode =>
-    // depth guard keeps a malformed parentId cycle from recursing forever
-    depth > 12 ? null : getConfirmChildCategories(parentId).map((category) => {
-      const isRoot = depth === 0;
-      const isSelected = editedCategory === category.name;
-
-      return (
-        <View key={category.id} className={isRoot ? 'mb-3' : 'mt-2'}>
-          <TouchableOpacity
-            className={`w-full items-center border-2 ${isRoot ? 'p-4 rounded-2xl' : 'p-3 rounded-xl'} ${isSelected ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500' : isRoot ? 'bg-white dark:bg-slate-900 border-transparent' : 'bg-slate-100 dark:bg-slate-700 border-transparent' }`}
-            style={{ marginLeft: Math.min(depth, 5) * 16 }}
-            onPress={() => setEditedCategory(category.name)}
-          >
-            <View className="flex-row items-center w-full">
-              {!isRoot && <View className="w-1 h-4 bg-slate-300 dark:bg-slate-600 mr-2 rounded-full" />}
-              <View
-                className={`justify-center items-center mr-3 ${isRoot ? 'rounded-2xl' : 'rounded-xl'}`}
-                style={{ width: isRoot ? 40 : 32, height: isRoot ? 40 : 32, backgroundColor: category.color + '20' }}
-              >
-                <CategoryIcon icon={category.icon} size={isRoot ? 18 : 14} color={category.color} />
-              </View>
-              <View className="flex-1">
-                <Text
-                  className={isRoot
-                    ? 'text-slate-900 dark:text-white text-sm font-semibold text-left'
-                    : 'text-slate-700 dark:text-slate-300 text-xs font-medium text-left'}
-                  numberOfLines={2}
-                >
-                  {category.name}
-                </Text>
-              </View>
-              {isSelected && <FontAwesome name="check" size={isRoot ? 16 : 12} color="#6366f1" />}
-            </View>
-          </TouchableOpacity>
-          {renderConfirmCategoryTree(category.id, depth + 1)}
-        </View>
-      );
-    });
-
   useEffect(() => {
     if (!selectedDraft) {
       return;
@@ -1923,14 +1881,12 @@ export default function DraftTransactionsScreen() {
                     </Text>
                   </View>
                 )}
-                <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4">
-                  <Text className="text-[11px] text-slate-500 uppercase font-bold mb-3 dark:text-slate-400">
-                    {editedType === 'INCOME' ? 'Income categories' : 'Expense categories'}
-                  </Text>
-                  <ScrollView showsVerticalScrollIndicator={false} className="max-h-64" nestedScrollEnabled>
-                    {renderConfirmCategoryTree(undefined, 0)}
-                  </ScrollView>
-                </View>
+                <CategoryTreeSelect
+                  categories={confirmCategories}
+                  value={editedCategory}
+                  onChange={setEditedCategory}
+                  accessibilityLabel={editedType === 'INCOME' ? 'Income category' : 'Expense category'}
+                />
               </View>}
 
               {editedType !== 'TRANSFER' && splitEnabled && (
