@@ -1,4 +1,4 @@
-import * as Contacts from 'expo-contacts';
+import type * as ContactsModule from 'expo-contacts';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getFirebaseApp } from '@/config/firebaseApp';
 import { normalizePersonEmail, normalizePersonPhone } from '@/services/RecipientIdentityService';
@@ -26,7 +26,21 @@ const unique = (values: Array<string | undefined>) => [...new Set(values.filter(
 const validPhone = (value?: string) => !!value && /^\+[1-9]\d{7,14}$/.test(value);
 const validEmail = (value?: string) => !!value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-function mapContact(contact: Contacts.ExistingContact): DeviceContact | undefined {
+/**
+ * expo-contacts is native: app builds older than 1.0.5 don't include it, and
+ * importing it there throws. Load it only when contacts are actually opened so
+ * those builds keep working (the picker then says contacts are unavailable).
+ */
+function loadContacts(): typeof ContactsModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-contacts') as typeof ContactsModule;
+  } catch {
+    return null;
+  }
+}
+
+function mapContact(contact: ContactsModule.ExistingContact): DeviceContact | undefined {
   const phones = unique((contact.phoneNumbers || []).map(item => normalizePersonPhone(item.number))).filter(validPhone);
   const emails = unique((contact.emails || []).map(item => normalizePersonEmail(item.email))).filter(validEmail);
   if (!phones.length && !emails.length) return undefined;
@@ -36,7 +50,8 @@ function mapContact(contact: Contacts.ExistingContact): DeviceContact | undefine
 
 export class DeviceContactsService {
   static async requestAndLoad(): Promise<DeviceContactsResult> {
-    if (!(await Contacts.isAvailableAsync())) return { status: 'unavailable', contacts: [], discoveryFailed: false };
+    const Contacts = loadContacts();
+    if (!Contacts || !(await Contacts.isAvailableAsync().catch(() => false))) return { status: 'unavailable', contacts: [], discoveryFailed: false };
     let permission = await Contacts.getPermissionsAsync();
     if (!permission.granted) permission = await Contacts.requestPermissionsAsync();
     if (!permission.granted) return { status: 'denied', contacts: [], discoveryFailed: false };
