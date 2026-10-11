@@ -66,6 +66,7 @@ export class WebDatabase implements IDatabase {
 
   private buildStoredTransaction(transaction: Omit<Transaction, 'id'>): Transaction {
     const common = {
+      ...transaction,
       id: generateUUID(),
       account_id: transaction.account_id,
       amount: transaction.amount,
@@ -103,6 +104,9 @@ export class WebDatabase implements IDatabase {
   private mergeStoredTransaction(existing: Transaction, updates: Partial<Omit<Transaction, 'id'>>): Transaction {
     const nextType = updates.type ?? existing.type;
     const common = {
+      // Preserve every stored field when only part of a transaction is edited.
+      // Explicit assignments below retain the adapter's clearing semantics.
+      ...existing,
       id: existing.id,
       account_id: updates.account_id ?? existing.account_id,
       amount: updates.amount ?? existing.amount,

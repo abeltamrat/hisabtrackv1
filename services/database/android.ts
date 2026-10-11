@@ -322,6 +322,7 @@ export class AndroidDatabase implements IDatabase {
 
   private buildStoredTransaction(transaction: Omit<Transaction, 'id'>): Transaction {
     const common = {
+      ...transaction,
       id: generateUUID(),
       account_id: transaction.account_id,
       amount: transaction.amount,
@@ -360,6 +361,9 @@ export class AndroidDatabase implements IDatabase {
   private mergeStoredTransaction(existing: Transaction, updates: Partial<Omit<Transaction, 'id'>>): Transaction {
     const nextType = updates.type ?? existing.type;
     const common = {
+      // Keep fields introduced after this adapter was first written (project,
+      // items, supplier and workflow metadata) when a partial edit is saved.
+      ...existing,
       id: existing.id,
       account_id: updates.account_id ?? existing.account_id,
       amount: updates.amount ?? existing.amount,

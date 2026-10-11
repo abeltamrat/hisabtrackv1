@@ -1559,3 +1559,20 @@ test('the reported screens constrain long values and amounts', () => {
   assert.match(account, /tint=\{isDark \? 'dark' : 'light'\}/);
   assert.match(account, /adjustsFontSizeToFit/);
 });
+
+test('transaction edit defaults cannot overwrite the original bank or category', () => {
+  const modal = fs.readFileSync(path.join(root, 'app/modal.tsx'), 'utf8');
+  assert.match(modal, /if \(!isEditing && !selectedAccountId && accounts\.length > 0\)/,
+    'the first account must only default on a new transaction');
+  assert.match(modal, /if \(!isEditing && !selectedCategory && allSelectableCategories\.length > 0\)/,
+    'the first category must only default on a new transaction');
+  assert.match(modal, /disabled=\{isEditing && !editReady\}/,
+    'saving must wait until all original edit values are hydrated');
+
+  for (const adapter of ['services/database/android.ts', 'services/database/web.ts']) {
+    const source = fs.readFileSync(path.join(root, adapter), 'utf8');
+    const merge = source.slice(source.indexOf('private mergeStoredTransaction'), source.indexOf('private mergeStoredTransaction') + 500);
+    assert.match(merge, /const common = \{[\s\S]{0,300}?\.\.\.existing,/,
+      `${adapter} must retain fields outside its legacy transaction whitelist`);
+  }
+});

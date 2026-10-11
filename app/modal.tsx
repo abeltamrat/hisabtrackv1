@@ -103,6 +103,7 @@ export default function AddTransactionScreen() {
 
   const isEditing = !!edit;
   const editingTransaction = transactions.find((t: any) => t.id === edit);
+  const [editReady, setEditReady] = useState(!isEditing);
 
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [amount, setAmount] = useState('');
@@ -201,6 +202,9 @@ export default function AddTransactionScreen() {
       setProjectCost(!editingSplits && hasAnyProject(editingTransaction));
       setSupplier(editingTransaction.supplier);
       setItemize(!editingSplits && !!editingTransaction.lines?.length);
+      // Mark the form ready only after every editable value has been copied.
+      // This prevents a quick save from replacing stored values with defaults.
+      setEditReady(true);
     }
   }, [isEditing, editingTransaction]);
 
@@ -224,9 +228,11 @@ export default function AddTransactionScreen() {
   }, [draft]);
 
   useEffect(() => {
-    if (!selectedAccountId && accounts.length > 0) {
+    // Defaults belong to a new transaction. On edit they used to race the
+    // hydration effect above and replace the original bank with accounts[0].
+    if (!isEditing && !selectedAccountId && accounts.length > 0) {
       setSelectedAccountId(accounts[0].id);
-    } else if (accountsStatus === 'succeeded' && accounts.length === 0) {
+    } else if (!isEditing && accountsStatus === 'succeeded' && accounts.length === 0) {
       if (Platform.OS === 'web') {
         setTimeout(() => {
           if (confirm("No Accounts Found. You need an account to create a transaction. Would you like to create one?")) {
@@ -246,9 +252,13 @@ export default function AddTransactionScreen() {
         );
       }
     }
-  }, [accounts, selectedAccountId, accountsStatus]);
+  }, [accounts, selectedAccountId, accountsStatus, isEditing]);
 
   const handleSave = async () => {
+    if (isEditing && (!editingTransaction || !editReady)) {
+      Alert.alert('Opening transaction', 'Please wait while the original transaction details are loaded.');
+      return;
+    }
     const numericAmount = parseFloat(amount);
     if (!validate({
       amount: (!amount || isNaN(numericAmount) || numericAmount <= 0)
@@ -439,10 +449,12 @@ export default function AddTransactionScreen() {
   const allSelectableCategories = filteredCategories;
 
   useEffect(() => {
-    if (!selectedCategory && allSelectableCategories.length > 0) {
+    // The first category is only a creation default. Applying it during edit
+    // can overwrite the stored category before hydration is rendered.
+    if (!isEditing && !selectedCategory && allSelectableCategories.length > 0) {
       setSelectedCategory(allSelectableCategories[0].name);
     }
-  }, [allSelectableCategories, selectedCategory]);
+  }, [allSelectableCategories, selectedCategory, isEditing]);
 
   const selectedBudgetMetrics = useMemo(() => {
     if (type !== 'EXPENSE' || !selectedCategory) return null;
@@ -476,7 +488,7 @@ export default function AddTransactionScreen() {
             <FontAwesome name="close" size={16} color="#fff" />
           </TouchableOpacity>
           <Text className="text-white text-lg font-bold">{isEditing ? 'Edit Transaction' : 'Add Transaction'}</Text>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm" onPress={handleSave} className="w-9 h-9 bg-secondary-500 rounded-xl justify-center items-center">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm" disabled={isEditing && !editReady} onPress={handleSave} className={`w-9 h-9 bg-secondary-500 rounded-xl justify-center items-center ${isEditing && !editReady ? 'opacity-40' : ''}`}>
             <FontAwesome name="check" size={16} color="#fff" />
           </TouchableOpacity>
         </View>
