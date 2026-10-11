@@ -6,6 +6,8 @@ import { normalizePersonEmail, normalizePersonPhone } from '@/services/Recipient
 export interface LinkedContactMatch {
   uid: string;
   displayName: string;
+  /** False when matched only on a number the person saved in Settings (not verified). */
+  verified: boolean;
 }
 
 export interface DeviceContact {
@@ -97,8 +99,8 @@ export class DeviceContactsService {
       const discovery = await callable({
         contacts: contacts.slice(0, 1000).map(contact => ({ key: contact.id, phones: contact.phones, emails: contact.emails })),
       });
-      const matches = (discovery.data as { matches?: Array<{ key: string; uid: string; displayName: string }> } | null)?.matches || [];
-      const byKey = new Map(matches.map(match => [match.key, { uid: match.uid, displayName: match.displayName }]));
+      const matches = (discovery.data as { matches?: Array<{ key: string; uid: string; displayName: string; verified?: boolean }> } | null)?.matches || [];
+      const byKey = new Map(matches.map(match => [match.key, { uid: match.uid, displayName: match.displayName, verified: match.verified !== false }]));
       discoveryCache = { loadedAt: Date.now(), matches: byKey };
       return { contacts: contacts.map(contact => ({ ...contact, linkedAccount: byKey.get(contact.id) })), discoveryFailed: false };
     } catch {

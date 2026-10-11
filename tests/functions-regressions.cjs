@@ -13,7 +13,7 @@ function environment(options={}) {
  const collectionGroup=name=>{const filters=[];let cap=Infinity;const q={query:true,where(field,op,value){filters.push({field,op,value});return q;},orderBy(){return q;},limit(n){cap=n;return q;},get:async()=>{
    const keys=[...rows.keys()].filter(k=>{const parts=k.split('/');return parts.length>=2&&parts.at(-2)===name;})
      .filter(k=>filters.every(({field,op,value})=>{const actual=rows.get(k)[field];
-       return op==='=='?actual===value:op==='>='?actual>=value:op==='<='?actual<=value:false;}));
+       return op==='=='?actual===value:op==='in'?value.includes(actual):op==='>='?actual>=value:op==='<='?actual<=value:false;}));
    return {empty:keys.length===0,docs:keys.slice(0,cap).map(k=>snapshot(doc(k)))};
  }};return q;};
  const db={doc,collection,collectionGroup,recursiveDelete:async ref=>{for(const k of [...rows.keys()])if(k===ref.path||k.startsWith(ref.path+'/'))rows.delete(k);},runTransaction:fn=>{
@@ -25,7 +25,7 @@ function environment(options={}) {
  }};
  const wrap=(_,fn)=>fn;
  const authUsers=[{uid:'alice',displayName:'Alice',phoneNumber:'+251911111111',email:'alice@example.com',emailVerified:true},{uid:'carol',displayName:'Carol',phoneNumber:'+251922222222',email:'carol@example.com',emailVerified:true},{uid:'unverified',displayName:'Unverified',email:'unverified@example.com',emailVerified:false}];
- const mocks={'firebase-admin':{initializeApp(){},firestore:()=>db,auth:()=>({getUser:async uid=>authUsers.find(user=>user.uid===uid)||Promise.reject(Object.assign(Error('missing'),{code:'auth/user-not-found'})),getUserByEmail:async email=>authUsers.find(user=>user.email===email)||Promise.reject(Object.assign(Error('missing'),{code:'auth/user-not-found'})),getUsers:async identifiers=>({users:authUsers.filter(user=>identifiers.some(identifier=>(identifier.phoneNumber&&identifier.phoneNumber===user.phoneNumber)||(identifier.email&&identifier.email===user.email))),notFound:[]})})},'expo-server-sdk':{Expo:class{static isExpoPushToken(t){return typeof t==='string'&&/^Expo(nent)?PushToken\[.+\]$/.test(t);}chunkPushNotifications(m){return m.length?[m]:[];}chunkPushNotificationReceiptIds(ids){return ids.length?[ids]:[];}async sendPushNotificationsAsync(chunk){sent.push(...chunk);return chunk.map((_,i)=>({status:'ok',id:'ticket-'+i}));}async getPushNotificationReceiptsAsync(){return {};}}},'firebase-functions':{logger:{info(){},debug(){},warn(){},error(){}}},'firebase-functions/v2/firestore':{onDocumentCreated:wrap},'firebase-functions/v2/scheduler':{onSchedule:wrap},'firebase-functions/v2/https':{onCall:wrap,HttpsError}};
+ const mocks={'firebase-admin':{initializeApp(){},firestore:()=>db,auth:()=>({getUser:async uid=>authUsers.find(user=>user.uid===uid)||Promise.reject(Object.assign(Error('missing'),{code:'auth/user-not-found'})),getUserByEmail:async email=>authUsers.find(user=>user.email===email)||Promise.reject(Object.assign(Error('missing'),{code:'auth/user-not-found'})),getUsers:async identifiers=>({users:authUsers.filter(user=>identifiers.some(identifier=>(identifier.phoneNumber&&identifier.phoneNumber===user.phoneNumber)||(identifier.email&&identifier.email===user.email)||(identifier.uid&&identifier.uid===user.uid))),notFound:[]})})},'expo-server-sdk':{Expo:class{static isExpoPushToken(t){return typeof t==='string'&&/^Expo(nent)?PushToken\[.+\]$/.test(t);}chunkPushNotifications(m){return m.length?[m]:[];}chunkPushNotificationReceiptIds(ids){return ids.length?[ids]:[];}async sendPushNotificationsAsync(chunk){sent.push(...chunk);return chunk.map((_,i)=>({status:'ok',id:'ticket-'+i}));}async getPushNotificationReceiptsAsync(){return {};}}},'firebase-functions':{logger:{info(){},debug(){},warn(){},error(){}}},'firebase-functions/v2/firestore':{onDocumentCreated:wrap},'firebase-functions/v2/scheduler':{onSchedule:wrap},'firebase-functions/v2/https':{onCall:wrap,HttpsError}};
  const exports={};new Function('require','exports',fs.readFileSync(path.join(__dirname,'../functions/index.js'),'utf8'))(name=>mocks[name],exports);
  rows.set('sharedLoans/loan',{borrowerUid:'alice',lenderUid:'bob',linkStatus:'ACCEPTED',amount:100,interestRate:0,startDate:Date.UTC(2026,0,1),dueDate:Date.UTC(2027,0,1)});
  const request=(uid,data)=>({auth:{uid},data:{sharedLoanId:'loan',...data}});
@@ -98,11 +98,29 @@ test('contact discovery identifies verified users without returning contact deta
   {key:'unverified-contact',phones:[],emails:['unverified@example.com']},
  ]}});
  assert.deepEqual(result,{matches:[
-  {key:'phone-contact',uid:'carol',displayName:'Carol'},
-  {key:'email-contact',uid:'carol',displayName:'Carol'},
+  {key:'phone-contact',uid:'carol',displayName:'Carol',verified:true},
+  {key:'email-contact',uid:'carol',displayName:'Carol',verified:true},
  ]});
  assert.equal(JSON.stringify(result).includes('+251'),false);
  assert.equal(JSON.stringify(result).includes('@example.com'),false);
+});
+
+test('a number saved in Settings matches as an unverified HisabTrack user, never when claimed twice',async()=>{
+ const {exports:api,rows}=environment();
+ rows.set('users/unverified/meta/profile',{phoneNumber:'+251933333333'});
+ rows.set('users/alice/meta/profile',{phoneNumber:'+251944444444'});
+ rows.set('users/carol/meta/profile',{phoneNumber:'+251944444444'});
+ const result=await api.discoverLinkedContacts({auth:{uid:'bob'},data:{contacts:[
+  {key:'saved',phones:['+251933333333'],emails:[]},
+  {key:'claimed-twice',phones:['+251944444444'],emails:[]},
+  {key:'verified-wins',phones:['+251922222222'],emails:[]},
+ ]}});
+ assert.deepEqual(result,{matches:[
+  {key:'saved',uid:'unverified',displayName:'Unverified',verified:false},
+  {key:'verified-wins',uid:'carol',displayName:'Carol',verified:true},
+ ]});
+ const own=await api.discoverLinkedContacts({auth:{uid:'unverified'},data:{contacts:[{key:'me',phones:['+251933333333'],emails:[]}]}});
+ assert.deepEqual(own,{matches:[]},'your own saved number is not a match');
 });
 
 test('confirmed interest is capped across payments and persisted for both participants',async()=>{

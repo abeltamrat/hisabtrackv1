@@ -11,12 +11,12 @@ interface Props {
   onSelect: (contact: DeviceContact) => void;
 }
 
-export function HisabContactBadge() {
-  return <View accessibilityLabel="Uses Hisab Track" className="w-11 h-11 mr-3 relative">
-    <Image source={require('../assets/images/hisab-coin-icon.png')} className="w-11 h-11 rounded-full" resizeMode="cover" />
-    <View className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-600 border-2 border-white dark:border-slate-900 items-center justify-center">
+export function HisabContactBadge({ verified = true }: { verified?: boolean }) {
+  return <View accessibilityLabel={verified ? 'Verified Hisab Track user' : 'Uses Hisab Track (number not verified)'} className="w-11 h-11 mr-3 relative">
+    <Image source={require('../assets/images/hisab-coin-icon.png')} className={`w-11 h-11 rounded-full ${verified ? '' : 'opacity-60'}`} resizeMode="cover" />
+    {verified && <View className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-600 border-2 border-white dark:border-slate-900 items-center justify-center">
       <FontAwesome name="link" size={8} color="#fff" />
-    </View>
+    </View>}
   </View>;
 }
 
@@ -71,7 +71,7 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
     ) : (
       <>
         <View className="flex-row items-center bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 mb-2"><FontAwesome name="search" size={16} color="#94a3b8" /><TextInput value={query} onChangeText={setQuery} placeholder="Search phone contacts" placeholderTextColor="#94a3b8" className="flex-1 px-3 py-3 text-slate-900 dark:text-white" /></View>
-        <View className="flex-row items-center mb-3 px-1"><HisabContactBadge /><Text className="flex-1 text-xs text-slate-500 dark:text-slate-400">The coin and link badge identifies a verified HisabTrack user. Phone and email values are checked securely and are not stored by discovery.</Text></View>
+        <View className="flex-row items-center mb-3 px-1"><HisabContactBadge /><Text className="flex-1 text-xs text-slate-500 dark:text-slate-400">The coin and link badge identifies a verified HisabTrack user. A plain coin means the number is saved in someone's HisabTrack profile but not verified. Phone and email values are checked securely and are not stored by discovery.</Text></View>
         {discovering && <View className="flex-row items-center mb-3 px-1"><ActivityIndicator size="small" color="#10b981" /><Text className="text-xs text-slate-500 dark:text-slate-400 ml-2">Checking HisabTrack contacts in the background…</Text></View>}
         {discoveryFailed && <Text className="text-xs text-amber-600 dark:text-amber-400 mb-3">Contacts loaded. HisabTrack badges could not be checked while offline.</Text>}
         <FlatList
@@ -85,8 +85,8 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
           windowSize={7}
           removeClippedSubviews
           renderItem={({ item: contact }) => <TouchableOpacity onPress={() => onSelect(contact)} className="flex-row items-center p-3 mb-2 rounded-2xl border border-slate-200 dark:border-slate-800">
-            {contact.linkedAccount ? <HisabContactBadge /> : <View className="w-11 h-11 rounded-full bg-slate-200 dark:bg-slate-800 items-center justify-center mr-3"><Text className="font-extrabold text-slate-700 dark:text-slate-200">{contact.name.slice(0, 1).toUpperCase()}</Text></View>}
-            <View className="flex-1"><View className="flex-row items-center"><Text numberOfLines={1} className="flex-1 font-bold text-slate-900 dark:text-white">{contact.name}</Text>{contact.linkedAccount && <Text className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 ml-2">HISABTRACK</Text>}</View><Text numberOfLines={1} className="text-xs text-slate-500 dark:text-slate-400 mt-1">{contact.phone || contact.email}</Text></View>
+            {contact.linkedAccount ? <HisabContactBadge verified={contact.linkedAccount.verified} /> : <View className="w-11 h-11 rounded-full bg-slate-200 dark:bg-slate-800 items-center justify-center mr-3"><Text className="font-extrabold text-slate-700 dark:text-slate-200">{contact.name.slice(0, 1).toUpperCase()}</Text></View>}
+            <View className="flex-1"><View className="flex-row items-center"><Text numberOfLines={1} className="flex-1 font-bold text-slate-900 dark:text-white">{contact.name}</Text>{contact.linkedAccount && <Text className={`text-[10px] font-extrabold ml-2 ${contact.linkedAccount.verified ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>{contact.linkedAccount.verified ? 'HISABTRACK' : 'ON HISABTRACK'}</Text>}</View><Text numberOfLines={1} className="text-xs text-slate-500 dark:text-slate-400 mt-1">{contact.phone || contact.email}</Text></View>
             <FontAwesome name="chevron-right" size={12} color="#94a3b8" />
           </TouchableOpacity>}
           ListEmptyComponent={<Text className="text-center text-slate-500 dark:text-slate-400 py-10">No matching contacts.</Text>}

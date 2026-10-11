@@ -43,3 +43,15 @@ test('phone contacts render before badge discovery and use a virtualized cached 
   assert.match(picker, /<FlatList/);
   assert.doesNotMatch(picker, /shown\.map\(/);
 });
+
+test('a number saved in Settings gives a weaker, non-linking HisabTrack badge', () => {
+  const fns = read('functions/index.js');
+  assert.match(fns, /collectionGroup\('meta'\)\.where\('phoneNumber', 'in', phoneValues\.slice\(offset, offset \+ 30\)\)/);
+  assert.match(fns, /verified: true \}\);/);
+  assert.match(fns, /verified: false \}\);/);
+  assert.match(fns, /if \(saved\.size !== 1\) continue;/, 'a number claimed by several accounts is not a match');
+  const indexes = JSON.parse(read('firestore.indexes.json'));
+  assert.ok(indexes.fieldOverrides.some(o => o.collectionGroup === 'meta' && o.fieldPath === 'phoneNumber' && o.indexes.some(i => i.queryScope === 'COLLECTION_GROUP')));
+  assert.match(read('components/PhoneContactPicker.tsx'), /<HisabContactBadge verified=\{contact\.linkedAccount\.verified\} \/>/);
+  assert.match(read('components/PersonPicker.tsx'), /setImportedLinkedAccount\(contact\.linkedAccount\?\.verified \? contact\.linkedAccount : undefined\)/, 'only verified matches link accounts');
+});

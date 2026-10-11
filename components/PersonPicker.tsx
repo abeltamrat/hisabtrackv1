@@ -79,7 +79,8 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
     setName(contact.name);
     setPhone(contact.phone || '');
     setEmail(contact.email || '');
-    setImportedLinkedAccount(contact.linkedAccount);
+    // An unverified (saved-number) match is shown as a hint only; it never links accounts.
+    setImportedLinkedAccount(contact.linkedAccount?.verified ? contact.linkedAccount : undefined);
     setCreating(true);
   };
 

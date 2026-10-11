@@ -548,14 +548,50 @@ exports.discoverLinkedContacts = onCall({ region: 'us-central1' }, async request
   }
   const byPhone = new Map(eligible.filter(user => user.phoneNumber).map(user => [user.phoneNumber, user]));
   const byEmail = new Map(eligible.filter(user => user.emailVerified && user.email).map(user => [user.email.toLowerCase(), user]));
+  // Numbers people typed in Settings are not verified, so they only produce a
+  // weaker "on HisabTrack" match (verified: false) that the app never uses to
+  // link accounts. Several accounts claiming one number count as no match.
+  const savedByPhone = new Map();
+  for (let offset = 0; offset < phoneValues.length; offset += 30) {
+    // Needs the meta.phoneNumber collection-group index; while it builds, verified matches still return.
+    const snapshot = await db.collectionGroup('meta').where('phoneNumber', 'in', phoneValues.slice(offset, offset + 30)).get().catch(error => {
+      console.warn('Saved-phone discovery unavailable:', error.message);
+      return { docs: [] };
+    });
+    for (const item of snapshot.docs) {
+      const owner = item.ref.parent.parent?.id;
+      if (item.id !== 'profile' || !owner || owner === uid) continue;
+      const phone = item.data().phoneNumber;
+      if (!savedByPhone.has(phone)) savedByPhone.set(phone, new Set());
+      savedByPhone.get(phone).add(owner);
+    }
+  }
+  const savedUsers = new Map();
+  const savedUids = [...new Set([...savedByPhone.values()].flatMap(owners => [...owners]))];
+  for (let offset = 0; offset < savedUids.length; offset += 100) {
+    const result = await admin.auth().getUsers(savedUids.slice(offset, offset + 100).map(id => ({ uid: id })));
+    for (const user of result.users) {
+      if (user.disabled || (await db.doc(`deletedAccounts/${user.uid}`).get()).exists) continue;
+      savedUsers.set(user.uid, user);
+    }
+  }
+
   const matches = [];
   for (const contact of contacts) {
     const candidates = new Map();
     for (const phone of contact.phones) { const user = byPhone.get(phone); if (user) candidates.set(user.uid, user); }
     for (const email of contact.emails) { const user = byEmail.get(email); if (user) candidates.set(user.uid, user); }
-    if (candidates.size !== 1) continue;
-    const user = [...candidates.values()][0];
-    matches.push({ key: contact.key, uid: user.uid, displayName: user.displayName || 'Verified account' });
+    if (candidates.size === 1) {
+      const user = [...candidates.values()][0];
+      matches.push({ key: contact.key, uid: user.uid, displayName: user.displayName || 'Verified account', verified: true });
+      continue;
+    }
+    if (candidates.size > 1) continue;
+    const saved = new Map();
+    for (const phone of contact.phones) for (const owner of savedByPhone.get(phone) || []) { const user = savedUsers.get(owner); if (user) saved.set(owner, user); }
+    if (saved.size !== 1) continue;
+    const user = [...saved.values()][0];
+    matches.push({ key: contact.key, uid: user.uid, displayName: user.displayName || 'HisabTrack user', verified: false });
   }
   return { matches };
 });
