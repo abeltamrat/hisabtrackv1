@@ -1587,6 +1587,25 @@ test('Aurora transaction filter sheets use an opaque readable surface', () => {
     'all filter buttons must use a readable Aurora surface');
 });
 
+test('transaction category filter includes every hierarchy depth and orphaned visible categories', () => {
+  const { flattenCategoryHierarchy } = load('@/utils/categoryHierarchy');
+  const categories = [
+    { id: 'food', name: 'Food', type: 'expense' },
+    { id: 'dining', name: 'Dining', type: 'expense', parentId: 'food' },
+    { id: 'cafes', name: 'Cafes', type: 'expense', parentId: 'dining' },
+    { id: 'salary', name: 'Salary', type: 'income' },
+    { id: 'refund', name: 'Refund', type: 'income', parentId: 'hidden-parent' },
+  ];
+
+  const allRows = flattenCategoryHierarchy(categories);
+  assert.deepEqual(allRows.map(row => [row.category.name, row.depth]), [
+    ['Food', 0], ['Dining', 1], ['Cafes', 2], ['Salary', 0], ['Refund', 0],
+  ]);
+
+  const incomeRows = flattenCategoryHierarchy(categories.filter(category => category.type === 'income'));
+  assert.deepEqual(incomeRows.map(row => row.category.name), ['Salary', 'Refund']);
+});
+
 test('split filters show and total only matching allocation rows', () => {
   const { buildTransactionDisplayRows } = load('@/utils/transactionFilterRows');
   const transaction = {

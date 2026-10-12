@@ -11,6 +11,7 @@ import ExportService from '@/services/ExportService';
 import { hasTag } from '@/utils/tags';
 import { operatingExpense, operatingIncome, sumMoney } from '@/utils/finance';
 import { buildTransactionDisplayRows } from '@/utils/transactionFilterRows';
+import { flattenCategoryHierarchy } from '@/utils/categoryHierarchy';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -117,10 +118,11 @@ export default function TransactionsScreen() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // Organize categories hierarchically
-  const filteredCategories = categories.filter(c => filter === 'ALL' || c.type === filter.toLowerCase());
-  const rootCategories = filteredCategories.filter(c => !c.parentId);
-  const getChildCategories = (parentId: string) => filteredCategories.filter(c => c.parentId === parentId);
+  // Include every hierarchy level. A category whose parent is hidden or missing
+  // becomes a visible root so it can still be selected.
+  const categoryFilterRows = useMemo(() => flattenCategoryHierarchy(
+    categories.filter(c => filter === 'ALL' || c.type === filter.toLowerCase())
+  ), [categories, filter]);
 
   // Get all category names that should be included when a category is selected
   const getCategoryNamesToInclude = (selectedCatNames: string[]) => {
@@ -849,38 +851,21 @@ export default function TransactionsScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView style={{ paddingHorizontal: 16, paddingTop: 8 }} contentContainerStyle={{ paddingBottom: 32 }}>
-            {rootCategories.map((cat) => {
-              const children = getChildCategories(cat.id);
+            {categoryFilterRows.map(({ category: cat, depth }) => {
               const isSelected = selectedCategories.includes(cat.name);
               return (
-                <View key={cat.id}>
-                  <TouchableOpacity
-                    onPress={() => setSelectedCategories(prev => prev.includes(cat.name) ? prev.filter(c => c !== cat.name) : [...prev, cat.name])}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, marginBottom: 6, backgroundColor: isSelected ? (isDark || isAurora ? '#312e81' : '#eef2ff') : (isAurora ? '#172036' : 'transparent') }}
-                  >
-                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: cat.color + '30', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                      <CategoryIcon icon={cat.icon} size={15} color={cat.color} />
-                    </View>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: isSelected ? '#6366f1' : (theme.text), flex: 1 }}>{cat.name}</Text>
-                    {isSelected && <FontAwesome name="check" size={14} color="#6366f1" />}
-                  </TouchableOpacity>
-                  {children.map((child) => {
-                    const isChildSelected = selectedCategories.includes(child.name);
-                    return (
-                      <TouchableOpacity
-                        key={child.id}
-                        onPress={() => setSelectedCategories(prev => prev.includes(child.name) ? prev.filter(c => c !== child.name) : [...prev, child.name])}
-                         style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, paddingLeft: 28, borderRadius: 12, marginBottom: 6, backgroundColor: isChildSelected ? (isDark || isAurora ? '#312e81' : '#eef2ff') : (isAurora ? '#172036' : 'transparent') }}
-                      >
-                        <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: child.color + '25', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                          <CategoryIcon icon={child.icon} size={12} color={child.color} />
-                        </View>
-                        <Text style={{ fontSize: 13, fontWeight: '500', color: isChildSelected ? '#6366f1' : (theme.textMuted), flex: 1 }}>{child.name}</Text>
-                        {isChildSelected && <FontAwesome name="check" size={12} color="#6366f1" />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                <TouchableOpacity
+                  key={cat.id}
+                  onPress={() => setSelectedCategories(prev => prev.includes(cat.name) ? prev.filter(c => c !== cat.name) : [...prev, cat.name])}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: depth === 0 ? 12 : 10, paddingRight: 12, paddingLeft: 12 + Math.min(depth, 5) * 18, borderRadius: 12, marginBottom: 6, backgroundColor: isSelected ? (isDark || isAurora ? '#312e81' : '#eef2ff') : (isAurora ? '#172036' : 'transparent') }}
+                >
+                  {depth > 0 && <FontAwesome name="level-up" size={11} color="#64748b" style={{ marginRight: 8, transform: [{ rotate: '90deg' }] }} />}
+                  <View style={{ width: depth === 0 ? 32 : 26, height: depth === 0 ? 32 : 26, borderRadius: depth === 0 ? 10 : 8, backgroundColor: cat.color + (depth === 0 ? '30' : '25'), justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                    <CategoryIcon icon={cat.icon} size={depth === 0 ? 15 : 12} color={cat.color} />
+                  </View>
+                  <Text style={{ fontSize: depth === 0 ? 14 : 13, fontWeight: depth === 0 ? '600' : '500', color: isSelected ? '#818cf8' : (depth === 0 ? theme.text : theme.textMuted), flex: 1 }}>{cat.name}</Text>
+                  {isSelected && <FontAwesome name="check" size={depth === 0 ? 14 : 12} color="#818cf8" />}
+                </TouchableOpacity>
               );
             })}
           </ScrollView>
