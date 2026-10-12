@@ -3,6 +3,7 @@ import React from 'react';
 import { Linking, Text, TouchableOpacity, View } from 'react-native';
 
 import type { FundEntry, SharedFund } from '@/types/database';
+import HisabUserBadge from '@/components/HisabUserBadge';
 import { entryHeadline, entryIcon, entryIsIn, formatTime } from './fundUi';
 
 /** One line of fund activity, with its evidence and the open questions on it. */
@@ -74,7 +75,10 @@ export default function FundEntryRow({
           <Text className={`font-bold text-sm ${voided ? 'text-slate-500 dark:text-slate-400 line-through' : incoming ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
             {incoming ? '+' : '−'}{formatCurrency(entry.amount)}
           </Text>
-          <Text className="text-slate-500 dark:text-slate-400 text-[10px] mt-1" numberOfLines={1}>{recorder}</Text>
+          <View className="flex-row items-center mt-1">
+            <Text className="text-slate-500 dark:text-slate-400 text-[10px]" numberOfLines={1}>{recorder}</Text>
+            <HisabUserBadge linked={recorder !== 'You'} size={13} />
+          </View>
         </View>
       </View>
     </TouchableOpacity>

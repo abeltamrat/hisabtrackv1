@@ -7,6 +7,7 @@ import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSelector } from 'react-redux';
 
 import ScreenInfoCard from '@/components/ScreenInfoCard';
+import HisabUserBadge from '@/components/HisabUserBadge';
 import { CreateFundSheet, InviteShareCard, JoinFundSheet } from '@/components/funds/FundInviteSheets';
 import { FUND_GRADIENT, fundTypeLabel } from '@/components/funds/fundUi';
 import Wallet3D from '@/components/three-d/Wallet3D';
@@ -126,7 +127,11 @@ export default function FundsScreen() {
         {groups.invites.map(fund => (
           <View key={fund.id} className="rounded-3xl bg-white dark:bg-slate-800 border-2 border-teal-500 p-5 mb-4">
             <Text className="text-teal-700 dark:text-teal-300 text-xs font-bold uppercase mb-1">Invitation</Text>
-            <Text className="text-slate-900 dark:text-white text-base font-bold">{fund.ownerName} wants you to hold "{fund.name}"</Text>
+            <View className="flex-row items-center flex-wrap">
+              <Text className="text-slate-900 dark:text-white text-base font-bold">{fund.ownerName}</Text>
+              <HisabUserBadge size={17} />
+              <Text className="text-slate-900 dark:text-white text-base font-bold"> wants you to hold "{fund.name}"</Text>
+            </View>
             <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1 mb-4">
               {fundTypeLabel(fund.fundType)} · You record what comes in and what you pay from it. {fund.ownerName} sees only this fund, never your own accounts.
             </Text>
@@ -225,10 +230,19 @@ function FundCard({ fund, role, actionCount, problem, formatCurrency, onPress, m
         </View>
         <View className="flex-1 mr-2">
           <Text className="text-slate-900 dark:text-white font-bold text-base" numberOfLines={1}>{fund.name}</Text>
-          <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5" numberOfLines={1}>
-            {waiting ? `Waiting for ${fund.inviteEmailHint || 'them'} to join` : role === 'OWNER' ? `Held by ${counterpart || 'nobody yet'}` : `For ${counterpart}`}
-            {fund.status === 'CLOSED' ? ' · Closed' : ''}
-          </Text>
+          {waiting ? (
+            <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5" numberOfLines={1}>
+              Waiting for {fund.inviteEmailHint || 'them'} to join{fund.status === 'CLOSED' ? ' · Closed' : ''}
+            </Text>
+          ) : (
+            <View className="flex-row items-center mt-0.5">
+              <Text className="text-slate-500 dark:text-slate-400 text-xs" numberOfLines={1}>
+                {role === 'OWNER' ? `Held by ${counterpart || 'nobody yet'}` : `For ${counterpart}`}
+              </Text>
+              <HisabUserBadge linked={!!counterpart} size={14} />
+              {fund.status === 'CLOSED' ? <Text className="text-slate-500 dark:text-slate-400 text-xs"> · Closed</Text> : null}
+            </View>
+          )}
         </View>
         <View className="items-end">
           <Text adjustsFontSizeToFit numberOfLines={1} className={`font-bold text-lg ${fund.balance < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{formatCurrency(fund.balance)}</Text>

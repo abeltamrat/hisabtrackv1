@@ -22,6 +22,7 @@ import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import PersonLinkField from '@/components/PersonLinkField';
 import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
+import HisabUserBadge, { useLinkedPersonIds } from '@/components/HisabUserBadge';
 
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -169,6 +170,7 @@ const PlatformTimePicker = ({ value, onChange }: { value: Date, onChange: (date:
 // --- Main Component ---
 
 export default function RecurringTransactionsScreen() {
+  const linkedPersonIds = useLinkedPersonIds();
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { items: accounts } = useSelector((state: RootState) => state.accounts);
@@ -708,10 +710,9 @@ export default function RecurringTransactionsScreen() {
                       />
                     </View>
                     <View className="flex-1">
-                      <Text className="text-slate-900 dark:text-white font-bold text-lg">
-                        {recurring.name}
-                      </Text>
+                      <Text className="text-slate-900 dark:text-white font-bold text-lg">{recurring.name}</Text>
                       <Text className="text-slate-500 dark:text-slate-400 text-sm">{recurring.category}</Text>
+                      {recurring.person_name_snapshot && <View className="flex-row items-center mt-0.5"><Text className="text-teal-700 dark:text-teal-300 text-xs font-semibold">{recurring.person_name_snapshot}</Text><HisabUserBadge linked={!!recurring.person_id && linkedPersonIds.has(recurring.person_id)} size={17} /></View>}
                     </View>
                     <View className="items-end">
                       <View className="flex-row gap-2 mb-1">
@@ -819,6 +820,7 @@ export default function RecurringTransactionsScreen() {
                         <View>
                           <Text className="text-slate-900 dark:text-white font-bold">{item.name}</Text>
                           <Text className="text-slate-500 dark:text-slate-400 text-xs">{item.category}</Text>
+                          {item.person_name_snapshot && <View className="flex-row items-center"><Text className="text-teal-700 dark:text-teal-300 text-xs font-semibold">{item.person_name_snapshot}</Text><HisabUserBadge linked={!!item.person_id && linkedPersonIds.has(item.person_id)} size={16} /></View>}
                         </View>
                       </View>
                       <Text className={`font-bold ${item.type === 'INCOME' ? 'text-green-600' : 'text-red-600'}`}>

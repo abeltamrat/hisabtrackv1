@@ -12,6 +12,7 @@ import React from 'react';
 import { Linking, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import { useDispatch, useSelector } from 'react-redux';
+import HisabUserBadge, { useLinkedPersonIds } from '@/components/HisabUserBadge';
 
 export default function TransactionDetail() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -22,6 +23,7 @@ export default function TransactionDetail() {
   const { items: accounts } = useSelector((state: RootState) => state.accounts);
   const { categories } = useTransactions();
   const { formatCurrency } = useAppSettings();
+  const linkedPersonIds = useLinkedPersonIds();
   // Icon colours are props, not classes, so they need the token palette to
   // follow the theme; #64748b was only 3.07:1 on the dark cards.
   const { actualTheme, isAurora } = useTheme();
@@ -351,7 +353,7 @@ export default function TransactionDetail() {
             ) : null}
             {transaction.person_id ? (
               <TouchableOpacity onPress={() => router.push(`/people/${transaction.person_id}` as any)} className="flex-row items-center justify-between rounded-xl bg-teal-50 dark:bg-teal-950/30 px-3 py-3">
-                <View className="flex-row items-center"><FontAwesome name="address-card" size={14} color="#0d9488" /><Text className="text-teal-700 dark:text-teal-300 font-bold text-sm ml-2">View financial relationship</Text></View>
+                <View className="flex-row items-center"><FontAwesome name="address-card" size={14} color="#0d9488" /><Text className="text-teal-700 dark:text-teal-300 font-bold text-sm ml-2">{transaction.person_name_snapshot || transaction.sender_receiver || 'View financial relationship'}</Text><HisabUserBadge linked={linkedPersonIds.has(transaction.person_id)} /></View>
                 <FontAwesome name="chevron-right" size={12} color="#0d9488" />
               </TouchableOpacity>
             ) : null}

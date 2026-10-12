@@ -7,6 +7,7 @@ import PhoneContactPicker from '@/components/PhoneContactPicker';
 import type { DeviceContact, LinkedContactMatch } from '@/services/DeviceContactsService';
 import RecipientIdentityService, { DEFAULT_PERSON_GROUPS, normalizePersonEmail, normalizePersonPhone, type RecipientProfile } from '@/services/RecipientIdentityService';
 import { normalizeRecipient } from '@/utils/phase2Intelligence';
+import HisabUserBadge from '@/components/HisabUserBadge';
 
 interface Props {
   visible: boolean;
@@ -135,9 +136,9 @@ export default function PersonPicker({ visible, selectedId, suggestedName, onClo
               <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} className="max-h-96">
                 {shown.map(person => (
                   <TouchableOpacity key={person.id} onPress={() => { onSelect(person); onClose(); }} className={`flex-row items-center p-3 mb-2 rounded-2xl border ${person.id === selectedId ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40' : 'border-slate-200 dark:border-slate-800'}`}>
-                    <View className="w-11 h-11 rounded-full bg-teal-100 dark:bg-teal-950 items-center justify-center mr-3"><Text className="font-extrabold text-teal-700 dark:text-teal-300">{person.displayName.slice(0, 1).toUpperCase()}</Text></View>
+                    <View className="relative mr-3"><View className="w-11 h-11 rounded-full bg-teal-100 dark:bg-teal-950 items-center justify-center"><Text className="font-extrabold text-teal-700 dark:text-teal-300">{person.displayName.slice(0, 1).toUpperCase()}</Text></View><View className="absolute -right-2 -bottom-1"><HisabUserBadge linked={!!person.linkedUid} size={18} /></View></View>
                     <View className="flex-1"><Text className="font-bold text-slate-900 dark:text-white">{person.displayName}</Text>{(person.groups || []).length > 0 && <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1">{person.groups!.join(' • ')}</Text>}</View>
-                    <View className="items-end ml-2">{person.linkedUid && <Text className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 mb-1">LINKED</Text>}{!person.phone && !person.email && <Text className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 mb-1">CONTACT NEEDED</Text>}{person.id === selectedId && <FontAwesome name="check-circle" size={19} color="#6366f1" />}</View>
+                    <View className="items-end ml-2">{!person.phone && !person.email && <Text className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 mb-1">CONTACT NEEDED</Text>}{person.id === selectedId && <FontAwesome name="check-circle" size={19} color="#6366f1" />}</View>
                   </TouchableOpacity>
                 ))}
                 {shown.length === 0 && <Text className="text-center text-slate-500 dark:text-slate-400 py-8">No saved people found.</Text>}

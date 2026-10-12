@@ -21,6 +21,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { updateLoan } from '@/store/slices/loansSlice';
 import { addTransaction } from '@/store/slices/transactionsSlice';
 import { themeTokens } from '@/constants/theme';
+import HisabUserBadge from '@/components/HisabUserBadge';
 
 type Tab = 'schedule' | 'chat' | 'log';
 
@@ -360,9 +361,7 @@ export default function LoanDetailsScreen() {
           <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>
             {isLent ? 'Borrower' : 'Lender'}
           </Text>
-          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '800', textAlign: 'center' }}>
-            {loan.lender_borrower_name}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: '#fff', fontSize: 28, fontWeight: '800', textAlign: 'center' }}>{loan.lender_borrower_name}</Text><HisabUserBadge linked={isLinked || !!loan.linked_uid} size={23} /></View>
           {loan.linked_phone && (
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
               <FontAwesome name="link" size={11} color="rgba(255,255,255,0.6)" />

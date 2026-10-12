@@ -7,6 +7,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import HisabUserBadge from '@/components/HisabUserBadge';
 
 export default function PeopleScreen() {
   const router = useRouter();
@@ -70,7 +71,7 @@ export default function PeopleScreen() {
           const stats = totals(person);
           return <TouchableOpacity key={person.id} onPress={() => router.push(`/people/${person.id}` as any)} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-4 mb-3">
             <View className="flex-row items-center">
-              <View className="w-12 h-12 rounded-2xl bg-teal-100 dark:bg-teal-950 items-center justify-center mr-3"><Text className="text-lg font-extrabold text-teal-700 dark:text-teal-300">{person.displayName.slice(0, 1).toUpperCase()}</Text></View>
+              <View className="relative mr-3"><View className="w-12 h-12 rounded-2xl bg-teal-100 dark:bg-teal-950 items-center justify-center"><Text className="text-lg font-extrabold text-teal-700 dark:text-teal-300">{person.displayName.slice(0, 1).toUpperCase()}</Text></View><View className="absolute -right-2 -bottom-1"><HisabUserBadge linked={!!person.linkedUid} size={19} /></View></View>
               <View className="flex-1"><Text numberOfLines={1} className="text-base font-extrabold text-slate-900 dark:text-white">{person.displayName}</Text><Text numberOfLines={1} className="text-xs text-slate-500 dark:text-slate-400 mt-1">{(person.groups || []).join(' • ') || 'No group'} · {stats.count} movement{stats.count === 1 ? '' : 's'}</Text></View>
               <FontAwesome name="chevron-right" size={13} color="#94a3b8" />
             </View>

@@ -23,6 +23,7 @@ import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/d
 import { useDispatch, useSelector } from 'react-redux';
 import { themeTokens } from '@/constants/theme';
 import { formatCalendarDate } from '@/utils/ethiopianCalendar';
+import HisabUserBadge, { useLinkedPersonIds } from '@/components/HisabUserBadge';
 
 const BUNDLED_LOGO_MAP = new Map(BUNDLED_LOGOS.map(b => [b.url, b]));
 
@@ -90,6 +91,7 @@ export default function TransactionsScreen() {
   const { t } = useI18n();
   const { formatCurrency, fontSize, calendarSystem } = useAppSettings();
   const { actualTheme, isAurora } = useTheme();
+  const linkedPersonIds = useLinkedPersonIds();
   const isDark = actualTheme === 'dark';
   const theme = themeTokens(isDark, isAurora);
   // Aurora's page tokens are intentionally translucent. Filter sheets need an
@@ -661,6 +663,7 @@ export default function TransactionsScreen() {
                       </View>
                     )}
                   </View>
+                  {item.person_id && (item.person_name_snapshot || item.sender_receiver) && <View className="flex-row items-center mt-1"><Text className="text-teal-700 dark:text-teal-300 text-[11px] font-semibold" numberOfLines={1}>{item.person_name_snapshot || item.sender_receiver}</Text><HisabUserBadge linked={linkedPersonIds.has(item.person_id)} size={16} /></View>}
                   {rowTags && rowTags.length > 0 && (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-1.5 -mx-0.5 px-0.5">
                       {rowTags.slice(0, 4).map((transactionTag) => (

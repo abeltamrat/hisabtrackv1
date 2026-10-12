@@ -35,6 +35,7 @@ import { themeTokens } from '@/constants/theme';
 import PersonLinkField from '@/components/PersonLinkField';
 import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
 import { normalizeRecipient } from '@/utils/phase2Intelligence';
+import HisabUserBadge, { useLinkedPersonIds } from '@/components/HisabUserBadge';
 
 const SpinnerPickerSheet = ({
   show, value, mode, label, onClose, onConfirm, maximumDate,
@@ -169,6 +170,7 @@ const PlatformTimePicker = React.memo(({ value, onChange }: { value: Date, onCha
 });
 
 export default function LoansDebtsScreen() {
+  const linkedPersonIds = useLinkedPersonIds();
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useAuth();
@@ -1099,6 +1101,7 @@ export default function LoansDebtsScreen() {
                         <Text className="text-slate-900 dark:text-white font-bold text-lg">
                           {item.lender_borrower_name}
                         </Text>
+                        <HisabUserBadge linked={isItemLinked || !!item.linked_uid || (!!item.person_id && linkedPersonIds.has(item.person_id))} size={20} />
                         {item.shared_loan_id && item.link_status === 'ACCEPTED' && (
                           <View className="flex-row items-center bg-indigo-100 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full">
                             <FontAwesome name="link" size={9} color="#6366f1" />

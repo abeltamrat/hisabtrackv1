@@ -41,6 +41,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { rankTagSuggestions } from '@/utils/tagSuggestions';
 import { InputDraftService, type SmartInputDraft } from '@/services/InputDraftService';
 import PersonPicker from '@/components/PersonPicker';
+import HisabUserBadge from '@/components/HisabUserBadge';
 import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
 import { normalizeRecipient } from '@/utils/phase2Intelligence';
 
@@ -866,7 +867,7 @@ export default function AddTransactionScreen() {
           </View>
           {selectedPerson && <View className="flex-row items-center rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 px-3 py-2 mb-2">
             <FontAwesome name="user" size={13} color="#0d9488" />
-            <View className="flex-1 ml-2"><Text className="text-teal-800 dark:text-teal-200 font-bold text-sm">{selectedPerson.displayName}</Text>{(selectedPerson.groups || []).length > 0 && <Text className="text-teal-600 dark:text-teal-400 text-[10px]">{selectedPerson.groups!.join(' • ')}</Text>}</View>
+            <View className="flex-1 ml-2"><View className="flex-row items-center"><Text className="text-teal-800 dark:text-teal-200 font-bold text-sm">{selectedPerson.displayName}</Text><HisabUserBadge linked={!!selectedPerson.linkedUid} /></View>{(selectedPerson.groups || []).length > 0 && <Text className="text-teal-600 dark:text-teal-400 text-[10px]">{selectedPerson.groups!.join(' • ')}</Text>}</View>
             <TouchableOpacity accessibilityLabel="Remove person link" onPress={() => { setSelectedPerson(undefined); setSelectedPersonId(undefined); }}><FontAwesome name="close" size={15} color="#0d9488" /></TouchableOpacity>
           </View>}
           <View className="bg-slate-50 dark:bg-slate-900 px-3 py-2 rounded-xl"><TextInput className="text-slate-900 dark:text-white text-sm" placeholder="Who received or sent the money?" placeholderTextColor="#94a3b8" value={recipient} onChangeText={value => { setRecipient(value); if (selectedPerson && normalizeRecipient(value) !== normalizeRecipient(selectedPerson.displayName)) { setSelectedPerson(undefined); setSelectedPersonId(undefined); } }} /></View>

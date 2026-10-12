@@ -39,6 +39,7 @@ import { rankTagSuggestions } from '@/utils/tagSuggestions';
 import ReconciliationService, { type BalanceGapAnalysis } from '@/services/ReconciliationService';
 import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
 import PersonPicker from '@/components/PersonPicker';
+import HisabUserBadge from '@/components/HisabUserBadge';
 import { normalizeRecipient } from '@/utils/phase2Intelligence';
 import SmsFundBlock from '@/components/funds/SmsFundBlock';
 import { FUNDS_ENABLED } from '@/config/features';
@@ -1893,7 +1894,7 @@ export default function DraftTransactionsScreen() {
               {/* Editable Fields */}
               <View className="mb-6">
                 <View className="flex-row items-center justify-between mb-2"><Text className="text-slate-500 dark:text-slate-400 text-sm font-bold">{t('recipient')}</Text>{editedType !== 'TRANSFER' && <TouchableOpacity onPress={() => setShowPersonPicker(true)}><Text className="text-indigo-600 dark:text-indigo-400 text-xs font-bold">{selectedPersonId ? 'Change person' : 'Link or save person'}</Text></TouchableOpacity>}</View>
-                {selectedPerson && <View className="flex-row items-center rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 px-3 py-2 mb-2"><FontAwesome name="user" size={13} color="#0d9488" /><View className="flex-1 ml-2"><Text className="text-teal-800 dark:text-teal-200 font-bold">{selectedPerson.displayName}</Text><Text className="text-teal-600 dark:text-teal-400 text-[10px]">{(selectedPerson.groups || []).join(' • ') || 'Saved person'}</Text></View><TouchableOpacity accessibilityLabel="Remove person link" onPress={() => { setSelectedPerson(undefined); setSelectedPersonId(undefined); }}><FontAwesome name="close" size={14} color="#0d9488" /></TouchableOpacity></View>}
+                {selectedPerson && <View className="flex-row items-center rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 px-3 py-2 mb-2"><FontAwesome name="user" size={13} color="#0d9488" /><View className="flex-1 ml-2"><View className="flex-row items-center"><Text className="text-teal-800 dark:text-teal-200 font-bold">{selectedPerson.displayName}</Text><HisabUserBadge linked={!!selectedPerson.linkedUid} /></View><Text className="text-teal-600 dark:text-teal-400 text-[10px]">{(selectedPerson.groups || []).join(' • ') || 'Saved person'}</Text></View><TouchableOpacity accessibilityLabel="Remove person link" onPress={() => { setSelectedPerson(undefined); setSelectedPersonId(undefined); }}><FontAwesome name="close" size={14} color="#0d9488" /></TouchableOpacity></View>}
                 <TextInput
                   value={editedRecipient}
                   onChangeText={value => { setEditedRecipient(value); if (selectedPersonId && normalizeRecipient(value) !== normalizeRecipient(selectedPerson?.displayName || selectedDraft?.person_name_snapshot)) { setSelectedPerson(undefined); setSelectedPersonId(undefined); } }}

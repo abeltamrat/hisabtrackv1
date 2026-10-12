@@ -5,6 +5,7 @@ import { Share, Text, TouchableOpacity, View } from 'react-native';
 
 import FormField from '@/components/FormField';
 import FormSheet from '@/components/FormSheet';
+import HisabUserBadge from '@/components/HisabUserBadge';
 import { useFormErrors } from '@/hooks/useFormErrors';
 import { formatInviteCode, fundErrorMessage, SharedFundService, type FundInviteResult } from '@/services/SharedFundService';
 import type { FundType } from '@/types/database';
@@ -25,9 +26,11 @@ export function InviteShareCard({ code, ownerName, fundName, found, displayName,
   return (
     <View className="rounded-2xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 p-4">
       {found ? (
-        <Text className="text-teal-800 dark:text-teal-200 text-xs font-semibold mb-3">
-          ✓ {displayName || 'They'} ({emailHint}) will see the invite in their Funds screen. You can also send the code.
-        </Text>
+        <View className="flex-row items-center flex-wrap mb-3">
+          <Text className="text-teal-800 dark:text-teal-200 text-xs font-semibold">✓ {displayName || 'They'}</Text>
+          <HisabUserBadge size={15} />
+          <Text className="text-teal-800 dark:text-teal-200 text-xs font-semibold"> ({emailHint}) will see the invite in their Funds screen. You can also send the code.</Text>
+        </View>
       ) : emailHint ? (
         <Text className="text-amber-700 dark:text-amber-300 text-xs font-semibold mb-3">
           No verified HisabTrack account uses {emailHint} yet. Send them the code instead.

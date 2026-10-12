@@ -1,4 +1,5 @@
 import CoinLoader from '@/components/CoinLoader';
+import HisabUserBadge from '@/components/HisabUserBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { LinkedLoanService } from '@/services/LinkedLoanService';
@@ -117,9 +118,15 @@ export default function LinkedLoanPendingBanner({ onAccepted }: Props) {
                 <Text style={{ color: isDark ? '#fff' : '#15803d', fontWeight: '700', fontSize: 14 }}>
                   Loan Link Request
                 </Text>
-                <Text style={{ color: isDark ? '#86efac' : '#166534', fontSize: 12, marginTop: 1 }}>
-                  {otherName} says they {role} ETB {req.sharedLoan.amount.toLocaleString()}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 1 }}>
+                  <Text style={{ color: isDark ? '#86efac' : '#166534', fontSize: 12 }}>
+                    {otherName}
+                  </Text>
+                  <HisabUserBadge size={15} />
+                  <Text style={{ color: isDark ? '#86efac' : '#166534', fontSize: 12 }}>
+                    {' '}says they {role} ETB {req.sharedLoan.amount.toLocaleString()}
+                  </Text>
+                </View>
               </View>
             </View>
 

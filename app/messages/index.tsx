@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
+import HisabUserBadge from '@/components/HisabUserBadge';
 
 const relativeTime = (value?: number) => {
   if (!value) return '';
@@ -72,7 +73,7 @@ export default function MessagesScreen() {
             const unread = Math.max(0, Number(item.unreadBy?.[user?.uid || '']) || 0);
             return <TouchableOpacity key={item.id} onPress={() => router.push(`/messages/${item.id}` as any)} className="flex-row items-center p-4 mb-3 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
               <View className="w-12 h-12 rounded-full bg-teal-100 dark:bg-teal-950 items-center justify-center"><Text className="font-extrabold text-teal-700 dark:text-teal-300 text-lg">{name.slice(0, 1).toUpperCase()}</Text></View>
-              <View className="flex-1 ml-3"><View className="flex-row items-center"><Text numberOfLines={1} className="flex-1 font-extrabold text-slate-900 dark:text-white">{name}</Text><Text className="text-[10px] text-slate-600 dark:text-slate-300 ml-2">{relativeTime(item.updatedAt)}</Text></View><Text numberOfLines={1} className={`text-xs mt-1 ${unread ? 'font-bold text-slate-700 dark:text-slate-200' : 'text-slate-600 dark:text-slate-300'}`}>{item.lastSenderUid === user?.uid ? 'You: ' : ''}{item.lastMessageText || 'Conversation started'}</Text></View>
+              <View className="flex-1 ml-3"><View className="flex-row items-center"><Text numberOfLines={1} className="font-extrabold text-slate-900 dark:text-white shrink">{name}</Text><HisabUserBadge /><Text className="text-[10px] text-slate-600 dark:text-slate-300 ml-auto">{relativeTime(item.updatedAt)}</Text></View><Text numberOfLines={1} className={`text-xs mt-1 ${unread ? 'font-bold text-slate-700 dark:text-slate-200' : 'text-slate-600 dark:text-slate-300'}`}>{item.lastSenderUid === user?.uid ? 'You: ' : ''}{item.lastMessageText || 'Conversation started'}</Text></View>
               {unread > 0 && <View className="ml-3 min-w-[22px] h-[22px] px-1.5 rounded-full bg-indigo-600 items-center justify-center"><Text className="text-[10px] font-extrabold text-white">{unread > 99 ? '99+' : unread}</Text></View>}
             </TouchableOpacity>;
           })}
