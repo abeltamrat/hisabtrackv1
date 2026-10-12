@@ -24,6 +24,13 @@ export interface SMSMessage {
   date: number; // Timestamp
 }
 
+interface SmsSyncOptions {
+  historicalDays?: number;
+  ignorePrevious?: boolean;
+  allAccounts?: Account[];
+  maxMessagesPerSender?: number;
+}
+
 export class SMSSyncService {
   private static SYNC_STATUS_LISTENER: ((status: { accountId: string, status: string, progress: number }) => void) | null = null;
 
@@ -235,7 +242,7 @@ export class SMSSyncService {
   static syncAccountSMS(
     account: Account,
     existingTransactions: Transaction[],
-    options: { historicalDays?: number, ignorePrevious?: boolean, allAccounts?: Account[] } = {}
+    options: SmsSyncOptions = {}
   ): Promise<SMSReconciliationResult> {
     if (this.suspended) return Promise.reject(new Error('SMS scanning is unavailable during session changes'));
     return this.syncQueue(() => { if (this.suspended) throw new Error('SMS scanning paused'); return this.doSyncAccountSMS(account, existingTransactions, options); });
@@ -244,7 +251,7 @@ export class SMSSyncService {
   private static async doSyncAccountSMS(
     account: Account,
     existingTransactions: Transaction[],
-    options: { historicalDays?: number, ignorePrevious?: boolean, allAccounts?: Account[] } = {}
+    options: SmsSyncOptions = {}
   ): Promise<SMSReconciliationResult> {
     const scanStartedAt = Date.now();
     const result: SMSReconciliationResult = {
@@ -283,7 +290,7 @@ export class SMSSyncService {
       }
 
       for (const sender of senders) {
-        const messages = await this.readSMSFromSender(sender, sinceTimestamp);
+        const messages = await this.readSMSFromSender(sender, sinceTimestamp, 0, Date.now(), options.maxMessagesPerSender);
         // Safety: Limit messages to avoid memory/crash issues if history is huge.
         // The SMS provider returns newest-first, so keep the head of the list —
         // slice(-200) would keep the oldest 200 and drop the recent ones.
@@ -659,12 +666,13 @@ export class SMSSyncService {
    * Full sync of every SMS-enabled account. Concurrent callers (foreground
    * timer, resume handler, background task) coalesce onto the in-flight run.
    */
-  static syncAllAccountsBackground(options: { historicalDays?: number, ignorePrevious?: boolean } = {}): Promise<SMSReconciliationResult> {
+  static syncAllAccountsBackground(options: Omit<SmsSyncOptions, 'allAccounts'> = {}): Promise<SMSReconciliationResult> {
     // Coalesce only equivalent requests. A manual historical resync must not be
     // swallowed by a smaller foreground sync that happens to already be running.
     const requestKey = JSON.stringify({
       historicalDays: options.historicalDays ?? null,
       ignorePrevious: options.ignorePrevious ?? false,
+      maxMessagesPerSender: options.maxMessagesPerSender ?? null,
     });
     const inFlight = this.backgroundSyncInFlight.get(requestKey);
     if (inFlight) return inFlight;
@@ -676,7 +684,7 @@ export class SMSSyncService {
     return run;
   }
 
-  private static async doSyncAllAccountsBackground(options: { historicalDays?: number, ignorePrevious?: boolean } = {}): Promise<SMSReconciliationResult> {
+  private static async doSyncAllAccountsBackground(options: Omit<SmsSyncOptions, 'allAccounts'> = {}): Promise<SMSReconciliationResult> {
     try {
       const { getDatabase } = require('./database');
       const db = await getDatabase();

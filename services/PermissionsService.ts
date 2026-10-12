@@ -57,11 +57,15 @@ export async function checkPermission(id: PermissionId): Promise<PermissionStatu
 
     // Native platforms (best-effort using PermissionsAndroid on Android)
     if (Platform.OS === 'android') {
+      if (id === 'READ_SMS') {
+        const [canRead, canReceive] = await Promise.all([
+          PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS),
+          PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS),
+        ]);
+        return canRead && canReceive ? 'granted' : 'denied';
+      }
       let perm: string | null = null;
       switch (id) {
-        case 'READ_SMS':
-          perm = PermissionsAndroid.PERMISSIONS.READ_SMS;
-          break;
         case 'SEND_SMS':
           perm = PermissionsAndroid.PERMISSIONS.SEND_SMS;
           break;
@@ -135,11 +139,18 @@ export async function requestPermission(id: PermissionId): Promise<PermissionSta
     }
 
     if (Platform.OS === 'android') {
+      if (id === 'READ_SMS') {
+        const results = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.READ_SMS,
+          PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+        ]);
+        return results[PermissionsAndroid.PERMISSIONS.READ_SMS] === PermissionsAndroid.RESULTS.GRANTED
+          && results[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] === PermissionsAndroid.RESULTS.GRANTED
+          ? 'granted'
+          : 'denied';
+      }
       let perm: string | null = null;
       switch (id) {
-        case 'READ_SMS':
-          perm = PermissionsAndroid.PERMISSIONS.READ_SMS;
-          break;
         case 'SEND_SMS':
           perm = PermissionsAndroid.PERMISSIONS.SEND_SMS;
           break;

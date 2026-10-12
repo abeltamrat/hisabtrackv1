@@ -1070,6 +1070,7 @@ test('Android receives configured bank SMS while the app process is stopped', ()
   const plugin = fs.readFileSync(path.join(root, 'plugins/withSmsReceiver.js'), 'utf8');
   const syncService = fs.readFileSync(path.join(root, 'services/SMSSyncService.ts'), 'utf8');
   const autoSync = fs.readFileSync(path.join(root, 'components/SMSAutoSync.tsx'), 'utf8');
+  const permissions = fs.readFileSync(path.join(root, 'services/PermissionsService.ts'), 'utf8');
 
   assert.ok(appConfig.expo.plugins.includes('./plugins/withSmsReceiver'));
   assert.match(plugin, /android\.provider\.Telephony\.SMS_RECEIVED/);
@@ -1079,7 +1080,16 @@ test('Android receives configured bank SMS while the app process is stopped', ()
     'the native handoff must not duplicate financial SMS bodies into preferences');
   assert.match(syncService, /PERMISSIONS\.READ_SMS/);
   assert.match(syncService, /PERMISSIONS\.RECEIVE_SMS/);
+  assert.match(permissions, /requestMultiple\(\[[\s\S]*PERMISSIONS\.READ_SMS[\s\S]*PERMISSIONS\.RECEIVE_SMS/,
+    'Settings must request both inbox access and live incoming-SMS access');
+  assert.match(permissions, /const \[canRead, canReceive\] = await Promise\.all/,
+    'Settings must not report SMS access as granted when live receiving is denied');
   assert.match(autoSync, /NativeSmsReceiver\.subscribe/);
+  assert.match(autoSync, /historicalDays: 2/);
+  assert.match(autoSync, /maxMessagesPerSender: 50/,
+    'a live receiver signal must use a bounded scan on older devices');
+  assert.match(autoSync, /SMSSyncService\.requestPermissions\(\)/,
+    'an SMS-enabled account must ask for missing live receiver permission');
   assert.match(autoSync, /configureSenders\(accountsLoaded \? smsSenders : \[\]\)/,
     'logout must clear the native sender allowlist');
 });

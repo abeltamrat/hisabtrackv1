@@ -429,7 +429,7 @@ export default function SettingsScreen() {
   type PermItem = { id: import('@/services/PermissionsService').PermissionId; label: string; desc?: string };
 
   const permissionItems: PermItem[] = [
-    { id: 'READ_SMS', label: 'Read SMS', desc: 'Allow reading incoming SMS (Android only)' },
+    { id: 'READ_SMS', label: 'SMS access', desc: 'Read existing bank SMS and listen for new messages (Android only)' },
     { id: 'SEND_SMS', label: 'Send SMS', desc: 'Allow sending SMS from the app (Android only)' },
     { id: 'NOTIFICATIONS', label: 'Notifications', desc: 'Allow push & local notifications' },
     { id: 'FILES', label: 'Files (Read/Write)', desc: 'Access device storage to read/write files' },

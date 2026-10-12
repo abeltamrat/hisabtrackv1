@@ -1,12 +1,13 @@
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import React, { useEffect, useRef } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { SMSSyncService } from '@/services/SMSSyncService';
 import { NotificationService } from '@/services/NotificationService';
 import { NativeSmsReceiver } from '@/services/NativeSmsReceiver';
+import { Alert } from '@/utils/alert';
 
 // Background (suspended-app) SMS sync is owned by BackgroundService's
 // BACKGROUND_SYNC_TASK, which respects the Settings reminder toggles.
@@ -35,8 +36,51 @@ export const SMSAutoSync: React.FC = () => {
 
   const hasSmsRef = useRef(hasSmsAccounts);
   const currencyRef = useRef(ledgerCurrency);
+  const permissionPromptedRef = useRef(false);
+  const smsPermissionRef = useRef<boolean | null>(null);
   useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
   useEffect(() => { currencyRef.current = ledgerCurrency; }, [ledgerCurrency]);
+
+  const performSync = React.useCallback(async () => {
+    if (!hasSmsRef.current) return;
+    try {
+      // A receiver signal always refers to a newly arrived message. Keep this
+      // catch-up scan small so phones with a large inbox are not overwhelmed.
+      const result = await SMSSyncService.syncAllAccountsBackground({
+        historicalDays: 2,
+        maxMessagesPerSender: 50,
+      });
+      const pending = result.drafts.filter(d => d.status === 'PENDING');
+      for (const draft of pending) {
+        await NotificationService.showSMSDraftNotification(draft, currencyRef.current);
+      }
+    } catch (err) {
+      console.error('[SMSAutoSync] Auto-sync failed:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !accountsLoaded || !hasSmsAccounts || permissionPromptedRef.current) return;
+    permissionPromptedRef.current = true;
+    void SMSSyncService.hasReadSmsPermission().then(async granted => {
+      smsPermissionRef.current = granted;
+      if (granted) return;
+      const enabled = await SMSSyncService.requestPermissions();
+      smsPermissionRef.current = enabled;
+      if (enabled) {
+        await performSync();
+        return;
+      }
+      Alert.alert(
+        'SMS access needed',
+        'HisabTrack needs both read and receive SMS access to detect new bank messages. Enable SMS permission in Android settings.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open settings', onPress: () => { void Linking.openSettings().catch(() => undefined); } },
+        ],
+      );
+    }).catch(() => undefined);
+  }, [accountsLoaded, hasSmsAccounts, performSync]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -61,19 +105,6 @@ export const SMSAutoSync: React.FC = () => {
         // Fails gracefully in Expo Go / web
       });
 
-    const performSync = async () => {
-      if (!hasSmsRef.current) return;
-      try {
-        const result = await SMSSyncService.syncAllAccountsBackground();
-        const pending = result.drafts.filter(d => d.status === 'PENDING');
-        for (const draft of pending) {
-          await NotificationService.showSMSDraftNotification(draft, currencyRef.current);
-        }
-      } catch (err) {
-        console.error('[SMSAutoSync] Auto-sync failed:', err);
-      }
-    };
-
     // Keep a minimal sender allowlist in the native receiver. Android can then
     // capture the arrival signal even when the React Native process is stopped.
     // Message bodies remain in the system SMS provider and are parsed by the
@@ -87,14 +118,20 @@ export const SMSAutoSync: React.FC = () => {
     });
 
     const subscription = AppState.addEventListener('change', (nextState: string) => {
-      if (nextState === 'active') void consumeSignals();
+      if (nextState !== 'active') return;
+      void SMSSyncService.hasReadSmsPermission().then(granted => {
+        const newlyGranted = granted && smsPermissionRef.current === false;
+        smsPermissionRef.current = granted;
+        if (newlyGranted) return performSync();
+        return consumeSignals();
+      }).catch(() => undefined);
     });
 
     return () => {
       subscription.remove();
       unsubscribeFromSms();
     };
-  }, [accountsLoaded, smsSendersKey]);
+  }, [accountsLoaded, smsSendersKey, performSync]);
 
   return null;
 };
