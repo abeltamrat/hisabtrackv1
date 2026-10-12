@@ -63,25 +63,33 @@ class HisabSmsReceiver : BroadcastReceiver() {
 
     if (matched) {
       HisabSmsModule.emitSmsReceived()
-      showNotification(context)
+      HisabSmsNotifications.showCaptured(context)
     }
   }
+}
 
-  private fun showNotification(context: Context) {
+internal object HisabSmsNotifications {
+  private const val CHANNEL_ID = "sms_transactions"
+  private const val NOTIFICATION_ID = 7401
+
+  fun ensureChannel(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.createNotificationChannel(NotificationChannel(
+      CHANNEL_ID,
+      "Bank transactions",
+      NotificationManager.IMPORTANCE_HIGH,
+    ).apply {
+      description = "New bank SMS transactions awaiting review"
+    })
+  }
+
+  fun showCaptured(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
       context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
     ) return
 
-    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      manager.createNotificationChannel(NotificationChannel(
-        CHANNEL_ID,
-        "Bank transactions",
-        NotificationManager.IMPORTANCE_DEFAULT,
-      ).apply {
-        description = "New bank SMS transactions awaiting review"
-      })
-    }
+    ensureChannel(context)
 
     val openApp = Intent(context, MainActivity::class.java).apply {
       flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -95,18 +103,13 @@ class HisabSmsReceiver : BroadcastReceiver() {
     )
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(R.mipmap.ic_launcher)
-      .setContentTitle("New bank transaction")
-      .setContentText("Open HisabTrack to review the transaction captured from SMS.")
+      .setContentTitle("New bank SMS detected")
+      .setContentText("Open HisabTrack to review the new transaction draft.")
       .setContentIntent(pendingIntent)
       .setAutoCancel(true)
       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
       .build()
     NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-  }
-
-  companion object {
-    private const val CHANNEL_ID = "sms_transactions"
-    private const val NOTIFICATION_ID = 7401
   }
 }
 
@@ -154,6 +157,30 @@ internal object SmsReceiverStore {
     val pending = preferences.getString(PENDING, "[]") ?: "[]"
     preferences.edit().remove(PENDING).commit()
     return pending
+  }
+}
+`;
+
+const bootReceiverSource = `package ${PACKAGE_NAME}.sms
+
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+
+class HisabBootReceiver : BroadcastReceiver() {
+  override fun onReceive(context: Context, intent: Intent) {
+    if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
+      intent.action != Intent.ACTION_MY_PACKAGE_REPLACED
+    ) return
+
+    context.packageManager.setComponentEnabledSetting(
+      ComponentName(context, HisabSmsReceiver::class.java),
+      PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+      PackageManager.DONT_KILL_APP,
+    )
+    HisabSmsNotifications.ensureChannel(context)
   }
 }
 `;
@@ -251,6 +278,22 @@ function withSmsManifest(config) {
         }],
       });
     }
+    const bootName = `.${'sms.HisabBootReceiver'}`;
+    if (!application.receiver.some((receiver) => receiver.$?.['android:name'] === bootName)) {
+      application.receiver.push({
+        $: {
+          'android:name': bootName,
+          'android:enabled': 'true',
+          'android:exported': 'true',
+        },
+        'intent-filter': [{
+          action: [
+            { $: { 'android:name': 'android.intent.action.BOOT_COMPLETED' } },
+            { $: { 'android:name': 'android.intent.action.MY_PACKAGE_REPLACED' } },
+          ],
+        }],
+      });
+    }
     return mod;
   });
 }
@@ -261,6 +304,7 @@ function withSmsSources(config) {
     const sourceDir = path.join(androidRoot, SOURCE_DIR);
     fs.mkdirSync(sourceDir, { recursive: true });
     fs.writeFileSync(path.join(sourceDir, 'HisabSmsReceiver.kt'), receiverSource);
+    fs.writeFileSync(path.join(sourceDir, 'HisabBootReceiver.kt'), bootReceiverSource);
     fs.writeFileSync(path.join(sourceDir, 'HisabSmsModule.kt'), moduleSource);
     fs.writeFileSync(path.join(sourceDir, 'HisabSmsPackage.kt'), packageSource);
 

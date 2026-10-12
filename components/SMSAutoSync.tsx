@@ -64,10 +64,14 @@ export const SMSAutoSync: React.FC = () => {
     permissionPromptedRef.current = true;
     void SMSSyncService.hasReadSmsPermission().then(async granted => {
       smsPermissionRef.current = granted;
-      if (granted) return;
+      if (granted) {
+        await NotificationService.requestPermissions();
+        return;
+      }
       const enabled = await SMSSyncService.requestPermissions();
       smsPermissionRef.current = enabled;
       if (enabled) {
+        await NotificationService.requestPermissions();
         await performSync();
         return;
       }
@@ -122,7 +126,9 @@ export const SMSAutoSync: React.FC = () => {
       void SMSSyncService.hasReadSmsPermission().then(granted => {
         const newlyGranted = granted && smsPermissionRef.current === false;
         smsPermissionRef.current = granted;
-        if (newlyGranted) return performSync();
+        if (newlyGranted) {
+          return NotificationService.requestPermissions().then(() => performSync());
+        }
         return consumeSignals();
       }).catch(() => undefined);
     });

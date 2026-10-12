@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hisab Track",
     "slug": "hisabtrackv1",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "runtimeVersion": {
       "policy": "appVersion"
     },

@@ -1075,6 +1075,11 @@ test('Android receives configured bank SMS while the app process is stopped', ()
   assert.ok(appConfig.expo.plugins.includes('./plugins/withSmsReceiver'));
   assert.match(plugin, /android\.provider\.Telephony\.SMS_RECEIVED/);
   assert.match(plugin, /android\.permission\.BROADCAST_SMS/);
+  assert.match(plugin, /HisabBootReceiver/);
+  assert.match(plugin, /android\.intent\.action\.BOOT_COMPLETED/,
+    'the native listener must be initialized again after the phone restarts');
+  assert.match(plugin, /android\.intent\.action\.MY_PACKAGE_REPLACED/,
+    'the native listener must be initialized again after an APK update');
   assert.match(plugin, /MAX_PENDING = 100/);
   assert.doesNotMatch(plugin, /put\("body"/,
     'the native handoff must not duplicate financial SMS bodies into preferences');
@@ -1090,6 +1095,8 @@ test('Android receives configured bank SMS while the app process is stopped', ()
     'a live receiver signal must use a bounded scan on older devices');
   assert.match(autoSync, /SMSSyncService\.requestPermissions\(\)/,
     'an SMS-enabled account must ask for missing live receiver permission');
+  assert.match(autoSync, /NotificationService\.requestPermissions\(\)/,
+    'Android 13+ must be allowed to display the incoming SMS notification');
   assert.match(autoSync, /configureSenders\(accountsLoaded \? smsSenders : \[\]\)/,
     'logout must clear the native sender allowlist');
 });
