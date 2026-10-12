@@ -25,6 +25,7 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
   const [status, setStatus] = useState<'idle' | 'granted' | 'denied' | 'unavailable'>('idle');
   const [contacts, setContacts] = useState<DeviceContact[]>([]);
   const [query, setQuery] = useState('');
+  const [hisabTrackOnly, setHisabTrackOnly] = useState(false);
   const [discoveryFailed, setDiscoveryFailed] = useState(false);
   const [discovering, setDiscovering] = useState(false);
 
@@ -47,7 +48,7 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
     if (!visible) return undefined;
     let active = true;
     const load = async () => {
-      setLoading(true); setStatus('idle'); setQuery(''); setDiscoveryFailed(false); setDiscovering(false);
+      setLoading(true); setStatus('idle'); setQuery(''); setHisabTrackOnly(false); setDiscoveryFailed(false); setDiscovering(false);
       try {
         const result = await DeviceContactsService.requestAndLoadLocal();
         if (!active) return;
@@ -69,8 +70,11 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
   }, [visible]);
   const shown = useMemo(() => {
     const needle = normalizeRecipient(query);
-    return contacts.filter(contact => !needle || normalizeRecipient(`${contact.name} ${contact.phones.join(' ')} ${contact.emails.join(' ')}`).includes(needle));
-  }, [contacts, query]);
+    return contacts.filter(contact => {
+      if (hisabTrackOnly && !contact.linkedAccount) return false;
+      return !needle || normalizeRecipient(`${contact.name} ${contact.phones.join(' ')} ${contact.emails.join(' ')}`).includes(needle);
+    });
+  }, [contacts, hisabTrackOnly, query]);
 
   return <FormSheet visible={visible} onClose={onClose} accessibilityLabel="Choose from phone contacts" maxHeight="90%" scrollable={false}>
     <View className="flex-row items-center justify-between mb-4">
@@ -85,6 +89,20 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
     ) : (
       <>
         <View className="flex-row items-center bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 mb-2"><FontAwesome name="search" size={16} color="#94a3b8" /><TextInput value={query} onChangeText={setQuery} placeholder="Search phone contacts" placeholderTextColor="#94a3b8" className="flex-1 px-3 py-3 text-slate-900 dark:text-white" /></View>
+        <TouchableOpacity
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: hisabTrackOnly }}
+          accessibilityLabel="Show HisabTrack users only"
+          onPress={() => setHisabTrackOnly(current => !current)}
+          className={`flex-row items-center px-4 py-3 mb-3 rounded-2xl border ${hisabTrackOnly ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}
+        >
+          <FontAwesome name={hisabTrackOnly ? 'check-square' : 'square-o'} size={20} color={hisabTrackOnly ? '#10b981' : '#94a3b8'} />
+          <View className="flex-1 ml-3">
+            <Text className={`text-sm font-bold ${hisabTrackOnly ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>HisabTrack users only</Text>
+            <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Show contacts with a discovered HisabTrack account</Text>
+          </View>
+          {discovering && <ActivityIndicator size="small" color="#10b981" />}
+        </TouchableOpacity>
         <View className="flex-row items-center mb-3 px-1"><HisabContactBadge /><Text className="flex-1 text-xs text-slate-500 dark:text-slate-400">The coin and link badge identifies a verified HisabTrack user. A plain coin means the number is saved in someone's HisabTrack profile but not verified. Phone and email values are checked securely and are not stored by discovery.</Text></View>
         {discovering && <View className="flex-row items-center mb-3 px-1"><ActivityIndicator size="small" color="#10b981" /><Text className="text-xs text-slate-500 dark:text-slate-400 ml-2">Checking HisabTrack contacts in the background…</Text></View>}
         {discoveryFailed && <View className="flex-row items-center mb-3 px-1"><Text className="flex-1 text-xs text-amber-600 dark:text-amber-400">HisabTrack badges could not be checked.</Text><TouchableOpacity disabled={discovering} onPress={() => void refreshBadges(contacts, true)} className="px-3 py-2 rounded-xl bg-amber-100 dark:bg-amber-900/30"><Text className="text-xs font-bold text-amber-700 dark:text-amber-300">Retry</Text></TouchableOpacity></View>}
@@ -104,7 +122,7 @@ export default function PhoneContactPicker({ visible, onClose, onSelect }: Props
             <View className="flex-1"><View className="flex-row items-center"><Text numberOfLines={1} className="flex-1 font-bold text-slate-900 dark:text-white">{contact.name}</Text>{contact.linkedAccount && <Text className={`text-[10px] font-extrabold ml-2 ${contact.linkedAccount.verified ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>{contact.linkedAccount.verified ? 'HISABTRACK' : 'ON HISABTRACK'}</Text>}</View><Text numberOfLines={1} className="text-xs text-slate-500 dark:text-slate-400 mt-1">{contact.phone || contact.email}</Text></View>
             <FontAwesome name="chevron-right" size={12} color="#94a3b8" />
           </TouchableOpacity>}
-          ListEmptyComponent={<Text className="text-center text-slate-500 dark:text-slate-400 py-10">No matching contacts.</Text>}
+          ListEmptyComponent={<Text className="text-center text-slate-500 dark:text-slate-400 py-10">{hisabTrackOnly ? (discovering ? 'Checking which contacts use HisabTrack…' : 'No HisabTrack users match your search.') : 'No matching contacts.'}</Text>}
         />
       </>
     )}

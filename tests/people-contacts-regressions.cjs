@@ -48,6 +48,14 @@ test('phone contacts render before badge discovery and use a virtualized cached 
   assert.match(picker, /Check again/);
 });
 
+test('phone contacts can be filtered to discovered HisabTrack users', () => {
+  const picker = read('components/PhoneContactPicker.tsx');
+  assert.match(picker, /HisabTrack users only/);
+  assert.match(picker, /accessibilityRole="checkbox"/);
+  assert.match(picker, /hisabTrackOnly && !contact\.linkedAccount/);
+  assert.match(picker, /setHisabTrackOnly\(false\)/);
+});
+
 test('a number saved in Settings gives a weaker, non-linking HisabTrack badge', () => {
   const fns = read('functions/index.js');
   assert.match(fns, /collectionGroup\('meta'\)\.where\('phoneNumber', 'in', batch\)/);
