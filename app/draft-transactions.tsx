@@ -173,6 +173,28 @@ export default function DraftTransactionsScreen() {
     recipient: editedRecipient,
     timestamp: selectedDraft?.date,
   });
+
+  const changeMainCategory = (name: string) => {
+    setEditedCategory(name);
+    if (splitEnabled) setSplits(current => current.map(split => ({ ...split, category: name })));
+  };
+
+  const toggleMainProjectCost = (next: boolean) => {
+    setProjectCost(next);
+    if (!next) {
+      setProject(undefined);
+      setLines(current => withoutProjects(current));
+      if (splitEnabled) setSplits(current => current.map(split => ({ ...split, project: undefined })));
+    }
+  };
+
+  const changeMainProject = (value: ProjectLink | undefined) => {
+    setProject(value);
+    setProjectCost(true);
+    if (!splitEnabled) return;
+    setSplits(current => current.map(split => ({ ...split, project: value })));
+    setLines(current => current.map(line => line.split_id ? { ...line, project: value } : line));
+  };
   const recurringSuggestion = useMemo(() => selectedDraft ? detectRecurringPattern({
     type: editedType,
     amount: selectedDraft.amount,
@@ -572,7 +594,7 @@ export default function DraftTransactionsScreen() {
 
       // With a split, tags live on each part (typed or learned tags fill untagged parts).
       const splitActive = editedType !== 'TRANSFER' && splitEnabled;
-      const finalSplits = splitActive ? pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), splits)) : undefined;
+      const finalSplits = splitActive ? pushTagsIntoSplits(parseTagInput(tagsInput), splits) : undefined;
       const parsedTags = splitActive ? undefined : parseTagInput(tagsInput);
       if (editedType !== 'TRANSFER' && splitEnabled && (splits.length < 2 || splits.some(item => !item.category.trim() || money(item.amount) <= 0) || sumMoney(splits.map(item => item.amount)) !== money(selectedDraft.amount))) {
         Alert.alert('Check split amounts', `Use at least two positive parts that add up to ${formatCurrency(selectedDraft.amount)}.`);
@@ -1769,14 +1791,13 @@ export default function DraftTransactionsScreen() {
                           setLines(current => detachLines(current)); setItemize(lines.length > 0);
                           return;
                         }
-                        // Tags and project move onto the parts; the whole-transaction ones hide while split.
+                        // Tags and project move onto the parts; the main selectors become batch controls.
                         const parts = splits.length ? splits : [
                           { id: `split-${Date.now()}-0`, amount: selectedDraft?.amount || 0, category: editedCategory || confirmCategories[0]?.name || 'Uncategorized' },
                           { id: `split-${Date.now()}-1`, amount: 0, category: confirmCategories[1]?.name || confirmCategories[0]?.name || 'Uncategorized' },
                         ];
                         setSplits(pushProjectIntoSplits(projectCost ? project : undefined, pushTagsIntoSplits(parseTagInput(tagsInput), parts)));
                         setTagsInput('');
-                        setProject(undefined); setProjectCost(false);
                         // Items already entered move into a part; each part is itemized on its own from here.
                         setLines(current => itemize ? attachLinesToSplits(current, parts) : []); setItemize(false);
                       }}
@@ -1793,8 +1814,7 @@ export default function DraftTransactionsScreen() {
                     </TouchableOpacity>
                   )}
 
-                  {/* Hidden while split: each part has its own project and itemize checkboxes */}
-                  {editedType !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle checked={projectCost} onToggle={next => { setProjectCost(next); if (!next) { setProject(undefined); setLines(current => withoutProjects(current)); } }} value={project} onChange={setProject} income={editedType === 'INCOME'} variant="tile" />}
+                  {editedType !== 'TRANSFER' && <ProjectCostToggle checked={projectCost || (splitEnabled && splits.some(split => !!split.project))} onToggle={toggleMainProjectCost} value={splitEnabled ? commonSplitProject(splits) : project} onChange={splitEnabled ? changeMainProject : setProject} income={editedType === 'INCOME'} variant="tile" batch={splitEnabled} />}
 
                   {editedType !== 'TRANSFER' && !splitEnabled && (
                     <TouchableOpacity
@@ -1910,9 +1930,10 @@ export default function DraftTransactionsScreen() {
                 <CategoryTreeSelect
                   categories={confirmCategories}
                   value={editedCategory}
-                  onChange={setEditedCategory}
+                  onChange={changeMainCategory}
                   accessibilityLabel={editedType === 'INCOME' ? 'Income category' : 'Expense category'}
                 />
+                {splitEnabled && <Text className="text-[10px] text-indigo-600 dark:text-indigo-300 mt-2">Choosing a main category applies it to every split. You can adjust individual parts below.</Text>}
               </View>}
 
               {editedType !== 'TRANSFER' && splitEnabled && (

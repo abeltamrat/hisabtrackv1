@@ -173,7 +173,7 @@ test('project is an opt-in "project cost" toggle under split, not a field on eve
   const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
   const picker = read('components/ProjectPicker.tsx');
   assert.match(picker, /export function ProjectCostToggle/);
-  assert.match(read('app/modal.tsx'), /if \(!next\) \{ setProject\(undefined\); setLines\(current => withoutProjects\(current\)\); \}/, 'unticking clears the project');
+  assert.match(read('app/modal.tsx'), /if \(!next\) \{[\s\S]*setProject\(undefined\);[\s\S]*setLines\(current => withoutProjects\(current\)\);[\s\S]*project: undefined/, 'unticking clears the transaction, item, and split projects');
   const modal = read('app/modal.tsx');
   assert.ok(!/<ProjectField /.test(modal), 'no always-on project field');
   assert.ok(modal.indexOf('<ProjectCostToggle') > modal.indexOf('Split across categories'), 'toggle sits under split');
@@ -184,7 +184,7 @@ test('project is an opt-in "project cost" toggle under split, not a field on eve
   assert.match(read('components/funds/FundEntrySheet.tsx'), /<ProjectCostToggle checked=\{projectCost\}/);
 });
 
-test('with a split, the project lives on each part and the transaction toggle hides', () => {
+test('with a split, the project lives on each part and the main toggle becomes a batch control', () => {
   const { pushProjectIntoSplits, commonSplitProject } = load('./utils/projectFinance.ts');
   const villa = { source: 'mela', id: 7, title: 'Bole villa' };
   const office = { source: 'mela', id: 9, title: 'Office' };
@@ -207,9 +207,11 @@ test('with a split, the project lives on each part and the transaction toggle hi
   assert.equal(projectTotals(projectEntries([itemized]).get(projectKey(villa))).paid, 100);
 
   const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-  assert.match(read('app/modal.tsx'), /type !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle/);
+  assert.match(read('app/modal.tsx'), /<ProjectCostToggle/);
+  assert.match(read('app/modal.tsx'), /batch=\{splitEnabled\}/);
   assert.match(read('app/modal.tsx'), /project: type !== 'TRANSFER' && !splitEnabled && projectCost \? project : undefined/);
-  assert.match(read('app/draft-transactions.tsx'), /editedType !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle/);
+  assert.match(read('app/draft-transactions.tsx'), /<ProjectCostToggle/);
+  assert.match(read('app/draft-transactions.tsx'), /batch=\{splitEnabled\}/);
   assert.match(read('components/funds/FundEntrySheet.tsx'), /\{!splitEnabled && <ProjectCostToggle/);
   assert.match(read('functions/index.js'), /tags: fundTags\(split\.tags\), project: fundProject\(split\.project\)/, 'server keeps each part\'s project');
   assert.match(read('services/SharedFundService.ts'), /parseProject\(item\.project\)/);

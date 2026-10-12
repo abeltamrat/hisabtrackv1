@@ -1,5 +1,5 @@
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import CategoryTreeSelect, { type TreeCategory } from '@/components/CategoryTreeSelect';
@@ -8,6 +8,7 @@ import TagInputField from '@/components/TagInputField';
 import { ProjectField, useMelaProjects } from '@/components/ProjectPicker';
 import type { PurchaseLine, TransactionSplit } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
+import { commonSplitProject } from '@/utils/projectFinance';
 
 type Category = TreeCategory;
 
@@ -30,6 +31,8 @@ export default function TransactionSplitEditor({
   // Not every part of a payment is project money, so each part decides on its own.
   const { connected } = useMelaProjects();
   const [projectParts, setProjectParts] = useState(() => new Set(splits.filter(split => split.project).map(split => split.id)));
+  const projectSignature = splits.map(split => `${split.id}:${split.project?.source || ''}:${split.project?.id || ''}`).join('|');
+  useEffect(() => setProjectParts(new Set(splits.filter(split => split.project).map(split => split.id))), [projectSignature]);
   const isProjectPart = (split: TransactionSplit) => projectParts.has(split.id) || !!split.project;
   const toggleProject = (split: TransactionSplit) => {
     const next = new Set(projectParts);
@@ -53,11 +56,15 @@ export default function TransactionSplitEditor({
   const allocated = sumMoney(splits.map(item => Number(item.amount) || 0));
   const remaining = money(total - allocated);
   const update = (id: string, patch: Partial<TransactionSplit>) => onChange(splits.map(item => item.id === id ? { ...item, ...patch } : item));
-  const add = () => onChange([...splits, {
-    id: `split-${Date.now()}-${splits.length}`,
-    amount: Math.max(0, remaining),
-    category: categories[0]?.name || 'Uncategorized',
-  }]);
+  const add = () => {
+    const sharedCategory = splits[0]?.category && splits.every(split => split.category === splits[0].category) ? splits[0].category : undefined;
+    onChange([...splits, {
+      id: `split-${Date.now()}-${splits.length}`,
+      amount: Math.max(0, remaining),
+      category: sharedCategory || categories[0]?.name || 'Uncategorized',
+      project: commonSplitProject(splits),
+    }]);
+  };
 
   // Tags already used on sibling parts are the likeliest next pick, so they
   // join the saved list even before they reach a recorded transaction.

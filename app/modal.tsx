@@ -158,7 +158,25 @@ export default function AddTransactionScreen() {
   // Unticking "This is a project cost" leaves no project on the transaction or its items.
   const toggleProjectCost = (next: boolean) => {
     setProjectCost(next);
-    if (!next) { setProject(undefined); setLines(current => withoutProjects(current)); }
+    if (!next) {
+      setProject(undefined);
+      setLines(current => withoutProjects(current));
+      if (splitEnabled) setSplits(current => current.map(split => ({ ...split, project: undefined })));
+    }
+  };
+
+  const changeMainCategory = (name: string) => {
+    clearError('category');
+    setSelectedCategory(name);
+    if (splitEnabled) setSplits(current => current.map(split => ({ ...split, category: name })));
+  };
+
+  const changeMainProject = (value: ProjectLink | undefined) => {
+    setProject(value);
+    setProjectCost(true);
+    if (!splitEnabled) return;
+    setSplits(current => current.map(split => ({ ...split, project: value })));
+    setLines(current => current.map(line => line.split_id ? { ...line, project: value } : line));
   };
 
   const handleToggleTag = (tagToToggle: string) => {
@@ -191,15 +209,18 @@ export default function AddTransactionScreen() {
       } else setSelectedPerson(undefined);
       // A split keeps its tags on the parts; older whole-transaction tags move onto untagged parts.
       const editingSplits = editingTransaction.splits?.length ? editingTransaction.splits : undefined;
+      const normalizedEditingSplits: TransactionSplit[] | undefined = editingSplits
+        ? pushProjectIntoSplits<TransactionSplit>(editingTransaction.project, pushTagsIntoSplits<TransactionSplit>(editingTransaction.tags, editingSplits))
+        : undefined;
       setTagsInput(editingSplits ? '' : formatTagInput(editingTransaction.tags));
       setTransactionDate(new Date(editingTransaction.date));
       setSplitEnabled(!!editingSplits);
       // Same for the project: with a split, each part carries its own.
-      setSplits(editingSplits ? pushProjectIntoSplits(editingTransaction.project, pushTagsIntoSplits(editingTransaction.tags, editingSplits)) : []);
-      setProject(editingSplits ? undefined : editingTransaction.project);
+      setSplits(normalizedEditingSplits || []);
+      setProject(normalizedEditingSplits ? commonSplitProject(normalizedEditingSplits) : editingTransaction.project);
       // Items of a split belong to its parts; older ones without a part go to the first part with room.
       setLines(editingSplits ? attachLinesToSplits(editingTransaction.lines || [], editingSplits) : editingTransaction.lines || []);
-      setProjectCost(!editingSplits && hasAnyProject(editingTransaction));
+      setProjectCost(hasAnyProject(editingTransaction));
       setSupplier(editingTransaction.supplier);
       setItemize(!editingSplits && !!editingTransaction.lines?.length);
       // Mark the form ready only after every editable value has been copied.
@@ -330,7 +351,7 @@ export default function AddTransactionScreen() {
       tags: type !== 'TRANSFER' && splitEnabled ? undefined : parseTagInput(tagsInput),
       date: transactionDate.getTime(),
       ...(type === 'TRANSFER' ? { to_account_id: toAccountId } : {}),
-      ...(type !== 'TRANSFER' && splitEnabled ? { splits: pushProjectIntoSplits(project, pushTagsIntoSplits(parseTagInput(tagsInput), splits)) } : { splits: undefined }),
+      ...(type !== 'TRANSFER' && splitEnabled ? { splits: pushTagsIntoSplits(parseTagInput(tagsInput), splits) } : { splits: undefined }),
       project: type !== 'TRANSFER' && !splitEnabled && projectCost ? project : undefined,
       lines: purchaseLines.length ? (splitEnabled || projectCost ? purchaseLines : withoutProjects(purchaseLines)) : undefined,
       supplier: type === 'EXPENSE' ? supplier : undefined,
@@ -694,9 +715,10 @@ export default function AddTransactionScreen() {
           <CategoryTreeSelect
             categories={filteredCategories}
             value={selectedCategory}
-            onChange={name => { clearError('category'); setSelectedCategory(name); }}
+            onChange={changeMainCategory}
             accessibilityLabel="Category"
           />
+          {splitEnabled && <Text className="text-[10px] text-indigo-600 dark:text-indigo-300 mt-2">Choosing a main category applies it to every split. You can adjust individual parts below.</Text>}
         </View>}
 
         {type === 'EXPENSE' && <View className="mb-3"><SupplierField value={supplier} onChange={setSupplier} /></View>}
@@ -722,14 +744,13 @@ export default function AddTransactionScreen() {
                 setLines(current => detachLines(current)); setItemize(lines.length > 0);
                 return;
               }
-              // Tags and project move onto the parts; the whole-transaction ones hide while split.
+              // Tags and project move onto the parts; the main selectors become batch controls.
               const parts = splits.length ? splits : [
                 { id: `split-${Date.now()}-0`, amount: parseFloat(amount) || 0, category: selectedCategory || filteredCategories[0]?.name || 'Uncategorized' },
                 { id: `split-${Date.now()}-1`, amount: 0, category: filteredCategories[1]?.name || filteredCategories[0]?.name || 'Uncategorized' },
               ];
               setSplits(pushProjectIntoSplits(projectCost ? project : undefined, pushTagsIntoSplits(parseTagInput(tagsInput), parts)));
               setTagsInput('');
-              setProject(undefined); setProjectCost(false);
               // Items already entered move into a part; each part is itemized on its own from here.
               setLines(current => itemize ? attachLinesToSplits(current, parts) : []); setItemize(false);
             }} className="flex-row items-center">
@@ -739,8 +760,7 @@ export default function AddTransactionScreen() {
             {splitEnabled && <View className="mt-3"><TransactionSplitEditor total={parseFloat(amount) || 0} splits={splits} categories={filteredCategories} onChange={setSplits} formatCurrency={formatCurrency} tagSuggestions={uniqueTags} tagSuggestionsForCategory={tagsForCategory} lines={lines} onLinesChange={setLines} /></View>}
           </View>
         )}
-        {/* Hidden while split: each part has its own "This is a project cost" */}
-        {type !== 'TRANSFER' && !splitEnabled && <ProjectCostToggle checked={projectCost} onToggle={toggleProjectCost} value={project} onChange={setProject} income={type === 'INCOME'} />}
+        {type !== 'TRANSFER' && <ProjectCostToggle checked={projectCost || (splitEnabled && splits.some(split => !!split.project))} onToggle={toggleProjectCost} value={splitEnabled ? commonSplitProject(splits) : project} onChange={splitEnabled ? changeMainProject : setProject} income={type === 'INCOME'} batch={splitEnabled} />}
 
         {!isEditing && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>

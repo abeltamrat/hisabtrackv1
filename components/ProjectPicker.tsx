@@ -126,7 +126,7 @@ export function ProjectField({ value, onChange, compact = false }: { value?: Pro
  * Not every expense is a project cost, so the project picker stays hidden
  * until it's ticked; unticking clears the project. Hidden without Mela.
  */
-export function ProjectCostToggle({ checked: on, onToggle, value, onChange, showPicker = true, income = false, variant = 'card' }: {
+export function ProjectCostToggle({ checked: on, onToggle, value, onChange, showPicker = true, income = false, variant = 'card', batch = false }: {
   /** Form-wide: when off, the form clears every project (transaction, parts, items). */
   checked: boolean;
   onToggle: (next: boolean) => void;
@@ -136,11 +136,15 @@ export function ProjectCostToggle({ checked: on, onToggle, value, onChange, show
   showPicker?: boolean;
   income?: boolean;
   variant?: 'card' | 'tile' | 'row';
+  /** In a split form, choosing here applies the project to every part. */
+  batch?: boolean;
 }) {
   const { connected } = useMelaProjects();
   if (!connected && !on) return null;
   const label = income ? 'This is project income' : 'This is a project cost';
-  const hint = !showPicker ? 'Choose a project on each split part.' : income ? 'Link this payment to a Mela project.' : 'Count this toward a Mela project\'s spending.';
+  const hint = batch
+    ? 'Choose once to apply the project to every split. You can adjust individual parts afterward.'
+    : !showPicker ? 'Choose a project on each split part.' : income ? 'Link this payment to a Mela project.' : 'Count this toward a Mela project\'s spending.';
   const toggle = () => onToggle(!on);
   const picker = on && showPicker ? <View className="mt-3"><ProjectField value={value} onChange={onChange} /></View> : null;
 
