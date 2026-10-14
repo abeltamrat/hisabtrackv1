@@ -5,7 +5,7 @@ import type { ItemKind, ItemLink, PurchaseLine } from '@/types/database';
 import { money, sumMoney } from '@/utils/finance';
 import { buildCatalog, isUnusualPrice, itemKey, localItem, priceInsight, purchaseRecords, type CatalogEntry } from '@/utils/itemFinance';
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSelector } from 'react-redux';
 
@@ -76,6 +76,11 @@ function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRe
   const [focused, setFocused] = useState(false);
   const [qtyText, setQtyText] = useState(String(line.quantity || ''));
   const [priceText, setPriceText] = useState(line.unit_price ? String(line.unit_price) : '');
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+  }, []);
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -101,6 +106,7 @@ function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRe
   const unusual = insight && line.unit_price > 0 && isUnusualPrice(line.unit_price, insight);
 
   const pick = (entry: CatalogEntry) => {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
     setQuery(entry.item.name); setFocused(false);
     const last = entry.last;
     if (last && !line.unit_price) setPriceText(String(last.unitPrice));
@@ -116,8 +122,8 @@ function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRe
 
       <TextInput
         value={query}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => setFocused(false), 150)}
+        onFocus={() => { if (blurTimer.current) clearTimeout(blurTimer.current); setFocused(true); }}
+        onBlur={() => { blurTimer.current = setTimeout(() => setFocused(false), 300); }}
         onChangeText={value => { setQuery(value); onChange({ item: localItem(value, { kind: line.item.kind, category: line.item.category }) }); }}
         placeholder="What did you buy? (e.g. Cement 50kg, Oranges)"
         placeholderTextColor="#94a3b8"
@@ -127,7 +133,14 @@ function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRe
       {suggestions.length > 0 && (
         <View className="mt-1 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           {suggestions.map(entry => (
-            <TouchableOpacity key={entry.key} onPress={() => pick(entry)} className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
+            <TouchableOpacity
+              key={entry.key}
+              accessibilityRole="button"
+              accessibilityLabel={`Use item ${entry.item.name}`}
+              onPressIn={() => { if (blurTimer.current) clearTimeout(blurTimer.current); }}
+              onPress={() => pick(entry)}
+              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700"
+            >
               <Text numberOfLines={1} className="text-sm text-slate-900 dark:text-white font-semibold">{entry.item.name}{entry.item.source === 'mela' ? '  · Mela' : ''}</Text>
               {entry.last && <Text numberOfLines={1} className="text-[11px] text-slate-500 dark:text-slate-400">Last {formatCurrency(entry.last.unitPrice)}{entry.unit ? `/${entry.unit}` : ''}{entry.last.supplier ? ` · ${entry.last.supplier}` : ''}</Text>}
             </TouchableOpacity>
