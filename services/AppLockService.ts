@@ -10,6 +10,24 @@ const readPin = () => Platform.OS === 'web' ? AsyncStorage.getItem('app_lock_pin
 const writePin = (value: string) => Platform.OS === 'web' ? AsyncStorage.setItem('app_lock_pin', value) : SecureStore.setItemAsync(pinKey(), value);
 const APP_LOCK_ENABLED_KEY = '@hisabtrack_app_lock_enabled';
 const BIOMETRIC_ENABLED_KEY = '@hisabtrack_biometric_enabled';
+const PENDING_CLOUD_POLICY_KEY = '@hisabtrack_app_lock_cloud_pending';
+
+export interface AppLockCloudPolicy {
+  enabled: boolean;
+  verifier: string | null;
+}
+
+const isValidVerifier = (value: string): boolean => {
+  try {
+    const parsed = JSON.parse(value) as { salt?: unknown; hash?: unknown };
+    return typeof parsed.salt === 'string'
+      && parsed.salt.length >= 8
+      && typeof parsed.hash === 'string'
+      && /^[a-f0-9]{64}$/i.test(parsed.hash);
+  } catch {
+    return false;
+  }
+};
 
 export class AppLockService {
   static async hashPin(pin: string): Promise<string> {
@@ -39,6 +57,15 @@ export class AppLockService {
     return false;
   }
   static async hasPin() { return !!(await readPin()); }
+  static async getPinVerifier(): Promise<string | null> {
+    const stored = await readPin();
+    return stored && isValidVerifier(stored) ? stored : null;
+  }
+  static async setPinVerifier(verifier: string): Promise<void> {
+    if (!isValidVerifier(verifier)) throw new Error('Invalid app lock verifier');
+    await writePin(verifier);
+    await AsyncStorage.removeItem('pin_attempts');
+  }
   static async clearPin() {
     if (Platform.OS === 'web') await AsyncStorage.removeItem('app_lock_pin');
     else await SecureStore.deleteItemAsync(pinKey());
@@ -86,5 +113,23 @@ export class AppLockService {
 
   static async setBiometricEnabled(enabled: boolean): Promise<void> {
     await AsyncStorage.setItem(BIOMETRIC_ENABLED_KEY, enabled ? 'true' : 'false');
+  }
+
+  static async getPendingCloudPolicy(): Promise<AppLockCloudPolicy | null> {
+    const value = await AsyncStorage.getItem(PENDING_CLOUD_POLICY_KEY);
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(value) as AppLockCloudPolicy;
+      if (typeof parsed.enabled !== 'boolean') return null;
+      if (parsed.verifier !== null && (typeof parsed.verifier !== 'string' || !isValidVerifier(parsed.verifier))) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  static async setPendingCloudPolicy(policy: AppLockCloudPolicy | null): Promise<void> {
+    if (policy) await AsyncStorage.setItem(PENDING_CLOUD_POLICY_KEY, JSON.stringify(policy));
+    else await AsyncStorage.removeItem(PENDING_CLOUD_POLICY_KEY);
   }
 }

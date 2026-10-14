@@ -1,6 +1,7 @@
 import AppLockScreen from '@/components/AppLockScreen';
 import { ActivityIndicator, View, Text } from 'react-native';
-import { AppLockService } from '@/services/AppLockService';
+import { AppLockService, type AppLockCloudPolicy } from '@/services/AppLockService';
+import CloudProfileService, { type CloudAppLockPolicy } from '@/services/CloudProfileService';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { useAuth } from './AuthContext';
@@ -25,7 +26,7 @@ interface AppLockContextType {
 const AppLockContext = createContext<AppLockContextType | undefined>(undefined);
 
 export function AppLockProvider({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [isLocked, setIsLocked] = useState(false);
   const [appLockEnabled, setAppLockEnabledState] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
@@ -35,20 +36,70 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const initialLockApplied = useRef(false);
+  const appLockEnabledRef = useRef(false);
+
+  useEffect(() => { appLockEnabledRef.current = appLockEnabled; }, [appLockEnabled]);
+
+  const applyCloudPolicy = useCallback(async (policy: CloudAppLockPolicy, lockOnChange: boolean) => {
+    const [localVerifier, localEnabled, localHasPin] = await Promise.all([
+      AppLockService.getPinVerifier(),
+      AppLockService.isAppLockEnabled(),
+      AppLockService.hasPin(),
+    ]);
+    const verifierChanged = policy.verifier !== localVerifier;
+    const enabled = policy.enabled && !!policy.verifier;
+    const policyChanged = verifierChanged || enabled !== localEnabled;
+
+    if (policy.verifier) await AppLockService.setPinVerifier(policy.verifier);
+    else if (localHasPin) await AppLockService.clearPin();
+    await AppLockService.setAppLockEnabled(enabled);
+    setHasPin(!!policy.verifier);
+    setAppLockEnabledState(enabled);
+    if (!enabled) setIsLocked(false);
+    else if (lockOnChange && policyChanged && isAuthenticated) setIsLocked(true);
+    return { lockEnabled: enabled, pinSet: !!policy.verifier };
+  }, [isAuthenticated]);
+
+  const publishCloudPolicy = useCallback(async (policy: AppLockCloudPolicy) => {
+    if (!user?.uid) return;
+    await AppLockService.setPendingCloudPolicy(policy);
+    try {
+      await CloudProfileService.setAppLockPolicy(user.uid, policy);
+      await AppLockService.setPendingCloudPolicy(null);
+    } catch {
+      // Keep the pending policy on this device. It is retried when Firestore reconnects.
+    }
+  }, [user?.uid]);
 
   const loadPrefs = useCallback(async () => {
-    const [lockEnabled, bioEnabled, bioAvail, pinSet] = await Promise.all([
+    let [lockEnabled, bioEnabled, bioAvail, pinSet] = await Promise.all([
       AppLockService.isAppLockEnabled(),
       AppLockService.isBiometricEnabled(),
       AppLockService.isBiometricAvailable(),
       AppLockService.hasPin(),
     ]);
+    if (user?.uid) {
+      const pending = await AppLockService.getPendingCloudPolicy();
+      if (pending) {
+        try {
+          await CloudProfileService.setAppLockPolicy(user.uid, pending);
+          await AppLockService.setPendingCloudPolicy(null);
+        } catch { /* use the protected local policy while offline */ }
+      }
+      const cloudPolicy = await CloudProfileService.getAppLockPolicy(user.uid).catch(() => null);
+      if (cloudPolicy && !pending) {
+        ({ lockEnabled, pinSet } = await applyCloudPolicy(cloudPolicy, false));
+      } else if (!cloudPolicy && !pending) {
+        const verifier = await AppLockService.getPinVerifier();
+        if (verifier) void publishCloudPolicy({ enabled: lockEnabled, verifier });
+      }
+    }
     setAppLockEnabledState(lockEnabled);
     setBiometricEnabledState(bioEnabled);
     setBiometricAvailable(bioAvail);
     setHasPin(pinSet);
     return { lockEnabled, pinSet };
-  }, []);
+  }, [applyCloudPolicy, publishCloudPolicy, user?.uid]);
 
   // Load preferences on mount
   useEffect(() => {
@@ -60,7 +111,25 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
       }
       setPrefsLoaded(true);
     }).catch(() => { setPrefsError(true); setIsLocked(true); });
-  }, [loadPrefs, isAuthenticated]);
+  }, [loadPrefs, isAuthenticated, user?.uid]);
+
+  // Apply app-lock changes from the same account on other devices in real time.
+  useEffect(() => {
+    if (!user?.uid || !prefsLoaded) return;
+    return CloudProfileService.subscribeAppLockPolicy(user.uid, policy => {
+      void (async () => {
+        const pending = await AppLockService.getPendingCloudPolicy();
+        if (pending) {
+          try {
+            await CloudProfileService.setAppLockPolicy(user.uid, pending);
+            await AppLockService.setPendingCloudPolicy(null);
+          } catch { /* Firestore will invoke this listener again after reconnecting */ }
+          return;
+        }
+        if (policy) await applyCloudPolicy(policy, true);
+      })().catch(() => undefined);
+    });
+  }, [applyCloudPolicy, prefsLoaded, user?.uid]);
 
   // Lock when app goes to background (only if app lock is on and there's a PIN to unlock with)
   useEffect(() => {
@@ -99,19 +168,27 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
   const setPin = useCallback(async (pin: string) => {
     await AppLockService.setPin(pin);
     setHasPin(true);
-  }, []);
+    const verifier = await AppLockService.getPinVerifier();
+    if (verifier) await publishCloudPolicy({ enabled: appLockEnabledRef.current, verifier });
+  }, [publishCloudPolicy]);
 
   const clearPin = useCallback(async () => {
     await AppLockService.clearPin();
+    await AppLockService.setAppLockEnabled(false);
     setHasPin(false);
+    setAppLockEnabledState(false);
     setIsLocked(false);
-  }, []);
+    await publishCloudPolicy({ enabled: false, verifier: null });
+  }, [publishCloudPolicy]);
 
   const setAppLockEnabled = useCallback(async (enabled: boolean) => {
+    const verifier = await AppLockService.getPinVerifier();
+    if (enabled && !verifier) throw new Error('Set a PIN before enabling app lock');
     await AppLockService.setAppLockEnabled(enabled);
     setAppLockEnabledState(enabled);
     if (!enabled) setIsLocked(false);
-  }, []);
+    await publishCloudPolicy({ enabled, verifier });
+  }, [publishCloudPolicy]);
 
   const setBiometricEnabled = useCallback(async (enabled: boolean) => {
     await AppLockService.setBiometricEnabled(enabled);

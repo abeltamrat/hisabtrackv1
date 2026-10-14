@@ -1002,7 +1002,7 @@ export default function SettingsScreen() {
             </View>
             <View className="flex-1">
               <Text className={`text-slate-900 dark:text-white font-bold ${sectionTitleClass}`}>Security</Text>
-              <Text className={`text-slate-500 dark:text-slate-400 ${sectionSubtitleClass}`}>App lock & biometric</Text>
+              <Text className={`text-slate-500 dark:text-slate-400 ${sectionSubtitleClass}`}>App lock across your signed-in devices</Text>
             </View>
           </View>
 
@@ -1011,7 +1011,7 @@ export default function SettingsScreen() {
             <View className="flex-1 mr-3">
               <Text className="text-slate-800 dark:text-slate-200 font-semibold text-sm">App Lock</Text>
               <Text className="text-slate-500 text-xs mt-0.5 dark:text-slate-400">
-                {hasPin ? 'Lock app when switching away' : 'Set a PIN first to enable'}
+                {hasPin ? 'The same PIN protects every signed-in device' : 'Set a PIN to protect every signed-in device'}
               </Text>
             </View>
             <Switch
@@ -1034,7 +1034,7 @@ export default function SettingsScreen() {
               <View className="flex-1 mr-3">
                 <Text className="text-slate-800 dark:text-slate-200 font-semibold text-sm">Fingerprint / Face ID</Text>
                 <Text className="text-slate-500 text-xs mt-0.5 dark:text-slate-400">
-                  {hasPin ? 'Use biometric to unlock' : 'Requires a PIN to be set'}
+                  {hasPin ? 'Use this device’s biometric to unlock' : 'Requires a PIN to be set'}
                 </Text>
               </View>
               <Switch
