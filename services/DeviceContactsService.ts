@@ -3,7 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getFirebaseApp } from '@/config/firebaseApp';
 import { AuthService } from '@/services/AuthService';
-import { normalizePersonEmail, normalizePersonPhone } from '@/services/RecipientIdentityService';
+import { normalizePersonEmail, normalizePersonPhone, type RecipientProfile } from '@/services/RecipientIdentityService';
 
 export interface LinkedContactMatch {
   uid: string;
@@ -138,6 +138,30 @@ export class DeviceContactsService {
         discoveryFailed: true,
       };
     }
+  }
+
+  /**
+   * Resolve one saved person immediately before an account-to-account action.
+   *
+   * A saved profile phone can identify a unique HisabTrack account without
+   * proving that the account owns that number. Callers may use that account as
+   * the destination for a chat request, but must not persist it as a verified
+   * person link unless `verified` is true.
+   */
+  static async discoverLinkedPerson(person: Pick<RecipientProfile, 'id' | 'displayName' | 'phone' | 'email'>): Promise<LinkedContactMatch | undefined> {
+    const phone = normalizePersonPhone(person.phone);
+    const email = normalizePersonEmail(person.email);
+    const contact: DeviceContact = {
+      id: `person:${person.id}`,
+      name: person.displayName,
+      phone,
+      email,
+      phones: phone ? [phone] : [],
+      emails: email ? [email] : [],
+    };
+    if (!contact.phones.length && !contact.emails.length) return undefined;
+    const result = await this.discoverLinkedContacts([contact], true);
+    return result.contacts[0]?.linkedAccount;
   }
 }
 

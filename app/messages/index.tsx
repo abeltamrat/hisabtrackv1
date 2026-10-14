@@ -8,6 +8,8 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import HisabUserBadge from '@/components/HisabUserBadge';
+import DeviceContactsService from '@/services/DeviceContactsService';
+import RecipientIdentityService from '@/services/RecipientIdentityService';
 
 const relativeTime = (value?: number) => {
   if (!value) return '';
@@ -36,13 +38,26 @@ export default function MessagesScreen() {
 
   const startWith = async (person?: RecipientProfile) => {
     if (!person) return;
-    if (!person.linkedUid) {
-      Alert.alert('HisabTrack account needed', `${person.displayName} is saved locally but is not linked to a verified HisabTrack account yet.`);
-      return;
-    }
     setStarting(true);
     try {
-      const conversationId = await MessagingService.startConversation(person.linkedUid);
+      const discovered = person.linkedUid
+        ? { uid: person.linkedUid, displayName: person.linkedDisplayName || person.displayName, verified: true }
+        : await DeviceContactsService.discoverLinkedPerson(person);
+      if (!discovered?.uid) {
+        Alert.alert('HisabTrack account needed', `${person.displayName} is not connected to a discoverable HisabTrack account yet.`);
+        return;
+      }
+      // A verified discovery is safe to reuse throughout the app. A saved-phone
+      // discovery remains transient: it can receive this chat request without
+      // being presented elsewhere as a verified identity link.
+      if (!person.linkedUid && discovered.verified) {
+        await RecipientIdentityService.update(person.id, {
+          linkedUid: discovered.uid,
+          linkedDisplayName: discovered.displayName,
+          linkCheckedAt: Date.now(),
+        });
+      }
+      const conversationId = await MessagingService.startConversation(discovered.uid);
       router.push(`/messages/${conversationId}` as any);
     } catch (error: any) {
       Alert.alert('Could not start chat', error?.message || 'Check your connection and try again.');
@@ -77,7 +92,7 @@ export default function MessagesScreen() {
               {unread > 0 && <View className="ml-3 min-w-[22px] h-[22px] px-1.5 rounded-full bg-indigo-600 items-center justify-center"><Text className="text-[10px] font-extrabold text-white">{unread > 99 ? '99+' : unread}</Text></View>}
             </TouchableOpacity>;
           })}
-          {items.length === 0 && <View className="items-center px-8 py-20"><View className="w-20 h-20 rounded-full bg-indigo-100 dark:bg-indigo-950 items-center justify-center"><FontAwesome name="comments-o" size={32} color="#6366f1" /></View><Text className="text-xl font-extrabold text-slate-900 dark:text-white mt-5">Start a conversation</Text><Text className="text-center text-sm leading-6 text-slate-600 dark:text-slate-300 mt-2">Choose a linked person to chat or send a payment, refund, loan, repayment, or Equb request.</Text><TouchableOpacity onPress={() => setPickerOpen(true)} className="mt-6 bg-indigo-600 px-6 py-3 rounded-2xl"><Text className="text-white font-bold">Choose a person</Text></TouchableOpacity></View>}
+          {items.length === 0 && <View className="items-center px-8 py-20"><View className="w-20 h-20 rounded-full bg-indigo-100 dark:bg-indigo-950 items-center justify-center"><FontAwesome name="comments-o" size={32} color="#6366f1" /></View><Text className="text-xl font-extrabold text-slate-900 dark:text-white mt-5">Start a conversation</Text><Text className="text-center text-sm leading-6 text-slate-600 dark:text-slate-300 mt-2">Choose a HisabTrack person to chat or send a payment, refund, loan, repayment, or Equb request.</Text><TouchableOpacity onPress={() => setPickerOpen(true)} className="mt-6 bg-indigo-600 px-6 py-3 rounded-2xl"><Text className="text-white font-bold">Choose a person</Text></TouchableOpacity></View>}
         </ScrollView>
       )}
       <PersonPicker visible={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={person => { setPickerOpen(false); void startWith(person); }} />

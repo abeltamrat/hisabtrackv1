@@ -77,3 +77,13 @@ test('the signed-in user is recognized locally and saved phones are not shown as
   assert.match(service, /contacts: contacts\.map\(contact => \(\{ \.\.\.contact, linkedAccount: selfMatches\.get\(contact\.id\) \}\)\)/);
   assert.match(settings, /isProfilePhoneVerified \? 'Verified' : 'Saved'/);
 });
+
+test('messaging can resolve a discovered app user without falsely verifying the saved person', () => {
+  const service = read('services/DeviceContactsService.ts');
+  const messages = read('app/messages/index.tsx');
+  assert.match(service, /discoverLinkedPerson/);
+  assert.match(service, /discoverLinkedContacts\(\[contact\], true\)/, 'messaging should bypass stale contact discovery cache');
+  assert.match(messages, /DeviceContactsService\.discoverLinkedPerson\(person\)/);
+  assert.match(messages, /MessagingService\.startConversation\(discovered\.uid\)/);
+  assert.match(messages, /if \(!person\.linkedUid && discovered\.verified\)/, 'only a verified discovery may be persisted as a linked identity');
+});
