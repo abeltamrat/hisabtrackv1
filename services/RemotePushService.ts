@@ -6,10 +6,12 @@ import { Platform } from 'react-native';
 
 import { generateUUID } from '@/utils/uuid';
 import { getFirebaseApp } from '@/config/firebaseApp';
-import { doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getFirestore, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
+import CloudProfileService from './CloudProfileService';
 
 const INSTALLATION_ID_KEY = '@hisabtrack_push_installation_id';
 const LAST_TOKEN_KEY = '@hisabtrack_expo_push_token';
+const SMS_PARSER_SELECTED_KEY = '@hisabtrack_sms_parser_selected';
 const PUSH_DOC_COLLECTION = 'devices';
 const PUSH_JOB_COLLECTION = 'push_jobs';
 
@@ -27,9 +29,12 @@ export interface RemotePushDeviceRecord {
   executionEnvironment: string;
   updatedAt: number;
   lastSeenAt: number;
-  registeredAt?: number;
-  signedOutAt?: number;
   lastError?: string | null;
+}
+
+export interface AccountDevice extends RemotePushDeviceRecord {
+  isCurrentDevice: boolean;
+  smsParsingEnabled: boolean;
 }
 
 export interface RemotePushSyncResult {
@@ -63,7 +68,7 @@ export class RemotePushService {
     return Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId ?? null;
   }
 
-  private static async getInstallationId(): Promise<string> {
+  static async getInstallationId(): Promise<string> {
     const existing = await AsyncStorage.getItem(INSTALLATION_ID_KEY);
     if (existing) return existing;
 
@@ -173,7 +178,6 @@ export class RemotePushService {
         expoPushToken,
         notificationsEnabled: true,
         isActive: true,
-        registeredAt: now,
         updatedAt: now,
         lastSeenAt: now,
         lastError: null,
@@ -206,24 +210,38 @@ export class RemotePushService {
     if (Platform.OS === 'web') return;
 
     const { ref, installationId } = await this.getDeviceRef(uid);
-    await setDoc(ref, this.buildDeviceRecord(installationId, {
+    const snapshot = await getDoc(ref);
+    const now = Date.now();
+    await setDoc(ref, snapshot.exists() ? {
       isActive: true,
-      lastSeenAt: Date.now(),
-      updatedAt: Date.now(),
-    }), { merge: true });
+      lastSeenAt: now,
+      updatedAt: now,
+    } : this.buildDeviceRecord(installationId, { lastSeenAt: now, updatedAt: now }), { merge: true });
   }
 
   static async unregisterCurrentDevice(uid: string): Promise<void> {
     if (Platform.OS === 'web') return;
 
-    const { ref, installationId } = await this.getDeviceRef(uid);
-    await setDoc(ref, this.buildDeviceRecord(installationId, {
+    const { firestore, ref, installationId } = await this.getDeviceRef(uid);
+    const snapshot = await getDoc(ref);
+    const now = Date.now();
+    await setDoc(ref, snapshot.exists() ? {
       expoPushToken: null,
       notificationsEnabled: false,
       isActive: false,
-      signedOutAt: Date.now(),
-      updatedAt: Date.now(),
+      updatedAt: now,
+    } : this.buildDeviceRecord(installationId, {
+      isActive: false,
+      updatedAt: now,
     }), { merge: true });
+    const preferencesRef = doc(firestore, `users/${uid}/meta/preferences`);
+    await runTransaction(firestore, async transaction => {
+      const preferences = await transaction.get(preferencesRef);
+      if (preferences.data()?.smsParserInstallationId === installationId) {
+        transaction.set(preferencesRef, { smsParserInstallationId: null, smsParserUpdatedAt: now }, { merge: true });
+      }
+    });
+    await AsyncStorage.setItem(SMS_PARSER_SELECTED_KEY, 'false');
   }
 
   static async getStatusSnapshot(uid: string): Promise<RemotePushStatusSnapshot> {
@@ -265,6 +283,102 @@ export class RemotePushService {
       updatedAt: data?.updatedAt ?? null,
       lastSeenAt: data?.lastSeenAt ?? null,
     };
+  }
+
+  static async setCurrentDeviceSmsParsing(uid: string, enabled: boolean): Promise<void> {
+    const installationId = await this.getInstallationId();
+    const firestore = await this.getFirestore();
+    const preferencesRef = doc(firestore, `users/${uid}/meta/preferences`);
+    await runTransaction(firestore, async transaction => {
+      const snapshot = await transaction.get(preferencesRef);
+      const selected = snapshot.data()?.smsParserInstallationId;
+      if (!enabled && selected !== installationId) return;
+      transaction.set(preferencesRef, {
+        smsParserInstallationId: enabled ? installationId : null,
+        smsParserUpdatedAt: Date.now(),
+      }, { merge: true });
+    });
+    await AsyncStorage.setItem(SMS_PARSER_SELECTED_KEY, enabled ? 'true' : 'false');
+    await this.markCurrentDeviceSeen(uid).catch(() => undefined);
+  }
+
+  static async ensureSmsParserSelection(uid: string): Promise<string | null> {
+    if (Platform.OS !== 'android') return CloudProfileService.getSmsParserInstallationId(uid);
+    const installationId = await this.getInstallationId();
+    const firestore = await this.getFirestore();
+    const preferencesRef = doc(firestore, `users/${uid}/meta/preferences`);
+    const selectedId = await runTransaction(firestore, async transaction => {
+      const snapshot = await transaction.get(preferencesRef);
+      const selected = snapshot.data()?.smsParserInstallationId;
+      if (typeof selected === 'string' && selected.length > 0) return selected;
+      transaction.set(preferencesRef, {
+        smsParserInstallationId: installationId,
+        smsParserUpdatedAt: Date.now(),
+      }, { merge: true });
+      return installationId;
+    });
+    await AsyncStorage.setItem(SMS_PARSER_SELECTED_KEY, selectedId === installationId ? 'true' : 'false');
+    return selectedId;
+  }
+
+  static async isCurrentDeviceSmsParser(): Promise<boolean> {
+    return (await AsyncStorage.getItem(SMS_PARSER_SELECTED_KEY)) === 'true';
+  }
+
+  static async refreshCurrentDeviceSmsParser(uid: string): Promise<boolean> {
+    const [installationId, selectedId] = await Promise.all([
+      this.getInstallationId(),
+      CloudProfileService.getSmsParserInstallationId(uid),
+    ]);
+    const selected = installationId === selectedId;
+    await AsyncStorage.setItem(SMS_PARSER_SELECTED_KEY, selected ? 'true' : 'false');
+    return selected;
+  }
+
+  static subscribeSmsParserSelection(uid: string, listener: (selected: boolean, installationId: string | null) => void): () => void {
+    let disposed = false;
+    let unsubscribe: () => void = () => {};
+    void this.getInstallationId().then(currentId => {
+      if (disposed) return;
+      unsubscribe = CloudProfileService.subscribeSmsParserInstallationId(uid, selectedId => {
+        const selected = selectedId === currentId;
+        void AsyncStorage.setItem(SMS_PARSER_SELECTED_KEY, selected ? 'true' : 'false');
+        listener(selected, selectedId);
+      });
+    });
+    return () => { disposed = true; unsubscribe(); };
+  }
+
+  static subscribeAccountDevices(uid: string, listener: (devices: AccountDevice[]) => void): () => void {
+    let disposed = false;
+    let unsubscribeDevices: () => void = () => {};
+    let unsubscribeSelection: () => void = () => {};
+    let records: RemotePushDeviceRecord[] = [];
+    let selectedId: string | null = null;
+    let currentId = '';
+    const emit = () => listener(records
+      .map(record => ({
+        ...record,
+        isCurrentDevice: record.installationId === currentId,
+        smsParsingEnabled: record.installationId === selectedId,
+      }))
+      .sort((a, b) => Number(b.isCurrentDevice) - Number(a.isCurrentDevice) || b.lastSeenAt - a.lastSeenAt));
+
+    void this.getInstallationId().then(async id => {
+      if (disposed) return;
+      currentId = id;
+      const firestore = await this.getFirestore();
+      unsubscribeDevices = onSnapshot(collection(firestore, `users/${uid}/devices`), snapshot => {
+        records = snapshot.docs.map(item => item.data() as RemotePushDeviceRecord)
+          .filter(record => typeof record.installationId === 'string' && typeof record.lastSeenAt === 'number');
+        emit();
+      });
+      unsubscribeSelection = CloudProfileService.subscribeSmsParserInstallationId(uid, idValue => {
+        selectedId = idValue;
+        emit();
+      });
+    });
+    return () => { disposed = true; unsubscribeDevices(); unsubscribeSelection(); };
   }
 
   /**

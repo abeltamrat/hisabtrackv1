@@ -10,6 +10,8 @@ import { DraftTransactionService } from './DraftTransactionService';
 import { NotificationMetadata, NotificationService } from './NotificationService';
 import { SMSSyncService } from './SMSSyncService';
 import { SmartReminderService } from './SmartReminderService';
+import RemotePushService from './RemotePushService';
+import { AuthService } from './AuthService';
 
 const maintenanceQueue = createSerialQueue();
 let maintenanceSuspended = true;
@@ -154,7 +156,16 @@ export const BackgroundService = {
     };
 
     try {
-      if (source === 'background' && Platform.OS === 'android' && reminderSettings.backgroundSmsSyncEnabled) {
+      const uid = AuthService.getCurrentUser()?.uid;
+      const thisDeviceParsesSms = source === 'background' && uid
+        ? await RemotePushService.refreshCurrentDeviceSmsParser(uid).catch(() => RemotePushService.isCurrentDeviceSmsParser())
+        : false;
+      if (
+        source === 'background'
+        && Platform.OS === 'android'
+        && reminderSettings.backgroundSmsSyncEnabled
+        && thisDeviceParsesSms
+      ) {
         const shouldSyncSms = now - (state.lastSmsSyncAt ?? 0) >= SMS_BACKGROUND_SYNC_COOLDOWN_MS;
         if (shouldSyncSms) {
           // No options: each account scans from its last successful sync

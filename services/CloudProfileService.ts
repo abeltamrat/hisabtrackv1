@@ -72,4 +72,27 @@ export default class CloudProfileService {
       error => onError?.(error),
     );
   }
+
+  static async getSmsParserInstallationId(uid: string): Promise<string | null> {
+    const snapshot = await getDoc(doc(getFirestore(), `users/${uid}/meta/preferences`));
+    const value = snapshot.data()?.smsParserInstallationId;
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  static async setSmsParserInstallationId(uid: string, installationId: string | null): Promise<void> {
+    if (installationId !== null && (installationId.length < 8 || installationId.length > 200)) {
+      throw new Error('Invalid device identifier');
+    }
+    await setDoc(doc(getFirestore(), `users/${uid}/meta/preferences`), {
+      smsParserInstallationId: installationId,
+      smsParserUpdatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
+
+  static subscribeSmsParserInstallationId(uid: string, listener: (installationId: string | null) => void): () => void {
+    return onSnapshot(doc(getFirestore(), `users/${uid}/meta/preferences`), snapshot => {
+      const value = snapshot.data()?.smsParserInstallationId;
+      listener(typeof value === 'string' && value.length > 0 ? value : null);
+    });
+  }
 }

@@ -8,6 +8,8 @@ import { SMSSyncService } from '@/services/SMSSyncService';
 import { NotificationService } from '@/services/NotificationService';
 import { NativeSmsReceiver } from '@/services/NativeSmsReceiver';
 import { Alert } from '@/utils/alert';
+import { useAuth } from '@/contexts/AuthContext';
+import RemotePushService from '@/services/RemotePushService';
 
 // Background (suspended-app) SMS sync is owned by BackgroundService's
 // BACKGROUND_SYNC_TASK, which respects the Settings reminder toggles.
@@ -22,6 +24,8 @@ const LEGACY_SMS_BACKGROUND_TASK = 'SMS_BACKGROUND_SYNC';
  * inbox. Manual sync and BackgroundService still provide catch-up scans.
  */
 export const SMSAutoSync: React.FC = () => {
+  const { user } = useAuth();
+  const [smsParsingSelected, setSmsParsingSelected] = React.useState(false);
   const accountsLoaded = useSelector((state: RootState) => state.accounts.status === 'succeeded');
   const hasSmsAccounts = useSelector((state: RootState) =>
     state.accounts.items.some(a => !!a.sms_number)
@@ -38,11 +42,25 @@ export const SMSAutoSync: React.FC = () => {
   const currencyRef = useRef(ledgerCurrency);
   const permissionPromptedRef = useRef(false);
   const smsPermissionRef = useRef<boolean | null>(null);
+  const smsParsingSelectedRef = useRef(false);
   useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
   useEffect(() => { currencyRef.current = ledgerCurrency; }, [ledgerCurrency]);
+  useEffect(() => { smsParsingSelectedRef.current = smsParsingSelected; }, [smsParsingSelected]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !user?.uid) {
+      setSmsParsingSelected(false);
+      return;
+    }
+    const unsubscribe = RemotePushService.subscribeSmsParserSelection(user.uid, selected => {
+      setSmsParsingSelected(selected);
+    });
+    void RemotePushService.ensureSmsParserSelection(user.uid).catch(() => undefined);
+    return unsubscribe;
+  }, [user?.uid]);
 
   const performSync = React.useCallback(async () => {
-    if (!hasSmsRef.current) return;
+    if (!hasSmsRef.current || !smsParsingSelectedRef.current) return;
     try {
       // A receiver signal always refers to a newly arrived message. Keep this
       // catch-up scan small so phones with a large inbox are not overwhelmed.
@@ -60,7 +78,7 @@ export const SMSAutoSync: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS !== 'android' || !accountsLoaded || !hasSmsAccounts || permissionPromptedRef.current) return;
+    if (Platform.OS !== 'android' || !smsParsingSelected || !accountsLoaded || !hasSmsAccounts || permissionPromptedRef.current) return;
     permissionPromptedRef.current = true;
     void SMSSyncService.hasReadSmsPermission().then(async granted => {
       smsPermissionRef.current = granted;
@@ -83,20 +101,26 @@ export const SMSAutoSync: React.FC = () => {
           { text: 'Open settings', onPress: () => { void Linking.openSettings().catch(() => undefined); } },
         ],
       );
+      if (user?.uid) await RemotePushService.setCurrentDeviceSmsParsing(user.uid, false).catch(() => undefined);
     }).catch(() => undefined);
-  }, [accountsLoaded, hasSmsAccounts, performSync]);
+  }, [accountsLoaded, hasSmsAccounts, performSync, smsParsingSelected, user?.uid]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     // Emptying this list on logout/session reset prevents one user's configured
     // bank senders or receipt signals from carrying into the next local session.
+    if (!smsParsingSelected) {
+      void NativeSmsReceiver.configureSenders([]).catch(() => undefined);
+      return () => { void NativeSmsReceiver.configureSenders([]).catch(() => undefined); };
+    }
     void NativeSmsReceiver.configureSenders(accountsLoaded ? smsSenders : [])
       .catch(() => undefined);
-  }, [accountsLoaded, smsSendersKey]);
+    return () => { void NativeSmsReceiver.configureSenders([]).catch(() => undefined); };
+  }, [accountsLoaded, smsParsingSelected, smsSendersKey]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    if (!accountsLoaded) return;
+    if (!accountsLoaded || !smsParsingSelected) return;
 
     // Unregister the background task older app versions registered here;
     // leaving it active caused double syncs and duplicate notifications
@@ -137,7 +161,7 @@ export const SMSAutoSync: React.FC = () => {
       subscription.remove();
       unsubscribeFromSms();
     };
-  }, [accountsLoaded, smsSendersKey, performSync]);
+  }, [accountsLoaded, smsParsingSelected, smsSendersKey, performSync]);
 
   return null;
 };

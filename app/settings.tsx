@@ -12,7 +12,8 @@ import { useTransactions } from '@/context/TransactionContext';
 import AccountResetService from '@/services/AccountResetService';
 import { BackgroundService, type BackgroundStatusSnapshot } from '@/services/BackgroundService';
 import { ExportService } from '@/services/ExportService';
-import RemotePushService, { type RemotePushStatusSnapshot } from '@/services/RemotePushService';
+import RemotePushService, { type AccountDevice, type RemotePushStatusSnapshot } from '@/services/RemotePushService';
+import { SMSSyncService } from '@/services/SMSSyncService';
 import SyncService from '@/services/SyncService';
 import { getDatabase } from '@/services/database';
 import { AppDispatch, RootState } from '@/store';
@@ -51,6 +52,8 @@ export default function SettingsScreen() {
   const [remotePushLoading, setRemotePushLoading] = useState(false);
   const [registeringRemotePush, setRegisteringRemotePush] = useState(false);
   const [sendingRemoteTestPush, setSendingRemoteTestPush] = useState(false);
+  const [accountDevices, setAccountDevices] = useState<AccountDevice[]>([]);
+  const [changingSmsDevice, setChangingSmsDevice] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [isResettingAccount, setIsResettingAccount] = useState(false);
@@ -127,6 +130,15 @@ export default function SettingsScreen() {
         setPhoneInput(p ?? '');
       });
     }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setAccountDevices([]);
+      return;
+    }
+    void RemotePushService.markCurrentDeviceSeen(user.uid).catch(() => undefined);
+    return RemotePushService.subscribeAccountDevices(user.uid, setAccountDevices);
   }, [user?.uid]);
 
   const handleSavePhone = async () => {
@@ -544,7 +556,33 @@ export default function SettingsScreen() {
     setAssistantReportsEnabled,
   } = useAppSettings();
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
-  const [selectedSettingsCategory, setSelectedSettingsCategory] = useState<'personal' | 'ai' | 'notifications' | 'data' | 'account'>('personal');
+  const [selectedSettingsCategory, setSelectedSettingsCategory] = useState<'personal' | 'devices' | 'ai' | 'notifications' | 'data' | 'account'>('personal');
+
+  const currentDevice = accountDevices.find(device => device.isCurrentDevice);
+
+  const handleSmsDeviceToggle = async (enabled: boolean) => {
+    if (!user?.uid) return;
+    if (Platform.OS !== 'android') {
+      Alert.alert('Android only', 'SMS parsing can only be assigned to an Android phone.');
+      return;
+    }
+    setChangingSmsDevice(true);
+    try {
+      if (enabled) {
+        const granted = await SMSSyncService.hasReadSmsPermission() || await SMSSyncService.requestPermissions();
+        if (!granted) {
+          Alert.alert('SMS access needed', 'Grant SMS access before selecting this phone for SMS parsing.');
+          return;
+        }
+      }
+      await RemotePushService.setCurrentDeviceSmsParsing(user.uid, enabled);
+    } catch (error) {
+      console.error('Failed to change SMS parsing device', error);
+      Alert.alert('Unable to update device', 'Check your connection and try again.');
+    } finally {
+      setChangingSmsDevice(false);
+    }
+  };
 
   const handleBackgroundProcessingToggle = async (enabled: boolean) => {
     setBackgroundProcessingEnabled(enabled);
@@ -895,6 +933,7 @@ export default function SettingsScreen() {
           <View className="flex-row flex-wrap">
             {[
               { id: 'personal', label: 'Personal', icon: 'user', color: '#6366f1' },
+              { id: 'devices', label: t('devices'), icon: 'mobile', color: '#0ea5e9' },
               { id: 'ai', label: 'AI & SMS', icon: 'magic', color: '#14b8a6' },
               { id: 'notifications', label: 'Notifications', icon: 'bell', color: '#f59e0b' },
               { id: 'data', label: 'Data & Access', icon: 'database', color: '#10b981' },
@@ -908,6 +947,64 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        </View>
+
+        {/* Account devices and the single phone responsible for SMS parsing. */}
+        <View className={sectionCardClass} style={[{ elevation: 4 }, selectedSettingsCategory !== 'devices' && { display: 'none' }]}>
+          <View className="flex-row items-center mb-4">
+            <View className="w-12 h-12 bg-sky-100 dark:bg-sky-900/30 rounded-2xl justify-center items-center mr-4">
+              <FontAwesome name="mobile" size={24} color="#0ea5e9" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-slate-900 dark:text-white font-bold text-lg">{t('devices')}</Text>
+              <Text className="text-slate-500 dark:text-slate-400 text-sm">{t('devicesDescription')}</Text>
+            </View>
+          </View>
+
+          <View className="flex-row items-center justify-between p-4 mb-4 bg-sky-50 dark:bg-sky-900/20 rounded-2xl border border-sky-200 dark:border-sky-800">
+            <View className="flex-1 mr-3">
+              <Text className="text-slate-900 dark:text-white font-semibold">{t('usePhoneSmsParsing')}</Text>
+              <Text className="text-slate-600 dark:text-slate-300 text-xs mt-1">
+                {t('smsParsingSingleDeviceDescription')}
+              </Text>
+            </View>
+            <Switch
+              accessibilityLabel={t('usePhoneSmsParsing')}
+              value={!!currentDevice?.smsParsingEnabled}
+              onValueChange={value => { void handleSmsDeviceToggle(value); }}
+              disabled={changingSmsDevice || Platform.OS !== 'android'}
+            />
+          </View>
+
+          <View className="gap-3">
+            {accountDevices.filter(device => device.isActive || device.isCurrentDevice).map(device => {
+              const online = device.isActive && Date.now() - device.lastSeenAt < 20 * 60 * 1000;
+              const version = [device.appVersion && `v${device.appVersion}`, device.appBuild && `build ${device.appBuild}`].filter(Boolean).join(' | ');
+              return (
+                <View key={device.installationId} className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <View className="flex-row items-start">
+                    <View className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 items-center justify-center mr-3">
+                      <FontAwesome name={device.platform === 'android' ? 'android' : device.platform === 'ios' ? 'apple' : 'desktop'} size={19} color="#64748b" />
+                    </View>
+                    <View className="flex-1">
+                      <View className="flex-row flex-wrap items-center">
+                        <Text className="text-slate-900 dark:text-white font-bold capitalize mr-2">{device.platform} {t('deviceLabel')} · {device.installationId.slice(-6).toUpperCase()}</Text>
+                        {device.isCurrentDevice && <Text className="text-sky-700 dark:text-sky-300 text-[10px] font-bold bg-sky-100 dark:bg-sky-900/40 px-2 py-1 rounded-full mr-1">{t('thisDevice')}</Text>}
+                        {device.smsParsingEnabled && <Text className="text-emerald-700 dark:text-emerald-300 text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 px-2 py-1 rounded-full">{t('smsParsing')}</Text>}
+                      </View>
+                      {!!version && <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">{version}</Text>}
+                      <Text className={`text-xs mt-1 font-semibold ${online ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                        {online ? t('onlineNow') : `${t('lastActive')} ${formatBackgroundTime(device.lastSeenAt)}`}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+            {accountDevices.filter(device => device.isActive || device.isCurrentDevice).length === 0 && (
+              <Text className="text-slate-500 dark:text-slate-400 text-sm text-center py-4">{t('registeringDevice')}</Text>
+            )}
           </View>
         </View>
 
