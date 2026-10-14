@@ -184,6 +184,7 @@ export class SyncService {
       await db.writeMeta('last_cloud_sync_at', Date.now());
       await this.refreshLocalStore();
       await (await import('@/services/AuxiliarySyncService')).default.sync(uid);
+      await (await import('@/services/PrivateConfigurationService')).default.sync(uid);
       this.lastPushFinishedAt = Date.now(); this.lastError = protectedChanges.warning;
       NativeErrorReporter.reset();
     } finally { this.applyingRemote = false; }

@@ -539,6 +539,7 @@ test('sync retries a lost acknowledgement and surfaces stale-device edits withou
  for(const [name,action] of [['accounts','fetchAccounts'],['transactions','fetchTransactions'],['budgets','fetchBudgets'],['loans','fetchLoans']])mocks[`@/store/slices/${name}Slice`]={[action]:()=>({})};
  mocks['@/contexts/AppSettingsContext']={loadStoredAppSettings:async()=>({cloudSyncEnabled:true})};
  mocks['@/services/AuxiliarySyncService']={default:{sync:async()=>({completedAt:Date.now(),rows:[]})}};
+ mocks['@/services/PrivateConfigurationService']={default:{sync:async()=>undefined}};
  mocks['./NativeErrorReporter']={default:{reset(){}}};
  mocks['firebase/auth']={getAuth:()=>({currentUser:{uid:'alice'}})};
  mocks['firebase/firestore']={getFirestore:()=>({}),doc:(_,path)=>({path}),collection:(_,path)=>({path}),serverTimestamp:()=>1,onSnapshot:()=>()=>{},getDocs:async ref=>({docs:[...remote.entries()].filter(([path])=>path.startsWith(ref.path+'/')).map(([path,value])=>({id:path.split('/').at(-1),data:()=>structuredClone(value)}))}),runTransaction:async(_,fn)=>{
@@ -568,6 +569,7 @@ test('two devices can post to one account and converge without a balance conflic
  for(const [name,action] of [['accounts','fetchAccounts'],['transactions','fetchTransactions'],['budgets','fetchBudgets'],['loans','fetchLoans']])mocks[`@/store/slices/${name}Slice`]={[action]:()=>({})};
  mocks['@/contexts/AppSettingsContext']={loadStoredAppSettings:async()=>({cloudSyncEnabled:true})};
  mocks['@/services/AuxiliarySyncService']={default:{sync:async()=>({completedAt:Date.now(),rows:[]})}};
+ mocks['@/services/PrivateConfigurationService']={default:{sync:async()=>undefined}};
  mocks['./NativeErrorReporter']={default:{reset(){}}};
  mocks['firebase/auth']={getAuth:()=>({currentUser:{uid:'alice'}})};
  mocks['firebase/firestore']={getFirestore:()=>({}),doc:(_,path)=>({path}),collection:(_,path)=>({path}),serverTimestamp:()=>1,onSnapshot:()=>()=>{},getDocs:async ref=>({docs:[...remote.entries()].filter(([path])=>path.startsWith(ref.path+'/')).map(([path,value])=>({id:path.split('/').at(-1),data:()=>structuredClone(value)}))}),runTransaction:async(_,fn)=>{

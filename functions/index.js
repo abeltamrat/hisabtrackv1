@@ -424,6 +424,7 @@ exports.deleteMyAccount = onCall({ region: 'us-central1', timeoutSeconds: 540 },
   await db.doc(`lookupLimits/${uid}`).delete();
   await db.doc(`messageRateLimits/${uid}`).delete();
   await db.recursiveDelete(db.doc(`users/${uid}`));
+  await db.doc(`privateConfigurations/${uid}`).delete();
   await admin.auth().deleteUser(uid);
   return { deleted: true };
 });
@@ -600,6 +601,72 @@ exports.discoverLinkedContacts = onCall({ region: 'us-central1' }, async request
   }
   console.info('Contact discovery completed', { contacts: contacts.length, matches: matches.length, durationMs: Date.now() - startedAt });
   return { matches };
+});
+
+const PRIVATE_AI_PROVIDERS = ['geminiApiKey', 'groqApiKey', 'openRouterApiKey', 'topToolsApiKey'];
+const privateString = (value, max) => typeof value === 'string' && value.length <= max ? value.trim() : null;
+const privateMelaConnection = value => {
+  if (!value || typeof value !== 'object') return null;
+  const company = privateString(value.company, 160), userName = privateString(value.userName, 200);
+  if (!company || !userName || !Number.isFinite(value.connectedAt) || !Number.isFinite(value.expiresAt)) return null;
+  const permissions = value.permissions && typeof value.permissions === 'object'
+    ? Object.fromEntries(['projects', 'items', 'suppliers'].filter(key => typeof value.permissions[key] === 'boolean').map(key => [key, value.permissions[key]]))
+    : undefined;
+  return {
+    company,
+    userName,
+    email: value.email === null ? null : privateString(value.email, 320),
+    connectedAt: value.connectedAt,
+    expiresAt: value.expiresAt,
+    ...(Number.isFinite(value.lastSyncAt) ? { lastSyncAt: value.lastSyncAt } : {}),
+    ...(permissions ? { permissions } : {}),
+    ...(typeof value.needsReconnect === 'boolean' ? { needsReconnect: value.needsReconnect } : {}),
+    ...(privateString(value.lastError, 500) ? { lastError: privateString(value.lastError, 500) } : {}),
+  };
+};
+
+/** Owner-only secret vault. Client Firestore rules deny this collection. */
+exports.managePrivateConfiguration = onCall({ region: 'us-central1' }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const uid = request.auth.uid, data = request.data || {}, action = data.action;
+  if ((await db.doc(`deletedAccounts/${uid}`).get()).exists) throw new HttpsError('permission-denied', 'Account is deleted.');
+  const ref = db.doc(`privateConfigurations/${uid}`);
+  if (action === 'get') {
+    const snapshot = await ref.get();
+    if (!snapshot.exists) return {};
+    const value = snapshot.data() || {};
+    return { aiKeys: value.aiKeys || undefined, melaInitialized: Object.prototype.hasOwnProperty.call(value, 'mela'), mela: value.mela || undefined };
+  }
+  if (action === 'setAiKey') {
+    if (!PRIVATE_AI_PROVIDERS.includes(data.provider)) throw new HttpsError('invalid-argument', 'Unknown AI provider.');
+    const value = privateString(data.value, 4096);
+    if (value === null) throw new HttpsError('invalid-argument', 'Invalid API key.');
+    await db.runTransaction(async tx => {
+      const snapshot = await tx.get(ref), current = snapshot.data() || {};
+      tx.set(ref, { ...current, aiKeys: { ...(current.aiKeys || {}), [data.provider]: value }, aiKeysUpdatedAt: Date.now() });
+    });
+    await db.doc(`users/${uid}/meta/privateConfiguration`).set({ updatedAt: Date.now() }, { merge: true });
+    return { saved: true };
+  }
+  if (action === 'setMela') {
+    const token = privateString(data.token, 8192), connection = privateMelaConnection(data.connection);
+    if (!token || !connection) throw new HttpsError('invalid-argument', 'Invalid Mela connection.');
+    await db.runTransaction(async tx => {
+      const snapshot = await tx.get(ref), current = snapshot.data() || {};
+      tx.set(ref, { ...current, mela: { token, connection }, melaUpdatedAt: Date.now() });
+    });
+    await db.doc(`users/${uid}/meta/privateConfiguration`).set({ updatedAt: Date.now() }, { merge: true });
+    return { saved: true };
+  }
+  if (action === 'clearMela') {
+    await db.runTransaction(async tx => {
+      const snapshot = await tx.get(ref), current = snapshot.data() || {};
+      tx.set(ref, { ...current, mela: null, melaUpdatedAt: Date.now() });
+    });
+    await db.doc(`users/${uid}/meta/privateConfiguration`).set({ updatedAt: Date.now() }, { merge: true });
+    return { saved: true };
+  }
+  throw new HttpsError('invalid-argument', 'Unknown private configuration action.');
 });
 
 // Notification content is generated here, never accepted from the client: the

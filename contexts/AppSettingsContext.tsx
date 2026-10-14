@@ -211,6 +211,11 @@ async function saveSettings(s: AppSettings) {
   } catch { }
 }
 
+export async function saveAIProviderKeysLocally(keys: Partial<Pick<AppSettings, 'geminiApiKey' | 'groqApiKey' | 'openRouterApiKey' | 'topToolsApiKey'>>) {
+  const current = await loadStoredAppSettings();
+  await saveSettings({ ...current, ...keys });
+}
+
 export async function saveCloudSyncPreferenceLocally(enabled: boolean) {
   const current = await loadStoredAppSettings();
   await saveSettings({ ...current, cloudSyncEnabled: enabled });
@@ -224,6 +229,15 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     loadStoredAppSettings().then(value => { setSettings(value); setSettingsLoaded(true); });
+  }, []);
+
+  useEffect(() => {
+    let unsubscribe: () => void = () => {};
+    void import('@/services/PrivateConfigurationService').then(({ default: service }) => {
+      unsubscribe = service.subscribeAIKeys(keys => setSettings(previous => ({ ...previous, ...keys })));
+      void loadStoredAppSettings().then(value => setSettings(value));
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -264,10 +278,14 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const setPreferLocalLogos = (preferLocalLogos: boolean) => setSettings(prev => ({ ...prev, preferLocalLogos }));
   const setBalancesHidden = (balancesHidden: boolean) => setSettings(prev => ({ ...prev, balancesHidden }));
   const setCalendarSystem = (calendarSystem: CalendarSystem) => setSettings(prev => ({ ...prev, calendarSystem }));
-  const setGeminiApiKey = (geminiApiKey: string) => setSettings(prev => ({ ...prev, geminiApiKey }));
-  const setGroqApiKey = (groqApiKey: string) => setSettings(prev => ({ ...prev, groqApiKey }));
-  const setTopToolsApiKey = (topToolsApiKey: string) => setSettings(prev => ({ ...prev, topToolsApiKey }));
-  const setOpenRouterApiKey = (openRouterApiKey: string) => setSettings(prev => ({ ...prev, openRouterApiKey }));
+  const syncAIKey = (provider: 'geminiApiKey' | 'groqApiKey' | 'openRouterApiKey' | 'topToolsApiKey', value: string) => {
+    setSettings(prev => ({ ...prev, [provider]: value }));
+    void import('@/services/PrivateConfigurationService').then(({ default: service }) => service.updateAIProviderKey(provider, value));
+  };
+  const setGeminiApiKey = (value: string) => syncAIKey('geminiApiKey', value);
+  const setGroqApiKey = (value: string) => syncAIKey('groqApiKey', value);
+  const setTopToolsApiKey = (value: string) => syncAIKey('topToolsApiKey', value);
+  const setOpenRouterApiKey = (value: string) => syncAIKey('openRouterApiKey', value);
   const setPuterJsEnabled = (puterJsEnabled: boolean) => setSettings(prev => ({ ...prev, puterJsEnabled }));
   const setBackgroundProcessingEnabled = (backgroundProcessingEnabled: boolean) => setSettings(prev => ({
     ...prev,

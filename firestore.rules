@@ -46,6 +46,9 @@ service cloud.firestore {
     match /users/{userId}/meta/{id} { allow read, write: if owner(userId); }
     match /users/{userId}/app_data/{id} { allow read, write: if owner(userId); }
     match /users/{userId} { allow read, write: if owner(userId); }
+    // API keys and connection tokens are only accessed through authenticated
+    // callable functions, never directly by a client Firestore SDK.
+    match /privateConfigurations/{userId} { allow read, write: if false; }
     match /phoneIndex/{phone} {
       allow get: if signedIn() && resource.data.uid == request.auth.uid;
       allow list: if false;

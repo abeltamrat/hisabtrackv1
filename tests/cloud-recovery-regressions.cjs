@@ -53,6 +53,20 @@ test('top bar reports offline, pending and fully synced cloud states', () => {
   assert.match(internet, /generate_204/);
 });
 
+test('AI keys and issued Mela connections follow the account through a server-only vault', () => {
+  const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+  const sync = read('services/SyncService.ts');
+  const privateConfig = read('services/PrivateConfigurationService.ts');
+  const functions = read('functions/index.js');
+  const rules = read('firestore.rules');
+  assert.match(sync, /PrivateConfigurationService/);
+  for (const provider of ['geminiApiKey', 'groqApiKey', 'openRouterApiKey', 'topToolsApiKey']) assert.match(privateConfig, new RegExp(provider));
+  assert.match(privateConfig, /restorePortableConnection/);
+  assert.match(functions, /managePrivateConfiguration/);
+  assert.match(functions, /privateConfigurations\/\$\{uid\}/);
+  assert.match(rules, /match \/privateConfigurations\/\{userId\} \{ allow read, write: if false; \}/);
+});
+
 test('guided category builder asks questions and saves a reviewed deep hierarchy atomically', () => {
   const read = file => fs.readFileSync(path.join(root, file), 'utf8');
   const builder = read('components/AICategoryBuilder.tsx');

@@ -123,6 +123,21 @@ test('a number saved in Settings matches as an unverified HisabTrack user, never
  assert.deepEqual(own,{matches:[]},'your own saved number is not a match');
 });
 
+test('private configuration vault is owner-scoped and strips Mela credentials to issued-token metadata',async()=>{
+ const {exports:api,rows}=environment();
+ await assert.rejects(api.managePrivateConfiguration({data:{action:'get'}}),{code:'unauthenticated'});
+ await api.managePrivateConfiguration({auth:{uid:'alice'},data:{action:'setAiKey',provider:'geminiApiKey',value:' gemini-secret '}});
+ await api.managePrivateConfiguration({auth:{uid:'alice'},data:{action:'setAiKey',provider:'groqApiKey',value:'groq-secret'}});
+ await api.managePrivateConfiguration({auth:{uid:'alice'},data:{action:'setMela',token:'issued-token',connection:{company:'acme',userName:'Alice',email:'a@example.com',connectedAt:1,expiresAt:2,password:'must-not-store',permissions:{projects:true,admin:true}}}});
+ const mine=await api.managePrivateConfiguration({auth:{uid:'alice'},data:{action:'get'}});
+ assert.deepEqual(mine.aiKeys,{geminiApiKey:'gemini-secret',groqApiKey:'groq-secret'});
+ assert.equal(mine.mela.token,'issued-token');
+ assert.equal(mine.mela.connection.password,undefined);
+ assert.deepEqual(mine.mela.connection.permissions,{projects:true});
+ assert.deepEqual(await api.managePrivateConfiguration({auth:{uid:'carol'},data:{action:'get'}}),{});
+ assert.equal(JSON.stringify(rows.get('privateConfigurations/alice')).includes('must-not-store'),false);
+});
+
 test('confirmed interest is capped across payments and persisted for both participants',async()=>{
  const {exports:api,rows,request}=environment();rows.get('sharedLoans/loan').interestRate=12;
  for(const [id,amount] of [['p1',10],['p2',20]]){

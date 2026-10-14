@@ -143,6 +143,7 @@ export class MelaService {
     };
     await Storage.setItem(CONNECTION_KEY, JSON.stringify(connection));
     await this.syncProjects();
+    await import('./PrivateConfigurationService').then(m => m.default.updateMelaConnection()).catch(() => undefined);
     return (await this.getConnection())!;
   }
 
@@ -155,6 +156,30 @@ export class MelaService {
     await Storage.removeItem(PROJECTS_KEY);
     await Storage.removeItem(ITEMS_KEY);
     await Storage.removeItem(SUPPLIERS_KEY);
+    await import('./PrivateConfigurationService').then(m => m.default.updateMelaConnection()).catch(() => undefined);
+  }
+
+  /** Mela passwords are never retained; only the issued token can move devices. */
+  static async exportPortableConnection(): Promise<{ token: string; connection: MelaConnection } | null> {
+    const [token, connection] = await Promise.all([readToken(), this.getConnection()]);
+    return token && connection ? { token, connection } : null;
+  }
+
+  static async restorePortableConnection(value: { token: string; connection: Record<string, unknown> }): Promise<void> {
+    if (!value || typeof value.token !== 'string' || !value.token || !value.connection || typeof value.connection !== 'object') {
+      throw new Error('Invalid Mela connection backup.');
+    }
+    await saveToken(value.token);
+    await Storage.setItem(CONNECTION_KEY, JSON.stringify(value.connection));
+    // This device has no guarantee that it owns the cache represented by the
+    // other device's lastSyncAt, so populate its local lists immediately.
+    await this.syncProjects().catch(() => undefined);
+  }
+
+  /** Apply a cloud disconnect without writing the same change back to the vault. */
+  static async clearRestoredConnection(): Promise<void> {
+    await deleteToken().catch(() => undefined);
+    await Promise.all([CONNECTION_KEY, PROJECTS_KEY, ITEMS_KEY, SUPPLIERS_KEY].map(key => Storage.removeItem(key)));
   }
 
   static syncProjects(): Promise<MelaProject[]> {
