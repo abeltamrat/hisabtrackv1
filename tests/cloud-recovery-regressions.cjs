@@ -10,7 +10,11 @@ test('critical auxiliary datasets are versioned, hashed and restored', () => {
   assert.match(source, /CryptoDigestAlgorithm\.SHA256/);
   assert.match(source, /remoteRevision/);
   assert.match(source, /last_restore_report/);
-  assert.match(source, /Local data is preserved/);
+  assert.match(source, /mergeConcurrentRecords/);
+  assert.match(source, /recordHashes/);
+  assert.match(source, /direction: 'MERGED'/);
+  assert.match(source, /resolution: 'RECORD_MERGE'/);
+  assert.doesNotMatch(source, /throw new Error\(`Cloud conflict in \$\{dataset\}/);
 });
 
 test('fresh login opens local data before cloud restore and cloud preference follows the user', () => {
