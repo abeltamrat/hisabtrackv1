@@ -474,12 +474,14 @@ export class LedgerDatabase implements IDatabase {
     return this.run(async () => {
       const outbox: Record<string, Change> = await this.raw.readMeta('outbox') || {};
       const known = await this.raw.readMeta('revisions') || {};
+      const acknowledged = new Set(changes.map(change => key(change)));
       for (const change of changes) {
         const k = key(change); known[k] = revisions[k];
         if (outbox[k]?.token === change.token) delete outbox[k];
         else if (outbox[k]) outbox[k].base = revisions[k];
       }
-      await this.raw.commitRows([], { outbox, revisions: known });
+      const conflicts = (await this.raw.readMeta('sync_conflicts') || []).filter((item: any) => !acknowledged.has(item.key));
+      await this.raw.commitRows([], { outbox, revisions: known, sync_conflicts: conflicts });
     });
   }
   applyRemote(changes: Array<Row & { revision: number }>) {

@@ -11,6 +11,20 @@ import { collection, doc, getDocs, getFirestore, onSnapshot, runTransaction, ser
 import { getAuth } from 'firebase/auth';
 
 const collections: Table[] = ['accounts', 'transactions', 'budgets', 'loans', 'meta'];
+const stableValue = (value: any): any => Array.isArray(value)
+  ? value.map(stableValue)
+  : value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, stableValue(value[key])]))
+    : value;
+const sameAccountMetadata = (local: any, remote: any) => {
+  if (!local || !remote || remote._deleted) return false;
+  const { balance: _localBalance, ...localMetadata } = local;
+  const {
+    balance: _remoteBalance, _revision, _deleted, _operation, _syncedAt,
+    ...remoteMetadata
+  } = remote;
+  return JSON.stringify(stableValue(localMetadata)) === JSON.stringify(stableValue(remoteMetadata));
+};
 export type CloudSyncState = 'pending' | 'syncing' | 'synced' | 'error';
 export class SyncService {
   static currentUid: string | null = null;
@@ -121,6 +135,15 @@ export class SyncService {
             const k = `${change.table}/${change.id}`;
             if (remote?._operation === change.token) { revisions[k] = revision; continue; }
             if (revision !== change.base) {
+              // Account.balance is a cache derived from the transaction ledger.
+              // Two devices posting different transactions update the same
+              // account row even though their durable transaction rows do not
+              // conflict. Keep the cloud account revision and let applyRemote
+              // rebuild the exact balance from the combined ledger below.
+              if (change.table === 'accounts' && change.value && sameAccountMetadata(change.value, remote)) {
+                revisions[k] = revision;
+                continue;
+              }
               conflicts.push({ key: k, change, remote: remote || null, revision });
               throw new Error(`Sync conflict in ${change.table}. Local changes are preserved. Review conflicts in Settings.`);
             }

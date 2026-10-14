@@ -559,6 +559,32 @@ test('sync retries a lost acknowledgement and surfaces stale-device edits withou
  await SyncService.syncNow('alice');assert.equal(remote.get(path).name,'Local edit');
  assert.equal((await db.getAccounts())[0].balance,100);
 });
+test('two devices can post to one account and converge without a balance conflict',async()=>{
+ const {db}=make();await db.init();const a=await db.createAccount(account('Shared',100));
+ const remote=new Map();
+ cache.delete(path.join(root,'services/SyncService.ts'));
+ mocks['@/services/database']={getDatabase:async()=>db};
+ mocks['@/store']={store:{dispatch:()=>({unwrap:async()=>undefined})}};
+ for(const [name,action] of [['accounts','fetchAccounts'],['transactions','fetchTransactions'],['budgets','fetchBudgets'],['loans','fetchLoans']])mocks[`@/store/slices/${name}Slice`]={[action]:()=>({})};
+ mocks['@/contexts/AppSettingsContext']={loadStoredAppSettings:async()=>({cloudSyncEnabled:true})};
+ mocks['@/services/AuxiliarySyncService']={default:{sync:async()=>({completedAt:Date.now(),rows:[]})}};
+ mocks['./NativeErrorReporter']={default:{reset(){}}};
+ mocks['firebase/auth']={getAuth:()=>({currentUser:{uid:'alice'}})};
+ mocks['firebase/firestore']={getFirestore:()=>({}),doc:(_,path)=>({path}),collection:(_,path)=>({path}),serverTimestamp:()=>1,onSnapshot:()=>()=>{},getDocs:async ref=>({docs:[...remote.entries()].filter(([path])=>path.startsWith(ref.path+'/')).map(([path,value])=>({id:path.split('/').at(-1),data:()=>structuredClone(value)}))}),runTransaction:async(_,fn)=>{
+   const writes=[];await fn({get:async ref=>({data:()=>structuredClone(remote.get(ref.path))}),set:(ref,value)=>writes.push([ref.path,value])});writes.forEach(([path,value])=>remote.set(path,structuredClone(value)));
+ }};
+ const {SyncService}=load('./services/SyncService.ts');await SyncService.syncNow('alice');
+ const accountPath=`users/alice/accounts/${a.id}`, cloudAccount=remote.get(accountPath);
+ const remoteTx={...transaction(a.id,10),id:'other-device-tx',updated_at:Date.now()};
+ remote.set('users/alice/transactions/other-device-tx',{...remoteTx,_revision:1,_operation:'other-device',_syncedAt:1});
+ remote.set(accountPath,{...cloudAccount,balance:90,_revision:cloudAccount._revision+1,_operation:'other-device'});
+ await db.createTransaction({...transaction(a.id,20),description:'This device'});
+ await SyncService.syncNow('alice');
+ assert.equal((await db.getTransactions()).length,3,'opening balance and both device expenses must be present');
+ assert.equal((await db.getAccounts())[0].balance,70,'balance must be rebuilt from the combined ledger');
+ assert.equal((await db.readMeta('sync_conflicts')).length,0);
+ assert.equal(Object.keys(await db.readMeta('outbox')).length,0);
+});
 
 test('legacy loans allocate remaining interest without treating it as principal',async()=>{
  const {db}=make(),a=await db.createAccount(account('A',1000));
