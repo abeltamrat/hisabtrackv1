@@ -34,3 +34,15 @@ test('settings lists account devices, activity and the SMS parsing role', () => 
   assert.match(devices, /subscribeAccountDevices/);
   assert.match(devices, /lastSeenAt/);
 });
+
+test('device list is isolated to the currently authenticated account', () => {
+  const settings = read('app/settings.tsx');
+  const devices = read('services/RemotePushService.ts');
+  const rules = read('firestore.rules');
+
+  assert.match(settings, /setAccountDevices\(\[\]\)/);
+  assert.match(settings, /AuthService\.getCurrentUser\(\)\?\.uid === subscribedUid/);
+  assert.match(devices, /getAuth\(getFirebaseApp\(\)\)\.currentUser\?\.uid === uid/);
+  assert.match(devices, /record\.ownerUid === uid/);
+  assert.match(rules, /d\.ownerUid == userId && d\.ownerUid == request\.auth\.uid/);
+});

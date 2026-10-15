@@ -24,10 +24,13 @@ service cloud.firestore {
       function validDevice(d) {
         return (d.expoPushToken == null || (d.expoPushToken is string && d.expoPushToken.size() <= 256
                  && d.expoPushToken.matches('^Expo(nent)?PushToken\\[[A-Za-z0-9_-]+\\]$')))
+          // Keep legacy 1.0.5 clients writable during the OTA rollout. New
+          // clients always stamp ownerUid and reject records without it.
+          && (!('ownerUid' in d) || (d.ownerUid == userId && d.ownerUid == request.auth.uid))
           && d.notificationsEnabled is bool && d.isActive is bool
           && d.installationId is string && d.installationId.size() <= 200
           && (!('lastError' in d) || d.lastError == null || (d.lastError is string && d.lastError.size() <= 500))
-          && d.keys().hasOnly(['installationId', 'expoPushToken', 'expoPushTokenPreview', 'notificationsEnabled',
+          && d.keys().hasOnly(['ownerUid', 'installationId', 'expoPushToken', 'expoPushTokenPreview', 'notificationsEnabled',
                               'isActive', 'platform', 'projectId', 'appVersion', 'appBuild',
                               'executionEnvironment', 'updatedAt', 'lastSeenAt', 'lastError']);
       }

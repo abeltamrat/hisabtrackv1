@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 
 import { generateUUID } from '@/utils/uuid';
 import { getFirebaseApp } from '@/config/firebaseApp';
+import { getAuth } from 'firebase/auth';
 import { collection, doc, getDoc, getFirestore, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
 import CloudProfileService from './CloudProfileService';
 
@@ -18,6 +19,7 @@ const PUSH_JOB_COLLECTION = 'push_jobs';
 type RemotePushStatus = 'unsupported' | 'denied' | 'registered' | 'error';
 
 export interface RemotePushDeviceRecord {
+  ownerUid: string;
   installationId: string;
   expoPushToken: string | null;
   notificationsEnabled: boolean;
@@ -88,12 +90,14 @@ export class RemotePushService {
   }
 
   private static buildDeviceRecord(
+    ownerUid: string,
     installationId: string,
     overrides: Partial<RemotePushDeviceRecord> = {}
   ): RemotePushDeviceRecord {
     const now = Date.now();
 
     return {
+      ownerUid,
       installationId,
       expoPushToken: null,
       notificationsEnabled: false,
@@ -156,7 +160,7 @@ export class RemotePushService {
       }
 
       if (finalStatus !== 'granted') {
-        await setDoc(ref, this.buildDeviceRecord(installationId, {
+        await setDoc(ref, this.buildDeviceRecord(uid, installationId, {
           notificationsEnabled: false,
           isActive: true,
           lastError: 'Notification permission not granted.',
@@ -174,7 +178,7 @@ export class RemotePushService {
       await AsyncStorage.setItem(LAST_TOKEN_KEY, expoPushToken);
 
       const now = Date.now();
-      await setDoc(ref, this.buildDeviceRecord(installationId, {
+      await setDoc(ref, this.buildDeviceRecord(uid, installationId, {
         expoPushToken,
         notificationsEnabled: true,
         isActive: true,
@@ -191,7 +195,7 @@ export class RemotePushService {
       };
     } catch (error: any) {
       const message = error?.message || 'Failed to register Expo push token.';
-      await setDoc(ref, this.buildDeviceRecord(installationId, {
+      await setDoc(ref, this.buildDeviceRecord(uid, installationId, {
         notificationsEnabled: false,
         isActive: true,
         lastError: message,
@@ -213,10 +217,11 @@ export class RemotePushService {
     const snapshot = await getDoc(ref);
     const now = Date.now();
     await setDoc(ref, snapshot.exists() ? {
+      ownerUid: uid,
       isActive: true,
       lastSeenAt: now,
       updatedAt: now,
-    } : this.buildDeviceRecord(installationId, { lastSeenAt: now, updatedAt: now }), { merge: true });
+    } : this.buildDeviceRecord(uid, installationId, { lastSeenAt: now, updatedAt: now }), { merge: true });
   }
 
   static async unregisterCurrentDevice(uid: string): Promise<void> {
@@ -226,11 +231,12 @@ export class RemotePushService {
     const snapshot = await getDoc(ref);
     const now = Date.now();
     await setDoc(ref, snapshot.exists() ? {
+      ownerUid: uid,
       expoPushToken: null,
       notificationsEnabled: false,
       isActive: false,
       updatedAt: now,
-    } : this.buildDeviceRecord(installationId, {
+    } : this.buildDeviceRecord(uid, installationId, {
       isActive: false,
       updatedAt: now,
     }), { merge: true });
@@ -356,24 +362,33 @@ export class RemotePushService {
     let records: RemotePushDeviceRecord[] = [];
     let selectedId: string | null = null;
     let currentId = '';
-    const emit = () => listener(records
+    const ownsActiveSession = () => getAuth(getFirebaseApp()).currentUser?.uid === uid;
+    const emit = () => {
+      if (disposed || !ownsActiveSession()) return;
+      listener(records
       .map(record => ({
         ...record,
         isCurrentDevice: record.installationId === currentId,
         smsParsingEnabled: record.installationId === selectedId,
       }))
       .sort((a, b) => Number(b.isCurrentDevice) - Number(a.isCurrentDevice) || b.lastSeenAt - a.lastSeenAt));
+    };
 
     void this.getInstallationId().then(async id => {
-      if (disposed) return;
+      if (disposed || !ownsActiveSession()) return;
       currentId = id;
       const firestore = await this.getFirestore();
+      if (disposed || !ownsActiveSession()) return;
       unsubscribeDevices = onSnapshot(collection(firestore, `users/${uid}/devices`), snapshot => {
+        if (disposed || !ownsActiveSession()) return;
         records = snapshot.docs.map(item => item.data() as RemotePushDeviceRecord)
-          .filter(record => typeof record.installationId === 'string' && typeof record.lastSeenAt === 'number');
+          .filter(record => record.ownerUid === uid
+            && typeof record.installationId === 'string'
+            && typeof record.lastSeenAt === 'number');
         emit();
       });
       unsubscribeSelection = CloudProfileService.subscribeSmsParserInstallationId(uid, idValue => {
+        if (disposed || !ownsActiveSession()) return;
         selectedId = idValue;
         emit();
       });

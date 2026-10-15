@@ -133,12 +133,15 @@ export default function SettingsScreen() {
   }, [user?.uid]);
 
   useEffect(() => {
+    setAccountDevices([]);
     if (!user?.uid) {
-      setAccountDevices([]);
       return;
     }
+    const subscribedUid = user.uid;
     void RemotePushService.markCurrentDeviceSeen(user.uid).catch(() => undefined);
-    return RemotePushService.subscribeAccountDevices(user.uid, setAccountDevices);
+    return RemotePushService.subscribeAccountDevices(subscribedUid, devices => {
+      if (AuthService.getCurrentUser()?.uid === subscribedUid) setAccountDevices(devices);
+    });
   }, [user?.uid]);
 
   const handleSavePhone = async () => {
