@@ -981,7 +981,7 @@ export default function SettingsScreen() {
           </View>
 
           <View className="gap-3">
-            {accountDevices.filter(device => device.isActive || device.isCurrentDevice).map(device => {
+            {accountDevices.map(device => {
               const online = device.isActive && Date.now() - device.lastSeenAt < 20 * 60 * 1000;
               const version = [device.appVersion && `v${device.appVersion}`, device.appBuild && `build ${device.appBuild}`].filter(Boolean).join(' | ');
               return (
@@ -994,6 +994,7 @@ export default function SettingsScreen() {
                       <View className="flex-row flex-wrap items-center">
                         <Text className="text-slate-900 dark:text-white font-bold mr-2">{device.deviceName || `${device.platform} ${t('deviceLabel')}`} | {device.installationId.slice(-6).toUpperCase()}</Text>
                         {device.isCurrentDevice && <Text className="text-sky-700 dark:text-sky-300 text-[10px] font-bold bg-sky-100 dark:bg-sky-900/40 px-2 py-1 rounded-full mr-1">{t('thisDevice')}</Text>}
+                        <Text className={`text-[10px] font-bold px-2 py-1 rounded-full mr-1 ${device.isActive ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40' : 'text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700'}`}>{device.isActive ? t('deviceLoggedIn') : t('deviceLoggedOut')}</Text>
                         {device.smsParsingEnabled && <Text className="text-emerald-700 dark:text-emerald-300 text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 px-2 py-1 rounded-full">{t('smsParsing')}</Text>}
                       </View>
                       {!!device.modelName && <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">Model: {device.modelName}</Text>}
@@ -1006,7 +1007,7 @@ export default function SettingsScreen() {
                 </View>
               );
             })}
-            {accountDevices.filter(device => device.isActive || device.isCurrentDevice).length === 0 && (
+            {accountDevices.length === 0 && (
               <Text className="text-slate-500 dark:text-slate-400 text-sm text-center py-4">{t('registeringDevice')}</Text>
             )}
           </View>
