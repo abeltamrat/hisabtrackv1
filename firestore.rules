@@ -30,7 +30,7 @@ service cloud.firestore {
           && d.notificationsEnabled is bool && d.isActive is bool
           && d.installationId is string && d.installationId.size() <= 200
           && (!('lastError' in d) || d.lastError == null || (d.lastError is string && d.lastError.size() <= 500))
-          && d.keys().hasOnly(['ownerUid', 'installationId', 'expoPushToken', 'expoPushTokenPreview', 'notificationsEnabled',
+          && d.keys().hasOnly(['ownerUid', 'installationId', 'deviceName', 'modelName', 'expoPushToken', 'expoPushTokenPreview', 'notificationsEnabled',
                               'isActive', 'platform', 'projectId', 'appVersion', 'appBuild',
                               'executionEnvironment', 'updatedAt', 'lastSeenAt', 'lastError']);
       }

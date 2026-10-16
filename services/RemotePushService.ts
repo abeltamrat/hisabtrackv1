@@ -21,6 +21,8 @@ type RemotePushStatus = 'unsupported' | 'denied' | 'registered' | 'error';
 export interface RemotePushDeviceRecord {
   ownerUid: string;
   installationId: string;
+  deviceName: string | null;
+  modelName: string | null;
   expoPushToken: string | null;
   notificationsEnabled: boolean;
   isActive: boolean;
@@ -99,6 +101,10 @@ export class RemotePushService {
     return {
       ownerUid,
       installationId,
+      deviceName: `${Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : 'Web'} device`,
+      modelName: Platform.OS === 'ios'
+        ? Constants.platform?.ios?.model ?? Constants.deviceName ?? null
+        : Constants.deviceName ?? null,
       expoPushToken: null,
       notificationsEnabled: false,
       isActive: true,
@@ -218,6 +224,10 @@ export class RemotePushService {
     const now = Date.now();
     await setDoc(ref, snapshot.exists() ? {
       ownerUid: uid,
+      deviceName: `${Platform.OS === 'ios' ? 'iOS' : 'Android'} device`,
+      modelName: Platform.OS === 'ios'
+        ? Constants.platform?.ios?.model ?? Constants.deviceName ?? null
+        : Constants.deviceName ?? null,
       isActive: true,
       lastSeenAt: now,
       updatedAt: now,

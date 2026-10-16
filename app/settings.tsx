@@ -992,10 +992,11 @@ export default function SettingsScreen() {
                     </View>
                     <View className="flex-1">
                       <View className="flex-row flex-wrap items-center">
-                        <Text className="text-slate-900 dark:text-white font-bold capitalize mr-2">{device.platform} {t('deviceLabel')} · {device.installationId.slice(-6).toUpperCase()}</Text>
+                        <Text className="text-slate-900 dark:text-white font-bold mr-2">{device.deviceName || `${device.platform} ${t('deviceLabel')}`} | {device.installationId.slice(-6).toUpperCase()}</Text>
                         {device.isCurrentDevice && <Text className="text-sky-700 dark:text-sky-300 text-[10px] font-bold bg-sky-100 dark:bg-sky-900/40 px-2 py-1 rounded-full mr-1">{t('thisDevice')}</Text>}
                         {device.smsParsingEnabled && <Text className="text-emerald-700 dark:text-emerald-300 text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 px-2 py-1 rounded-full">{t('smsParsing')}</Text>}
                       </View>
+                      {!!device.modelName && <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">Model: {device.modelName}</Text>}
                       {!!version && <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">{version}</Text>}
                       <Text className={`text-xs mt-1 font-semibold ${online ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
                         {online ? t('onlineNow') : `${t('lastActive')} ${formatBackgroundTime(device.lastSeenAt)}`}
