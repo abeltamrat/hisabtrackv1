@@ -60,6 +60,7 @@ export default function SettingsScreen() {
   const [resetAccountError, setResetAccountError] = useState<string | null>(null);
   const isEmailPasswordUser = AccountResetService.isEmailPasswordUser();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const settingsScrollRef = useRef<ScrollView>(null);
 
   // App lock / security
   const {
@@ -924,19 +925,29 @@ export default function SettingsScreen() {
             <FontAwesome name="arrow-left" size={isVerySmallFont ? 16 : 18} color="#fff" />
           </TouchableOpacity>
           <Text className={`text-white ${headerTitleClass} font-bold`}>{t('settings')}</Text>
-          <View className={`${isVerySmallFont ? 'w-9 h-9' : 'w-10 h-10'}`} />
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={t('devices')}
+            onPress={() => {
+              setSelectedSettingsCategory('devices');
+              settingsScrollRef.current?.scrollTo({ y: 0, animated: true });
+            }}
+            className={`${isVerySmallFont ? 'w-9 h-9' : 'w-10 h-10'} bg-sky-400/30 rounded-xl justify-center items-center`}
+          >
+            <FontAwesome name="mobile" size={isVerySmallFont ? 17 : 20} color="#fff" />
+          </TouchableOpacity>
         </View>
       </LinearGradient>
 
-      <ScrollView className="flex-1 px-6 -mt-6" showsVerticalScrollIndicator={false}>
+      <ScrollView ref={settingsScrollRef} className="flex-1 px-6 -mt-6" showsVerticalScrollIndicator={false}>
 
         <View className="bg-white dark:bg-slate-800 rounded-3xl p-4 mb-6 shadow-lg border border-slate-100 dark:border-slate-700" style={{ elevation: 4 }}>
           <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">Settings categories</Text>
           <Text className="text-slate-500 dark:text-slate-400 text-xs mb-3">Choose a category to keep this screen focused.</Text>
           <View className="flex-row flex-wrap">
             {[
-              { id: 'personal', label: 'Personal', icon: 'user', color: '#6366f1' },
               { id: 'devices', label: t('devices'), icon: 'mobile', color: '#0ea5e9' },
+              { id: 'personal', label: 'Personal', icon: 'user', color: '#6366f1' },
               { id: 'ai', label: 'AI & SMS', icon: 'magic', color: '#14b8a6' },
               { id: 'notifications', label: 'Notifications', icon: 'bell', color: '#f59e0b' },
               { id: 'data', label: 'Data & Access', icon: 'database', color: '#10b981' },
@@ -944,9 +955,9 @@ export default function SettingsScreen() {
             ].map((category) => {
               const active = selectedSettingsCategory === category.id;
               return (
-                <TouchableOpacity key={category.id} onPress={() => setSelectedSettingsCategory(category.id as typeof selectedSettingsCategory)} className={`flex-row items-center px-3 py-2.5 rounded-xl mr-2 mb-2 border ${active ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-400' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}>
+                <TouchableOpacity key={category.id} onPress={() => setSelectedSettingsCategory(category.id as typeof selectedSettingsCategory)} className={`flex-row items-center px-3 py-2.5 rounded-xl mr-2 mb-2 border ${active ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-400' : category.id === 'devices' ? 'bg-sky-50 dark:bg-sky-900/20 border-sky-300 dark:border-sky-700' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}>
                   <FontAwesome name={category.icon as any} size={13} color={active ? category.color : '#94a3b8'} />
-                  <Text className={`text-xs font-bold ml-2 ${active ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>{category.label}</Text>
+                  <Text className={`text-xs font-bold ml-2 ${active ? 'text-indigo-700 dark:text-indigo-300' : category.id === 'devices' ? 'text-sky-700 dark:text-sky-300' : 'text-slate-600 dark:text-slate-400'}`}>{category.label}</Text>
                 </TouchableOpacity>
               );
             })}
