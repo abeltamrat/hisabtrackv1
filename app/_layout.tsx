@@ -408,6 +408,7 @@ function ThemedStack() {
         <Stack.Screen name="draft-transactions" options={{ headerShown: false }} />
         <Stack.Screen name="manage-sms-rules" options={{ headerShown: false }} />
         <Stack.Screen name="smart-review" options={{ headerShown: false }} />
+        <Stack.Screen name="digital-auditor" options={{ headerShown: false }} />
         <Stack.Screen name="smart-input" options={{ headerShown: false }} />
         <Stack.Screen name="aiassistant" options={{ headerShown: false }} />
         <Stack.Screen name="about" options={{ headerShown: false }} />
