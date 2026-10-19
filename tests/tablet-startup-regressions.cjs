@@ -33,10 +33,12 @@ test('optional dashboard analysis waits until startup interactions have settled'
   assert.match(dashboard.slice(deferred, dashboard.indexOf('}, 15_000);', mela) + 12), /15_000/);
 });
 
-test('opening the dashboard never starts an unconditional native SMS inbox scan', () => {
+test('opening the dashboard defers its checkpointed SMS reconciliation', () => {
   const sms = read('components/SMSAutoSync.tsx');
   assert.doesNotMatch(sms, /setTimeout\(performSync/);
   assert.doesNotMatch(sms, /setInterval\(performSync/);
   assert.doesNotMatch(sms, /nextState === 'active'\) performSync/);
   assert.match(sms, /pending > 0\) return performSync\(\)/);
+  assert.match(sms, /InteractionManager\.runAfterInteractions/);
+  assert.match(sms, /await performSync\(true\)/);
 });

@@ -49,3 +49,18 @@ test('foreground fallback keeps the receiver configured and consumes queued arri
   assert.match(autoSync, /NativeSmsReceiver\.subscribe/);
   assert.doesNotMatch(autoSync, /return \(\) => \{ void NativeSmsReceiver\.configureSenders\(\[\]\)/);
 });
+
+test('app startup reconciles every SMS account from its durable checkpoint', () => {
+  const autoSync = read('components/SMSAutoSync.tsx');
+  const syncService = read('services/SMSSyncService.ts');
+
+  assert.match(autoSync, /InteractionManager\.runAfterInteractions/,
+    'the initial screen must render before inbox reconciliation begins');
+  assert.match(autoSync, /await NativeSmsReceiver\.consumePendingSignals\(\)/);
+  assert.match(autoSync, /await performSync\(true\)/,
+    'startup must scan even when the native receiver has no queued signal');
+  assert.match(autoSync, /incrementalFromCheckpoint[\s\S]*syncAllAccountsBackground\(\)/);
+  assert.match(syncService, /getLastSuccessfulSync\(account\.id\)/);
+  assert.match(syncService, /scanStartedAt - 60000/,
+    'the checkpoint must overlap the previous scan so boundary SMS are not missed');
+});

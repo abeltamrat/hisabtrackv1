@@ -1,7 +1,7 @@
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import React, { useEffect, useRef } from 'react';
-import { AppState, Linking, Platform } from 'react-native';
+import { AppState, InteractionManager, Linking, Platform } from 'react-native';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { SMSSyncService } from '@/services/SMSSyncService';
@@ -19,9 +19,8 @@ const LEGACY_SMS_BACKGROUND_TASK = 'SMS_BACKGROUND_SYNC';
 /**
  * Global headless component: consumes signals from the native SMS receiver and
  * sends a push notification with Record / Ignore / Later actions for each new
- * draft. A full inbox scan is deliberately not started on mount: older Android
- * devices can kill the process while the legacy SMS module enumerates a large
- * inbox. Manual sync and BackgroundService still provide catch-up scans.
+ * draft. Startup reconciliation reads only from each account's last successful
+ * checkpoint (30 days on the first run), after the initial UI interactions.
  */
 export const SMSAutoSync: React.FC = () => {
   const { user } = useAuth();
@@ -45,9 +44,11 @@ export const SMSAutoSync: React.FC = () => {
   const permissionPromptedRef = useRef(false);
   const smsPermissionRef = useRef<boolean | null>(null);
   const smsParsingSelectedRef = useRef(false);
+  const startupReconciliationRef = useRef<Promise<void> | null>(null);
   useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
   useEffect(() => { currencyRef.current = ledgerCurrency; }, [ledgerCurrency]);
   useEffect(() => { smsParsingSelectedRef.current = smsParsingSelected === true; }, [smsParsingSelected]);
+  useEffect(() => { startupReconciliationRef.current = null; }, [user?.uid]);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || !user?.uid) {
@@ -61,23 +62,49 @@ export const SMSAutoSync: React.FC = () => {
     return unsubscribe;
   }, [user?.uid]);
 
-  const performSync = React.useCallback(async () => {
-    if (!hasSmsRef.current || !smsParsingSelectedRef.current) return;
+  const performSync = React.useCallback(async (incrementalFromCheckpoint = false) => {
+    if (!hasSmsRef.current || !smsParsingSelectedRef.current) return false;
     try {
-      // A receiver signal always refers to a newly arrived message. Keep this
-      // catch-up scan small so phones with a large inbox are not overwhelmed.
-      const result = await SMSSyncService.syncAllAccountsBackground({
-        historicalDays: 2,
-        maxMessagesPerSender: 50,
-      });
+      // Receiver signals use a small recent window. Startup uses the durable
+      // per-account checkpoint so SMS missed while the app was stopped are not
+      // left behind, including messages older than that recent window.
+      const result = incrementalFromCheckpoint
+        ? await SMSSyncService.syncAllAccountsBackground()
+        : await SMSSyncService.syncAllAccountsBackground({
+            historicalDays: 2,
+            maxMessagesPerSender: 50,
+          });
       const pending = result.drafts.filter(d => d.status === 'PENDING');
       for (const draft of pending) {
         await NotificationService.showSMSDraftNotification(draft, currencyRef.current);
       }
+      return !result.failed;
     } catch (err) {
       console.error('[SMSAutoSync] Auto-sync failed:', err);
+      return false;
     }
   }, []);
+
+  const reconcileStartup = React.useCallback((): Promise<void> => {
+    if (startupReconciliationRef.current) return startupReconciliationRef.current;
+    if (!hasSmsRef.current || !smsParsingSelectedRef.current) return Promise.resolve();
+
+    const reconciliation = (async () => {
+      const granted = await SMSSyncService.hasReadSmsPermission();
+      smsPermissionRef.current = granted;
+      if (!granted) {
+        startupReconciliationRef.current = null;
+        return;
+      }
+      // Clear any native receipt markers first. The checkpoint scan below is the
+      // authoritative catch-up and still runs when no receipt marker was queued.
+      await NativeSmsReceiver.consumePendingSignals().catch(() => 0);
+      const completed = await performSync(true);
+      if (!completed) startupReconciliationRef.current = null;
+    })();
+    startupReconciliationRef.current = reconciliation;
+    return reconciliation;
+  }, [performSync]);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || smsParsingSelected !== true || !accountsLoaded || !hasSmsAccounts || permissionPromptedRef.current) return;
@@ -92,7 +119,7 @@ export const SMSAutoSync: React.FC = () => {
       smsPermissionRef.current = enabled;
       if (enabled) {
         await NotificationService.requestPermissions();
-        await performSync();
+        await reconcileStartup();
         return;
       }
       Alert.alert(
@@ -105,7 +132,7 @@ export const SMSAutoSync: React.FC = () => {
       );
       if (user?.uid) await RemotePushService.setCurrentDeviceSmsParsing(user.uid, false).catch(() => undefined);
     }).catch(() => undefined);
-  }, [accountsLoaded, hasSmsAccounts, performSync, smsParsingSelected, user?.uid]);
+  }, [accountsLoaded, hasSmsAccounts, reconcileStartup, smsParsingSelected, user?.uid]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -149,9 +176,13 @@ export const SMSAutoSync: React.FC = () => {
     const consumeSignals = () => NativeSmsReceiver.consumePendingSignals()
       .then(pending => { if (pending > 0) return performSync(); })
       .catch(() => undefined);
-    void consumeSignals();
+    const startupTask = InteractionManager.runAfterInteractions(() => {
+      void reconcileStartup();
+    });
     const unsubscribeFromSms = NativeSmsReceiver.subscribe(() => {
-      void consumeSignals();
+      // Never let a small recent-window scan advance the durable checkpoint
+      // before the startup catch-up has inspected all messages since that point.
+      void reconcileStartup().then(consumeSignals);
     });
 
     const subscription = AppState.addEventListener('change', (nextState: string) => {
@@ -167,10 +198,11 @@ export const SMSAutoSync: React.FC = () => {
     });
 
     return () => {
+      startupTask.cancel();
       subscription.remove();
       unsubscribeFromSms();
     };
-  }, [accountsLoaded, smsParsingSelected, smsSendersKey, performSync]);
+  }, [accountsLoaded, smsParsingSelected, smsSendersKey, performSync, reconcileStartup]);
 
   return null;
 };
