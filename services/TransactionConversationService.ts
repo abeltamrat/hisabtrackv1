@@ -184,6 +184,79 @@ export function createTransactionConversation(): TransactionConversationState {
   return { messages: [{ id: id('assistant'), role: 'assistant', text: question, createdAt: Date.now() }], proposal, candidates: [], pendingField: 'type', question, ready: false };
 }
 
+export function createSmsTransactionConversation(
+  draft: DraftTransaction,
+  scope: TransactionConversationScope,
+  initial?: Partial<Pick<ConversationProposal, 'type' | 'accountId' | 'toAccountId' | 'category' | 'recipient' | 'description' | 'tags' | 'splits'>>,
+): TransactionConversationState {
+  const type = initial?.type || (draft.is_transfer ? 'TRANSFER' : draft.type);
+  const category = /^(?:other|uncategorized|unknown)$/i.test(initial?.category || draft.category) ? undefined : (initial?.category || draft.category);
+  const accountId = initial?.accountId || draft.transfer_from_account_id || draft.account_id;
+  const evidence: TransactionEvidenceCandidate = {
+    id: draft.id,
+    kind: 'SMS',
+    amount: draft.amount,
+    date: draft.date,
+    type: draft.type,
+    accountId: draft.account_id,
+    accountName: scope.accounts.find(item => item.id === draft.account_id)?.name,
+    category: draft.category,
+    recipient: draft.sender_receiver,
+    description: draft.description,
+    score: 100,
+    reasons: ['selected SMS evidence'],
+  };
+  const proposal: ConversationProposal = {
+    type,
+    amount: draft.amount,
+    accountId,
+    toAccountId: (initial?.toAccountId || draft.transfer_to_account_id) !== accountId ? (initial?.toAccountId || draft.transfer_to_account_id) : undefined,
+    category: type === 'TRANSFER' ? undefined : category,
+    recipient: initial?.recipient ?? draft.sender_receiver,
+    description: initial?.description || draft.description,
+    date: draft.date,
+    tags: initial?.tags || [],
+    splits: initial?.splits || draft.suggested_splits || [],
+    provenance: { type: 'SMS', amount: 'SMS', account: 'SMS', recipient: 'SMS', category: category ? 'SMS' : undefined, date: 'SMS' },
+    skipped: ['evidence'],
+    selectedEvidence: evidence,
+  };
+  const next = nextConversationQuestion(proposal, []);
+  const opening = `I am using the selected ${scope.accounts.find(item => item.id === draft.account_id)?.name || 'bank'} SMS for ${draft.amount} ${scope.currency}. Its amount, date, fees and reference stay unchanged. ${next.question}`;
+  return {
+    messages: [{ id: id('assistant'), role: 'assistant', text: opening, createdAt: Date.now() }],
+    proposal,
+    candidates: [],
+    pendingField: next.pendingField,
+    question: next.question,
+    ready: next.ready,
+  };
+}
+
+/** Reassert immutable bank evidence after every conversational turn in SMS confirmation. */
+export function preserveSmsConversationEvidence(state: TransactionConversationState, draft: DraftTransaction) {
+  const proposal: ConversationProposal = {
+    ...state.proposal,
+    amount: draft.amount,
+    date: draft.date,
+    selectedEvidence: state.proposal.selectedEvidence,
+    provenance: { ...state.proposal.provenance, amount: 'SMS', date: 'SMS' },
+  };
+  if (proposal.type !== 'TRANSFER') {
+    proposal.accountId = draft.account_id;
+    proposal.toAccountId = undefined;
+    proposal.provenance.account = 'SMS';
+  } else if (proposal.toAccountId === proposal.accountId) {
+    proposal.toAccountId = undefined;
+    delete proposal.provenance.destination;
+  }
+  const next = nextConversationQuestion(proposal, []);
+  const messages = state.messages.length && state.messages[state.messages.length - 1].role === 'assistant'
+    ? [...state.messages.slice(0, -1), { ...state.messages[state.messages.length - 1], text: next.question }]
+    : state.messages;
+  return { ...state, proposal, candidates: [], pendingField: next.pendingField, question: next.question, ready: next.ready, messages };
+}
+
 function applyFields(proposal: ConversationProposal, fields: AIFields, scope: TransactionConversationScope, source: ProposalSource) {
   const next: ConversationProposal = { ...proposal, tags: [...proposal.tags], splits: [...proposal.splits], skipped: [...proposal.skipped], provenance: { ...proposal.provenance } };
   const type = explicitType(fields.type || '') || (['INCOME', 'EXPENSE', 'TRANSFER'].includes(String(fields.type).toUpperCase()) ? String(fields.type).toUpperCase() as TransactionType : undefined);

@@ -18,6 +18,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
+import SmsConversationAssistant from '@/components/smart-input/SmsConversationAssistant';
 import { useDispatch, useSelector } from 'react-redux';
 import { formatTagInput, mergeSplitTags, parseTagInput, pushTagsIntoSplits } from '@/utils/tags';
 import { commonSplitProject, pushProjectIntoSplits } from '@/utils/projectFinance';
@@ -115,6 +116,7 @@ export default function DraftTransactionsScreen() {
   const [selectedDraft, setSelectedDraft] = useState<DraftTransaction | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showSmsAssistant, setShowSmsAssistant] = useState(false);
 
   // Edit states for confirmation
   const [editedRecipient, setEditedRecipient] = useState('');
@@ -465,6 +467,7 @@ export default function DraftTransactionsScreen() {
 
   const openConfirmModal = (draft: DraftTransaction) => {
     setSelectedDraft(draft);
+    setShowSmsAssistant(false);
     setEditedRecipient(draft.sender_receiver || '');
     setSelectedPerson(undefined);
     setSelectedPersonId(draft.person_id);
@@ -1606,7 +1609,7 @@ export default function DraftTransactionsScreen() {
       {/* Confirmation & Learning Modal */}
       <FormSheet
         visible={showConfirmModal}
-        onClose={() => setShowConfirmModal(false)}
+        onClose={() => { setShowConfirmModal(false); setShowSmsAssistant(false); }}
         cardClassName="shadow-2xl"
         accessibilityLabel="Confirm transaction"
       >
@@ -1615,7 +1618,7 @@ export default function DraftTransactionsScreen() {
 
             <View className="flex-row justify-between items-center mb-6">
               <Text className="text-slate-900 dark:text-white text-2xl font-bold">Confirm Transaction</Text>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowConfirmModal(false)}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => { setShowConfirmModal(false); setShowSmsAssistant(false); }}>
                 <FontAwesome name="times-circle" size={24} color="#94a3b8" />
               </TouchableOpacity>
             </View>
@@ -1636,6 +1639,53 @@ export default function DraftTransactionsScreen() {
                   </Text>
                 </View>
               </View>
+
+              {selectedDraft && !showSmsAssistant && <TouchableOpacity accessibilityRole="button" onPress={() => setShowSmsAssistant(true)} className="mb-5 flex-row items-center rounded-2xl border border-indigo-300 bg-indigo-50 p-4 dark:border-indigo-800 dark:bg-indigo-950/30">
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-indigo-600"><FontAwesome name="comments" size={17} color="white" /></View>
+                <View className="ml-3 flex-1"><Text className="font-bold text-indigo-950 dark:text-indigo-100">Explain this SMS with Hisab</Text><Text className="mt-0.5 text-xs text-indigo-800 dark:text-indigo-300">Answer short AI-guided questions and apply the result to this form.</Text></View>
+                <FontAwesome name="chevron-right" size={13} color="#6366f1" />
+              </TouchableOpacity>}
+
+              {selectedDraft && showSmsAssistant && <SmsConversationAssistant
+                key={selectedDraft.id}
+                draft={selectedDraft}
+                accounts={accounts}
+                categories={categories}
+                transactions={transactions}
+                smsDrafts={drafts}
+                initial={{
+                  type: editedType,
+                  accountId: transferSourceAccountId || selectedDraft.account_id,
+                  toAccountId: transferDestinationAccountId || undefined,
+                  category: editedCategory,
+                  recipient: editedRecipient,
+                  description: editedDescription,
+                  tags: parseTagInput(tagsInput) || [],
+                  splits: splitEnabled ? splits : [],
+                }}
+                formatCurrency={formatCurrency}
+                onClose={() => setShowSmsAssistant(false)}
+                onApply={proposal => {
+                  if (proposal.type) setEditedType(proposal.type);
+                  if (proposal.type === 'TRANSFER') {
+                    setSplitEnabled(false);
+                    if (proposal.accountId) setTransferSourceAccountId(proposal.accountId);
+                    if (proposal.toAccountId) setTransferDestinationAccountId(proposal.toAccountId);
+                  }
+                  if (proposal.recipient !== undefined) {
+                    setEditedRecipient(proposal.recipient);
+                    if (selectedPersonId && normalizeRecipient(proposal.recipient) !== normalizeRecipient(selectedPerson?.displayName || selectedDraft.person_name_snapshot)) {
+                      setSelectedPerson(undefined); setSelectedPersonId(undefined);
+                    }
+                  }
+                  if (proposal.description) setEditedDescription(proposal.description);
+                  if (proposal.category && proposal.type !== 'TRANSFER') changeMainCategory(proposal.category);
+                  if (proposal.splits.length > 1 && proposal.type !== 'TRANSFER') { setSplitEnabled(true); setSplits(proposal.splits); }
+                  if (proposal.tags.length) setTagsInput(formatTagInput(proposal.tags));
+                  setShowSmsAssistant(false);
+                }}
+              />}
+
 
               <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 mb-5">
                 <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-2 uppercase">Record as</Text>

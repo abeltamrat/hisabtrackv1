@@ -124,3 +124,25 @@ test('conversation UI routes through existing review screens and does not write 
   assert.doesNotMatch(source, /addTransaction|dispatch\s*\(/);
   assert.match(source, /Nothing is added to your ledger until you review and save/);
 });
+
+test('SMS conversation locks bank evidence and starts by clarifying classification', async () => {
+  const selectedSms = sms('selected', { category: 'Other', amount: 500, date: now });
+  let state = service.createSmsTransactionConversation(selectedSms, scope, { type: 'EXPENSE', accountId: 'cbe' });
+  assert.equal(state.proposal.selectedEvidence.id, selectedSms.id);
+  assert.equal(state.pendingField, 'category');
+  state = await service.continueTransactionConversation(state, 'Food 9000 yesterday', scope, { useAI: false, keys: {} });
+  state = service.preserveSmsConversationEvidence(state, selectedSms);
+  assert.equal(state.proposal.amount, 500, 'conversation cannot rewrite the bank amount');
+  assert.equal(state.proposal.date, now, 'conversation cannot rewrite the bank timestamp');
+  assert.equal(state.proposal.accountId, 'cbe', 'a normal SMS keeps its bank account');
+  assert.equal(state.proposal.category, 'Food');
+});
+
+test('SMS confirmation exposes the conversation without adding a second save path', () => {
+  const screen = fs.readFileSync(path.join(root, 'app/draft-transactions.tsx'), 'utf8');
+  const panel = fs.readFileSync(path.join(root, 'components/smart-input/SmsConversationAssistant.tsx'), 'utf8');
+  assert.match(screen, /Explain this SMS with Hisab/);
+  assert.match(screen, /<SmsConversationAssistant/);
+  assert.match(panel, /Applying answers does not record the transaction/);
+  assert.doesNotMatch(panel, /addTransaction|markAsRecorded/);
+});

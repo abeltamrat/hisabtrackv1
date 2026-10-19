@@ -3,6 +3,8 @@
 Status: Phase 1 implementation underway. The typed conversation and evidence-review foundation is implemented; native recording remains reserved for a future APK.
 Prepared: 2026-10-19.
 
+Implemented in Phase 1: `Talk to Hisab` is available from Smart Input and as `Explain this SMS with Hisab` inside SMS confirmation. The SMS flow locks the parsed bank amount, date, fees, reference, raw message and source account while conversational answers update only the review form.
+
 ## Outcome
 
 Let a user describe money movements naturally, answer short follow-up questions, and review transactions grounded in their accounts, People, categories, projects, and parsed SMS. The assistant helps record and classify activity; it does not initiate bank payments.
