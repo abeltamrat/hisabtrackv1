@@ -1,6 +1,6 @@
 {
   "name": "hisabtrackv1",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "version": "1.0.5",
   "scripts": {
     "start": "expo start",

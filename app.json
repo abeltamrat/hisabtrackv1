@@ -35,7 +35,8 @@
         "REQUEST_INSTALL_PACKAGES",
         "READ_CONTACTS",
         "READ_SMS",
-        "RECEIVE_SMS"
+        "RECEIVE_SMS",
+        "POST_NOTIFICATIONS"
       ],
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",

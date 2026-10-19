@@ -2,6 +2,7 @@ import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 interface NativeSmsReceiverModule {
   configureSenders(senders: string[]): Promise<number>;
+  configureScope?(scope: string): Promise<boolean>;
   consumePendingSignals(): Promise<string>;
   addListener(eventName: string): void;
   removeListeners(count: number): void;
@@ -16,6 +17,11 @@ export const NativeSmsReceiver = {
     if (Platform.OS !== 'android' || !nativeModule) return 0;
     const unique = [...new Set(senders.map(sender => sender.trim()).filter(Boolean))];
     return nativeModule.configureSenders(unique);
+  },
+
+  async configureScope(scope: string | null): Promise<boolean> {
+    if (Platform.OS !== 'android' || !nativeModule?.configureScope) return false;
+    return nativeModule.configureScope(scope?.trim() || '');
   },
 
   async consumePendingSignals(): Promise<number> {

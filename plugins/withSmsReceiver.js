@@ -62,8 +62,9 @@ class HisabSmsReceiver : BroadcastReceiver() {
     }
 
     if (matched) {
-      HisabSmsModule.emitSmsReceived()
+      val deliveredToReact = HisabSmsModule.emitSmsReceived()
       HisabSmsNotifications.showCaptured(context)
+      if (!deliveredToReact) HisabSmsHeadlessService.start(context)
     }
   }
 }
@@ -117,6 +118,7 @@ internal object SmsReceiverStore {
   private const val PREFS = "hisab_sms_receiver"
   private const val SENDERS = "senders"
   private const val PENDING = "pending"
+  private const val SCOPE = "scope"
   private const val MAX_PENDING = 100
 
   fun normalizeSender(value: String): String = value
@@ -134,6 +136,18 @@ internal object SmsReceiverStore {
       .edit()
       .putStringSet(SENDERS, senders)
       .apply()
+  }
+
+  fun getScope(context: Context): String =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getString(SCOPE, "")
+      .orEmpty()
+
+  fun setScope(context: Context, scope: String) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .putString(SCOPE, scope.trim())
+      .commit()
   }
 
   @Synchronized
@@ -218,6 +232,16 @@ class HisabSmsModule(context: ReactApplicationContext) : ReactContextBaseJavaMod
   }
 
   @ReactMethod
+  fun configureScope(scope: String, promise: Promise) {
+    try {
+      SmsReceiverStore.setScope(reactApplicationContext, scope)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("SMS_RECEIVER_SCOPE", error)
+    }
+  }
+
+  @ReactMethod
   fun consumePendingSignals(promise: Promise) {
     try {
       promise.resolve(SmsReceiverStore.consume(reactApplicationContext))
@@ -232,12 +256,55 @@ class HisabSmsModule(context: ReactApplicationContext) : ReactContextBaseJavaMod
   companion object {
     private var reactContext: ReactApplicationContext? = null
 
-    fun emitSmsReceived() {
-      val context = reactContext ?: return
-      if (!context.hasActiveReactInstance()) return
+    fun emitSmsReceived(): Boolean {
+      val context = reactContext ?: return false
+      if (!context.hasActiveReactInstance()) return false
       context
         .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
         .emit("HisabSmsReceived", Arguments.createMap())
+      return true
+    }
+  }
+}
+`;
+
+const headlessServiceSource = `package ${PACKAGE_NAME}.sms
+
+import android.content.Context
+import android.content.Intent
+import com.facebook.react.HeadlessJsTaskService
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.jstasks.HeadlessJsTaskConfig
+
+class HisabSmsHeadlessService : HeadlessJsTaskService() {
+  override fun getTaskConfig(intent: Intent?): HeadlessJsTaskConfig? {
+    val scope = intent?.getStringExtra(EXTRA_SCOPE).orEmpty()
+    if (scope.isBlank()) return null
+    val payload = Arguments.createMap().apply {
+      putString("scope", scope)
+      putDouble("receivedAt", intent?.getLongExtra(EXTRA_RECEIVED_AT, 0L)?.toDouble() ?: 0.0)
+    }
+    return HeadlessJsTaskConfig(TASK_NAME, payload, 90_000L, true)
+  }
+
+  companion object {
+    private const val TASK_NAME = "HisabSmsHeadlessTask"
+    private const val EXTRA_SCOPE = "scope"
+    private const val EXTRA_RECEIVED_AT = "receivedAt"
+
+    fun start(context: Context) {
+      val scope = SmsReceiverStore.getScope(context)
+      if (scope.isBlank()) return
+      val intent = Intent(context, HisabSmsHeadlessService::class.java).apply {
+        putExtra(EXTRA_SCOPE, scope)
+        putExtra(EXTRA_RECEIVED_AT, System.currentTimeMillis())
+      }
+      try {
+        HeadlessJsTaskService.acquireWakeLockNow(context)
+        context.startService(intent)
+      } catch (_: Exception) {
+        // The receipt signal remains queued for the foreground fallback.
+      }
     }
   }
 }
@@ -294,6 +361,17 @@ function withSmsManifest(config) {
         }],
       });
     }
+    application.service = application.service || [];
+    const serviceName = `.${'sms.HisabSmsHeadlessService'}`;
+    if (!application.service.some((service) => service.$?.['android:name'] === serviceName)) {
+      application.service.push({
+        $: {
+          'android:name': serviceName,
+          'android:enabled': 'true',
+          'android:exported': 'false',
+        },
+      });
+    }
     return mod;
   });
 }
@@ -307,6 +385,7 @@ function withSmsSources(config) {
     fs.writeFileSync(path.join(sourceDir, 'HisabBootReceiver.kt'), bootReceiverSource);
     fs.writeFileSync(path.join(sourceDir, 'HisabSmsModule.kt'), moduleSource);
     fs.writeFileSync(path.join(sourceDir, 'HisabSmsPackage.kt'), packageSource);
+    fs.writeFileSync(path.join(sourceDir, 'HisabSmsHeadlessService.kt'), headlessServiceSource);
 
     const applicationPath = path.join(androidRoot, 'app', 'src', 'main', 'java', ...PACKAGE_NAME.split('.'), 'MainApplication.kt');
     let application = fs.readFileSync(applicationPath, 'utf8');

@@ -17,7 +17,9 @@ test('one account-level device controls automatic SMS parsing', () => {
   assert.match(devices, /setCurrentDeviceSmsParsing/);
   assert.match(devices, /refreshCurrentDeviceSmsParser/);
   assert.match(autoSync, /smsParsingSelected/);
-  assert.match(autoSync, /configureSenders\(accountsLoaded \? smsSenders : \[\]\)/);
+  assert.match(autoSync, /configureSenders\(smsSenders\)/);
+  assert.match(autoSync, /configureScope\(user\?\.uid \|\| null\)/);
+  assert.doesNotMatch(autoSync, /return \(\) => \{ void NativeSmsReceiver\.configureSenders\(\[\]\)/);
   assert.match(autoSync, /!hasSmsRef\.current \|\| !smsParsingSelectedRef\.current/);
   assert.match(background, /thisDeviceParsesSms/);
 });

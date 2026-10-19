@@ -25,7 +25,9 @@ const LEGACY_SMS_BACKGROUND_TASK = 'SMS_BACKGROUND_SYNC';
  */
 export const SMSAutoSync: React.FC = () => {
   const { user } = useAuth();
-  const [smsParsingSelected, setSmsParsingSelected] = React.useState(false);
+  // null means the account-level device choice has not loaded yet. Preserve the
+  // receiver's persisted configuration during that short startup window.
+  const [smsParsingSelected, setSmsParsingSelected] = React.useState<boolean | null>(null);
   const accountsLoaded = useSelector((state: RootState) => state.accounts.status === 'succeeded');
   const hasSmsAccounts = useSelector((state: RootState) =>
     state.accounts.items.some(a => !!a.sms_number)
@@ -45,7 +47,7 @@ export const SMSAutoSync: React.FC = () => {
   const smsParsingSelectedRef = useRef(false);
   useEffect(() => { hasSmsRef.current = hasSmsAccounts; }, [hasSmsAccounts]);
   useEffect(() => { currencyRef.current = ledgerCurrency; }, [ledgerCurrency]);
-  useEffect(() => { smsParsingSelectedRef.current = smsParsingSelected; }, [smsParsingSelected]);
+  useEffect(() => { smsParsingSelectedRef.current = smsParsingSelected === true; }, [smsParsingSelected]);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || !user?.uid) {
@@ -78,7 +80,7 @@ export const SMSAutoSync: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS !== 'android' || !smsParsingSelected || !accountsLoaded || !hasSmsAccounts || permissionPromptedRef.current) return;
+    if (Platform.OS !== 'android' || smsParsingSelected !== true || !accountsLoaded || !hasSmsAccounts || permissionPromptedRef.current) return;
     permissionPromptedRef.current = true;
     void SMSSyncService.hasReadSmsPermission().then(async granted => {
       smsPermissionRef.current = granted;
@@ -107,20 +109,27 @@ export const SMSAutoSync: React.FC = () => {
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
+    if (smsParsingSelected === null) return;
     // Emptying this list on logout/session reset prevents one user's configured
     // bank senders or receipt signals from carrying into the next local session.
     if (!smsParsingSelected) {
       void NativeSmsReceiver.configureSenders([]).catch(() => undefined);
-      return () => { void NativeSmsReceiver.configureSenders([]).catch(() => undefined); };
+      void NativeSmsReceiver.configureScope(null).catch(() => undefined);
+      return;
     }
-    void NativeSmsReceiver.configureSenders(accountsLoaded ? smsSenders : [])
-      .catch(() => undefined);
-    return () => { void NativeSmsReceiver.configureSenders([]).catch(() => undefined); };
-  }, [accountsLoaded, smsParsingSelected, smsSendersKey]);
+    if (!accountsLoaded) return;
+    // Do not clear the native configuration from an effect cleanup. Cleanup
+    // and the next async configure call can finish out of order, leaving the
+    // receiver with an empty allowlist until the app is opened again.
+    void Promise.all([
+      NativeSmsReceiver.configureScope(user?.uid || null),
+      NativeSmsReceiver.configureSenders(smsSenders),
+    ]).catch(() => undefined);
+  }, [accountsLoaded, smsParsingSelected, smsSendersKey, user?.uid]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    if (!accountsLoaded || !smsParsingSelected) return;
+    if (!accountsLoaded || smsParsingSelected !== true) return;
 
     // Unregister the background task older app versions registered here;
     // leaving it active caused double syncs and duplicate notifications

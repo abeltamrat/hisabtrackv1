@@ -1097,8 +1097,12 @@ test('Android receives configured bank SMS while the app process is stopped', ()
     'an SMS-enabled account must ask for missing live receiver permission');
   assert.match(autoSync, /NotificationService\.requestPermissions\(\)/,
     'Android 13+ must be allowed to display the incoming SMS notification');
-  assert.match(autoSync, /configureSenders\(accountsLoaded \? smsSenders : \[\]\)/,
-    'logout must clear the native sender allowlist');
+  assert.match(autoSync, /if \(!smsParsingSelected\)[\s\S]*configureSenders\(\[\]\)/,
+    'logout or device deselection must clear the native sender allowlist');
+  assert.match(autoSync, /configureSenders\(smsSenders\)/,
+    'the selected device must configure its bank sender allowlist');
+  assert.doesNotMatch(autoSync, /return \(\) => \{[\s\S]{0,300}configureSenders\(\[\]\)/,
+    'effect cleanup must not race a newer sender configuration');
 });
 
 // ── Keyboard handling inside modals ───────────────────────────────────────
