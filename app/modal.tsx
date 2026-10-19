@@ -237,6 +237,7 @@ export default function AddTransactionScreen() {
       if (!active || !value) return;
       setInputDraft(value);
       if (value.accountId) setSelectedAccountId(value.accountId);
+      if (value.toAccountId) setToAccountId(value.toAccountId);
       setAmount(value.amount.toString());
       setType(value.type);
       if (value.category) setSelectedCategory(value.category);

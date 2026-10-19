@@ -7,10 +7,11 @@ const USED_KEY = 'smart_input_used_fingerprints';
 
 export interface SmartInputDraft {
   id: string;
-  source: 'QUICK_ADD' | 'RECEIPT';
+  source: 'QUICK_ADD' | 'RECEIPT' | 'CONVERSATION';
   fingerprint: string;
   amount: number;
   accountId?: string;
+  toAccountId?: string;
   type: TransactionType;
   category?: string;
   recipient?: string;
