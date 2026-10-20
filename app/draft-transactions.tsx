@@ -15,7 +15,7 @@ import { LinearGradient } from '@/components/aurora/AuroraGradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Modal, Platform, RefreshControl, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Alert } from '@/utils/alert';
 import FormSheet from '@/components/FormSheet';
 import SmsConversationAssistant from '@/components/smart-input/SmsConversationAssistant';
@@ -51,6 +51,7 @@ import { SharedFundService, type FundEntryInput } from '@/services/SharedFundSer
 import type { FundEntry, SharedFund, Transaction } from '@/types/database';
 import { custodianFundFields } from '@/utils/fundLedger';
 import { generateUUID } from '@/utils/uuid';
+import { getBulkEditEligibility, resolveBulkConfirmationFields } from '@/utils/smsBulkConfirmation';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -160,6 +161,10 @@ export default function DraftTransactionsScreen() {
   const [bulkAction, setBulkAction] = useState<'record' | 'reject' | null>(null);
   const [showBulkReviewModal, setShowBulkReviewModal] = useState(false);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [bulkApplyCategory, setBulkApplyCategory] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkDescription, setBulkDescription] = useState('');
+  const [bulkTagsInput, setBulkTagsInput] = useState('');
 
   // Filter & Grouping States
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
@@ -851,6 +856,30 @@ export default function DraftTransactionsScreen() {
   // ── Bulk selection helpers ──────────────────────────────────────────────────
   const pendingDrafts = filteredDrafts.filter(d => d.status === 'PENDING');
   const selectedDrafts = pendingDrafts.filter(d => selectedIds.has(d.id));
+  const bulkEditEligibility = useMemo(
+    () => getBulkEditEligibility(selectedDrafts),
+    [selectedDrafts],
+  );
+  const bulkCategories = useMemo(
+    () => categories.filter(category => category.type === bulkEditEligibility.type?.toLowerCase()),
+    [bulkEditEligibility.type, categories],
+  );
+  const selectedTotal = useMemo(
+    () => sumMoney(selectedDrafts.map(draft => draft.amount)),
+    [selectedDrafts],
+  );
+  const selectedLedgerCount = useMemo(() => {
+    const selected = new Set(selectedDrafts.map(draft => draft.id));
+    const counted = new Set<string>();
+    let count = 0;
+    for (const draft of selectedDrafts) {
+      if (counted.has(draft.id)) continue;
+      count++;
+      counted.add(draft.id);
+      if (draft.paired_draft_id && selected.has(draft.paired_draft_id)) counted.add(draft.paired_draft_id);
+    }
+    return count;
+  }, [selectedDrafts]);
 
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => {
@@ -870,13 +899,30 @@ export default function DraftTransactionsScreen() {
   };
 
   const openBulkReview = (action: 'record' | 'reject') => {
+    if (action === 'record') {
+      const commonCategory = selectedDrafts.length > 0 && selectedDrafts.every(draft => draft.category === selectedDrafts[0].category)
+        ? selectedDrafts[0].category
+        : '';
+      const categoryType = getBulkEditEligibility(selectedDrafts).type?.toLowerCase();
+      const firstCategory = categories.find(category => category.type === categoryType)?.name || '';
+      setBulkApplyCategory(false);
+      setBulkCategory(commonCategory || firstCategory);
+      setBulkDescription('');
+      setBulkTagsInput('');
+    }
     setBulkAction(action);
     setShowBulkReviewModal(true);
   };
 
   const handleBulkRecord = async () => {
+    if (bulkEditEligibility.canEditTogether && bulkApplyCategory && !bulkCategory.trim()) {
+      Alert.alert('Choose a category', 'Select the category to apply to all selected transactions.');
+      return;
+    }
     setIsBulkProcessing(true);
     let successCount = 0;
+    let failureCount = 0;
+    const createdTransactionIds = new Set<string>();
     // Legs already closed as the pair of an earlier-recorded draft in this batch.
     const closedPairIds = new Set<string>();
     for (const draft of selectedDrafts) {
@@ -887,6 +933,12 @@ export default function DraftTransactionsScreen() {
       try {
         const isBulkTransfer = draft.is_transfer && draft.transfer_to_account_id;
         const isBulkIncomingTransfer = !isBulkTransfer && draft.is_transfer && draft.transfer_from_account_id;
+        const resolvedFields = resolveBulkConfirmationFields(draft, {
+          applyCategory: bulkApplyCategory,
+          category: bulkCategory,
+          description: bulkDescription,
+          tags: parseTagInput(bulkTagsInput),
+        }, bulkEditEligibility.canEditTogether);
         const result = await dispatch(addTransaction({
           account_id: isBulkIncomingTransfer ? draft.transfer_from_account_id! : draft.account_id,
           type: (isBulkTransfer || isBulkIncomingTransfer) ? 'TRANSFER' : draft.type,
@@ -895,9 +947,11 @@ export default function DraftTransactionsScreen() {
           amount: isBulkIncomingTransfer
             ? draft.amount + (draft.fees ?? 0) + (draft.tax ?? 0)
             : draft.amount,
-          category: draft.category,
-          description: draft.description,
-          tags: [],
+          category: resolvedFields.category,
+          description: resolvedFields.description,
+          tags: resolvedFields.tags,
+          // Every evidence-specific field below remains on its own parsed SMS.
+          // A batch classification never changes account, amount, time or identity.
           date: draft.date,
           sender_receiver: draft.sender_receiver,
           person_id: (isBulkTransfer || isBulkIncomingTransfer) ? undefined : draft.person_id,
@@ -917,11 +971,25 @@ export default function DraftTransactionsScreen() {
         if (!addTransaction.rejected.match(result)) {
           const transactionId = (result.payload as any)?.id;
           if (transactionId) {
-            await DraftTransactionService.markAsRecorded(draft.id, transactionId);
+            createdTransactionIds.add(transactionId);
+            const confirmation: NonNullable<DraftTransaction['confirmation']> = {
+              recorded_at: Date.now(),
+              type: (isBulkTransfer || isBulkIncomingTransfer) ? 'TRANSFER' : draft.type,
+              category: resolvedFields.category,
+              description: resolvedFields.description,
+              recipient: draft.sender_receiver,
+              source_account_id: isBulkIncomingTransfer ? draft.transfer_from_account_id! : draft.account_id,
+              destination_account_id: isBulkTransfer ? draft.transfer_to_account_id : isBulkIncomingTransfer ? draft.account_id : undefined,
+              counterpart_draft_id: draft.paired_draft_id,
+            };
+            await DraftTransactionService.markAsRecorded(draft.id, transactionId, confirmation);
             if (draft.paired_draft_id) {
-              await DraftTransactionService.markAsRecorded(draft.paired_draft_id, transactionId);
+              await DraftTransactionService.markAsRecorded(draft.paired_draft_id, transactionId, confirmation);
               closedPairIds.add(draft.paired_draft_id);
             }
+          } else {
+            failureCount++;
+            continue;
           }
           // Reinforce (not correct) learning rules: accepting a draft as-is is a
           // confirmation the suggested description/category were right.
@@ -931,15 +999,19 @@ export default function DraftTransactionsScreen() {
               sender: draft.sms_sender,
               rawMerchant: draft.sender_receiver,
               referenceNumber: draft.reference_number,
-              correctedDescription: draft.description,
-              correctedCategory: draft.category,
-              isCorrection: false,
+              correctedDescription: resolvedFields.description,
+              correctedCategory: resolvedFields.category,
+              isCorrection: resolvedFields.isCorrection,
               transactionType: draft.type,
             });
           }
           successCount++;
+        } else {
+          failureCount++;
         }
-      } catch {}
+      } catch {
+        failureCount++;
+      }
     }
     await dispatch(fetchAccounts());
     await BackgroundService.markReconciliationReview();
@@ -947,7 +1019,12 @@ export default function DraftTransactionsScreen() {
     setShowBulkReviewModal(false);
     exitSelectionMode();
     await loadDrafts();
-    Alert.alert('Done', `Recorded ${successCount} of ${selectedDrafts.length} transactions.`);
+    Alert.alert(
+      failureCount ? 'Batch partly recorded' : 'Batch recorded',
+      failureCount
+        ? `Recorded ${successCount} of ${selectedDrafts.length} transactions. ${failureCount} remain pending so you can retry them.`
+        : `Recorded ${createdTransactionIds.size} separate ledger transaction${createdTransactionIds.size === 1 ? '' : 's'} from ${successCount} selected SMS. Each kept its original account, amount, date and time.`,
+    );
   };
 
   const handleBulkReject = async () => {
@@ -1460,7 +1537,10 @@ export default function DraftTransactionsScreen() {
         animationType="slide"
         onRequestClose={() => setShowBulkReviewModal(false)}
       >
-        <View className="flex-1 bg-black/60 justify-end">
+        <KeyboardAvoidingView
+          className="flex-1 bg-black/60 justify-end"
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <View className="bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl" style={{ maxHeight: '85%' }}>
             {/* Handle */}
             <View className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full self-center mt-4 mb-4" />
@@ -1484,15 +1564,21 @@ export default function DraftTransactionsScreen() {
             <View className="flex-row items-center px-5 py-2 bg-slate-50 dark:bg-slate-800 border-t border-b border-slate-100 dark:border-slate-700">
               <View className="w-7" />
               <Text className="text-[10px] font-bold text-slate-500 uppercase w-24 dark:text-slate-400">Amount</Text>
-              <Text className="text-[10px] font-bold text-slate-500 uppercase flex-1 dark:text-slate-400">Description</Text>
-              <Text className="text-[10px] font-bold text-slate-500 uppercase w-20 text-right dark:text-slate-400">Date</Text>
+              <Text className="text-[10px] font-bold text-slate-500 uppercase flex-1 dark:text-slate-400">Original SMS details</Text>
               <View className="w-6" />
             </View>
 
             {/* Rows */}
-            <ScrollView className="px-5" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              className="px-5"
+              style={{ flexShrink: 1 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
               {selectedDrafts.map(draft => {
                 const isIncome = draft.type === 'INCOME';
+                const accountName = accounts.find(item => item.id === draft.account_id)?.name || 'Unknown account';
                 return (
                   <View key={draft.id} className="flex-row items-center py-3 border-b border-slate-50 dark:border-slate-800">
                     {/* Type icon */}
@@ -1507,11 +1593,10 @@ export default function DraftTransactionsScreen() {
                     <View className="flex-1 pr-2">
                       <Text className="text-slate-800 dark:text-slate-200 text-xs font-semibold" numberOfLines={1}>{draft.description}</Text>
                       <Text className="text-slate-500 text-[10px] dark:text-slate-400" numberOfLines={1}>{draft.category}</Text>
+                      <Text className="text-slate-500 text-[10px] dark:text-slate-400" numberOfLines={1}>
+                        {accountName} · {new Date(draft.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </Text>
                     </View>
-                    {/* Date */}
-                    <Text className="text-slate-500 text-[10px] w-20 text-right dark:text-slate-400">
-                      {new Date(draft.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </Text>
                     {/* Remove from selection */}
                     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
                       onPress={() => toggleSelection(draft.id)}
@@ -1522,19 +1607,88 @@ export default function DraftTransactionsScreen() {
                   </View>
                 );
               })}
-              <View className="h-4" />
+
+              {bulkAction === 'record' && (
+                <View className="py-4">
+                  <View className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-3 mb-3">
+                    <View className="flex-row items-center mb-1.5">
+                      <FontAwesome name="shield" size={13} color="#10b981" />
+                      <Text className="text-emerald-700 dark:text-emerald-300 text-xs font-bold ml-2">Original SMS facts stay unchanged</Text>
+                    </View>
+                    <Text className="text-emerald-700 dark:text-emerald-300 text-[11px] leading-4">
+                      Each amount, account, date, time, reference, recipient, fee and SMS remains attached to its own separate transaction.
+                    </Text>
+                  </View>
+
+                  {bulkEditEligibility.canEditTogether ? (
+                    <View className="rounded-2xl border border-slate-200 dark:border-slate-700 p-3">
+                      <Text className="text-slate-900 dark:text-white text-sm font-bold mb-1">Apply shared details</Text>
+                      <Text className="text-slate-500 dark:text-slate-400 text-[11px] mb-3">
+                        Use these optional fields for all {selectedDrafts.length} selected transactions.
+                      </Text>
+
+                      <TouchableOpacity
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: bulkApplyCategory }}
+                        onPress={() => setBulkApplyCategory(value => !value)}
+                        className="flex-row items-center mb-2"
+                      >
+                        <FontAwesome name={bulkApplyCategory ? 'check-square' : 'square-o'} size={18} color={bulkApplyCategory ? '#6366f1' : '#94a3b8'} />
+                        <Text className="text-slate-800 dark:text-slate-200 text-xs font-semibold ml-2">Set one category for all</Text>
+                      </TouchableOpacity>
+                      {bulkApplyCategory && (
+                        <View className="mb-3">
+                          <CategoryTreeSelect
+                            categories={bulkCategories}
+                            value={bulkCategory}
+                            onChange={setBulkCategory}
+                            placeholder="Choose the shared category"
+                            accessibilityLabel="Shared category"
+                            compact
+                          />
+                        </View>
+                      )}
+
+                      <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-semibold mb-1">Shared description (optional)</Text>
+                      <TextInput
+                        value={bulkDescription}
+                        onChangeText={setBulkDescription}
+                        placeholder="Example: Parking fees"
+                        placeholderTextColor="#94a3b8"
+                        className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3 text-slate-900 dark:text-white text-xs mb-3"
+                      />
+
+                      <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-semibold mb-1">Shared tags (optional)</Text>
+                      <TextInput
+                        value={bulkTagsInput}
+                        onChangeText={setBulkTagsInput}
+                        placeholder="parking, work"
+                        placeholderTextColor="#94a3b8"
+                        autoCapitalize="none"
+                        className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-3 text-slate-900 dark:text-white text-xs"
+                      />
+                    </View>
+                  ) : (
+                    <View className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
+                      <Text className="text-amber-700 dark:text-amber-300 text-xs">
+                        {bulkEditEligibility.reason} These transactions can still be recorded together with their original details.
+                      </Text>
+                    </View>
+                  )}
+
+                  <View className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3 mt-3 flex-row items-center">
+                    <FontAwesome name="info-circle" size={13} color="#6366f1" />
+                    <Text className="text-indigo-600 dark:text-indigo-400 text-xs ml-2 flex-1">
+                      {selectedDrafts.length} selected SMS → {selectedLedgerCount} separate ledger record{selectedLedgerCount === 1 ? '' : 's'} · total {formatCurrency(selectedTotal)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              <View className="h-2" />
             </ScrollView>
 
             {/* Summary + Actions */}
             <View className="px-5 pt-3 pb-8 border-t border-slate-100 dark:border-slate-800">
-              {bulkAction === 'record' && (
-                <View className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3 mb-3 flex-row items-center">
-                  <FontAwesome name="info-circle" size={13} color="#6366f1" />
-                  <Text className="text-indigo-600 dark:text-indigo-400 text-xs ml-2 flex-1">
-                    Transactions will be recorded with their auto-detected category. You can edit individual transactions afterwards.
-                  </Text>
-                </View>
-              )}
               <View className="flex-row gap-3">
                 <TouchableOpacity
                   onPress={() => setShowBulkReviewModal(false)}
@@ -1559,7 +1713,7 @@ export default function DraftTransactionsScreen() {
               </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Raw SMS Preview Modal */}
