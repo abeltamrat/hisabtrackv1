@@ -2,16 +2,19 @@ import CoinLoader from '@/components/CoinLoader';
 import type { Category } from '@/context/TransactionContext';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import type { DraftTransaction } from '@/services/DraftTransactionService';
+import MelaService, { type MelaProject } from '@/services/MelaService';
+import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
 import {
   continueTransactionConversation,
   createSmsTransactionConversation,
   preserveSmsConversationEvidence,
+  refreshConversationReferences,
   type ConversationProposal,
   type TransactionConversationScope,
 } from '@/services/TransactionConversationService';
-import type { Account, Transaction, TransactionSplit, TransactionType } from '@/types/database';
+import type { Account, LoanType, ProjectLink, Transaction, TransactionSplit, TransactionType } from '@/types/database';
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface Props {
@@ -26,9 +29,14 @@ interface Props {
     toAccountId?: string;
     category?: string;
     recipient?: string;
+    personId?: string;
+    personName?: string;
     description?: string;
     tags?: string[];
     splits?: TransactionSplit[];
+    project?: ProjectLink;
+    loanKind?: LoanType;
+    loanDueDate?: number;
   };
   formatCurrency: (amount: number) => string;
   onApply: (proposal: ConversationProposal) => void;
@@ -37,8 +45,12 @@ interface Props {
 
 export default function SmsConversationAssistant({ draft, accounts, categories, transactions, smsDrafts, initial, formatCurrency, onApply, onClose }: Props) {
   const settings = useAppSettings();
-  const scope = useMemo<TransactionConversationScope>(() => ({ accounts, categories, transactions, smsDrafts, currency: settings.currency }), [accounts, categories, settings.currency, smsDrafts, transactions]);
+  const [people, setPeople] = useState<RecipientProfile[]>([]);
+  const [projects, setProjects] = useState<MelaProject[]>([]);
+  useEffect(() => { void Promise.all([RecipientIdentityService.getAll(), MelaService.getProjects()]).then(([savedPeople, savedProjects]) => { setPeople(savedPeople); setProjects(savedProjects); }); }, []);
+  const scope = useMemo<TransactionConversationScope>(() => ({ accounts, categories, transactions, smsDrafts, currency: settings.currency, people, projects }), [accounts, categories, people, projects, settings.currency, smsDrafts, transactions]);
   const [state, setState] = useState(() => createSmsTransactionConversation(draft, scope, initial));
+  useEffect(() => { if (people.length || projects.length) setState(current => preserveSmsConversationEvidence(refreshConversationReferences(current, scope), draft)); }, [draft, people, projects, scope]);
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
   const hasProvider = !!(settings.topToolsApiKey?.trim() || settings.groqApiKey?.trim() || settings.geminiApiKey?.trim());
@@ -60,7 +72,7 @@ export default function SmsConversationAssistant({ draft, accounts, categories, 
   const proposal = state.proposal;
   const accountName = accounts.find(item => item.id === proposal.accountId)?.name;
   const destinationName = accounts.find(item => item.id === proposal.toAccountId)?.name;
-  const summary = [proposal.type, formatCurrency(draft.amount), accountName, destinationName && `to ${destinationName}`, proposal.category, proposal.recipient].filter(Boolean).join(' · ');
+  const summary = [proposal.type, formatCurrency(draft.amount), accountName, destinationName && `to ${destinationName}`, proposal.category, proposal.personName || proposal.recipient, proposal.project?.code || proposal.project?.title, proposal.loanKind].filter(Boolean).join(' · ');
 
   return <View className="mb-5 rounded-2xl border border-indigo-300 bg-indigo-50 p-4 dark:border-indigo-800 dark:bg-indigo-950/30">
     <View className="flex-row items-start justify-between"><View className="flex-row flex-1 pr-3"><View className="h-9 w-9 items-center justify-center rounded-xl bg-indigo-600"><FontAwesome name="comments" size={16} color="white" /></View><View className="ml-3 flex-1"><Text className="font-bold text-indigo-950 dark:text-indigo-100">Explain this SMS with Hisab</Text><Text className="mt-0.5 text-[10px] text-indigo-800 dark:text-indigo-300">{settings.aiSharingEnabled && hasProvider ? 'AI-assisted clarification' : 'Local clarification'} · bank evidence stays locked</Text></View></View><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close conversation assistant" onPress={onClose} className="h-9 w-9 items-center justify-center rounded-xl bg-white dark:bg-slate-900"><FontAwesome name="times" size={14} color="#64748b" /></TouchableOpacity></View>

@@ -110,9 +110,9 @@ Keep runtime provider/model configuration replaceable. If using app-managed cred
 - [x] Add typed conversational entry with the same planned voice interface.
 - [x] Allow the keyboard's existing dictation as an optional input method where available.
 - [x] Add expense/income/transfer proposals and short follow-up questions.
-- [ ] Resolve People, accounts, category hierarchy, tags and projects.
+- [x] Resolve saved People, accounts, category hierarchy, tags and Mela projects without inventing IDs.
 - [x] Search pending/recorded SMS evidence and prevent duplicate confirmation.
-- [ ] Support correction, cancel, retry, save and safe undo/review behavior.
+- [x] Support field correction, restart, explicit review, save and safe transaction/loan undo behavior.
 - [x] Route confirmed proposals through existing financial validation and saving.
 - [ ] Add draft sync/revision handling and source freshness indication.
 
@@ -126,7 +126,7 @@ Keep runtime provider/model configuration replaceable. If using app-managed cred
 ### Phase 3: richer conversations
 - [ ] Batch-review pending SMS and prepare several independently reviewable transactions.
 - [ ] Support per-split projects/tags and itemized purchases.
-- [ ] Add domain-specific loan, repayment, recurring, fund and Equb/Iddir adapters with their existing validations.
+- [ ] Extend the implemented loan-disbursement handoff with repayment, recurring, fund and Equb/Iddir adapters.
 - [ ] Learn accepted classification preferences without silently applying new financial actions.
 - [ ] Evaluate low-latency continuous conversation and interruption of spoken replies.
 

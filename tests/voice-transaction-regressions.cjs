@@ -146,3 +146,78 @@ test('SMS confirmation exposes the conversation without adding a second save pat
   assert.match(panel, /Applying answers does not record the transaction/);
   assert.doesNotMatch(panel, /addTransaction|markAsRecorded/);
 });
+
+test('conversation links an exact saved person and resolves a real project without guessing', async () => {
+  const richerScope = {
+    ...scope,
+    people: [{ id: 'person-daniel', displayName: 'Daniel Getachew', aliases: ['Daniel'], verifiedHints: [], createdAt: 1, updatedAt: 1 }],
+    projects: [{ id: 81, code: 'PROJ-81', title: 'Luxury office interior work' }],
+  };
+  let state = service.createTransactionConversation();
+  state = await service.continueTransactionConversation(state, 'I lent 500 to Daniel from CBE for Food today for project PROJ-81 due next month', richerScope, { useAI: false, keys: {} });
+  assert.equal(state.proposal.type, 'EXPENSE');
+  assert.equal(state.proposal.loanKind, 'LENT');
+  assert.ok(state.proposal.loanDueDate > now);
+  assert.equal(state.proposal.personId, 'person-daniel');
+  assert.equal(state.proposal.personName, 'Daniel Getachew');
+  assert.equal(state.proposal.project.id, 81);
+});
+
+test('ambiguous People matches require clarification instead of silently linking', async () => {
+  const richerScope = {
+    ...scope,
+    people: [
+      { id: 'daniel-1', displayName: 'Daniel Getachew', aliases: [], verifiedHints: [], createdAt: 1, updatedAt: 1 },
+      { id: 'daniel-2', displayName: 'Daniel Kebede', aliases: [], verifiedHints: [], createdAt: 1, updatedAt: 1 },
+    ],
+  };
+  const proposal = { type: 'EXPENSE', amount: 500, accountId: 'cbe', recipient: 'Daniel', category: 'Food', date: now, tags: [], splits: [], provenance: {}, skipped: ['evidence'] };
+  const start = { ...service.createTransactionConversation(), proposal, pendingField: 'details', question: 'Details?', ready: false };
+  const state = await service.continueTransactionConversation(start, 'Daniel', richerScope, { useAI: false, keys: {} });
+  assert.equal(state.proposal.personId, undefined);
+  assert.deepEqual(state.proposal.personCandidates.map(item => item.id), ['daniel-1', 'daniel-2']);
+  assert.equal(state.pendingField, 'person');
+});
+
+test('percentage splits are converted to money and must equal the locked transaction amount', async () => {
+  const splitScope = { ...scope, categories: [...categories, { id: 'transport', name: 'Transport', type: 'expense' }] };
+  const proposal = { type: 'EXPENSE', amount: 500, accountId: 'cbe', recipient: 'Daniel', category: 'Food', date: now, tags: [], splits: [], provenance: {}, skipped: ['evidence'] };
+  const start = { ...service.createTransactionConversation(), proposal, pendingField: 'details', question: 'Details?', ready: false };
+  const state = await service.continueTransactionConversation(start, 'split 60% Food and 40% Transport', splitScope, { useAI: false, keys: {} });
+  assert.deepEqual(state.proposal.splits.map(item => [item.category, item.amount]), [['Food', 300], ['Transport', 200]]);
+  assert.equal(state.proposal.splitIssue, undefined);
+});
+
+test('split totals that differ from the SMS amount block readiness and ask for correction', async () => {
+  const splitScope = { ...scope, categories: [...categories, { id: 'transport', name: 'Transport', type: 'expense' }] };
+  const proposal = { type: 'EXPENSE', amount: 500, accountId: 'cbe', recipient: 'Daniel', category: 'Food', date: now, tags: [], splits: [], provenance: {}, skipped: ['evidence'] };
+  const start = { ...service.createTransactionConversation(), proposal, pendingField: 'details', question: 'Details?', ready: false };
+  const state = await service.continueTransactionConversation(start, '300 Food and 100 Transport', splitScope, { useAI: false, keys: {} });
+  assert.match(state.proposal.splitIssue, /split total/i);
+  assert.equal(state.pendingField, 'splits');
+  assert.equal(state.ready, false);
+});
+
+test('a recipient correction drops the stale People link and resolves the replacement', async () => {
+  const richerScope = {
+    ...scope,
+    people: [
+      { id: 'daniel', displayName: 'Daniel', aliases: [], verifiedHints: [], createdAt: 1, updatedAt: 1 },
+      { id: 'hana', displayName: 'Hana', aliases: [], verifiedHints: [], createdAt: 1, updatedAt: 1 },
+    ],
+  };
+  const proposal = { type: 'EXPENSE', amount: 500, accountId: 'cbe', recipient: 'Daniel', personId: 'daniel', personName: 'Daniel', category: 'Food', date: now, tags: [], splits: [], provenance: { person: 'USER' }, skipped: ['evidence'] };
+  const start = { ...service.createTransactionConversation(), proposal, pendingField: 'details', question: 'Details?', ready: false };
+  const state = await service.continueTransactionConversation(start, 'change the person to Hana', richerScope, { useAI: false, keys: {} });
+  assert.equal(state.proposal.personId, 'hana');
+  assert.equal(state.proposal.personName, 'Hana');
+});
+
+test('the user can reject a false loan interpretation without leaving loan fields behind', async () => {
+  const proposal = { type: 'EXPENSE', amount: 500, accountId: 'cbe', recipient: 'Daniel', category: 'Food', date: now, loanKind: 'LENT', tags: [], splits: [], provenance: { loan: 'USER' }, skipped: ['evidence'] };
+  const start = { ...service.createTransactionConversation(), proposal, pendingField: 'loan', question: 'When is it due?', ready: false };
+  const state = await service.continueTransactionConversation(start, 'not a loan', scope, { useAI: false, keys: {} });
+  assert.equal(state.proposal.loanKind, undefined);
+  assert.equal(state.proposal.loanDueDate, undefined);
+  assert.equal(state.pendingField, 'details');
+});

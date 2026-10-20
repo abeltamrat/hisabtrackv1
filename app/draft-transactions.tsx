@@ -489,7 +489,8 @@ export default function DraftTransactionsScreen() {
     setRecurringOccurrences('');
     setSplitEnabled(!!draft.suggested_splits?.length);
     setSplits(draft.suggested_splits || []);
-    setItemize(false); setLines([]); setSupplier(undefined); setProject(undefined); setProjectCost(false);
+    setItemize(false); setLines([]); setSupplier(undefined); setProject(draft.suggested_project); setProjectCost(!!draft.suggested_project);
+    if (draft.suggested_project && draft.suggested_splits?.length) setSplits(pushProjectIntoSplits<TransactionSplit>(draft.suggested_project, draft.suggested_splits));
     setDismissedRecurringSuggestion(false);
     setNote('');
     setTagsInput('');
@@ -503,7 +504,7 @@ export default function DraftTransactionsScreen() {
     setFundCandidates([]);
     setFundMatchEntryId('');
     setLoanCounterparty(draft.sender_receiver || 'SMS loan');
-    const defaultDue = new Date(draft.date + 30 * 24 * 60 * 60 * 1000);
+    const defaultDue = new Date(draft.suggested_loan_due_date || draft.date + 30 * 24 * 60 * 60 * 1000);
     setLoanDueDate(defaultDue.toISOString().slice(0, 10));
     setShowConfirmModal(true);
   };
@@ -1659,9 +1660,14 @@ export default function DraftTransactionsScreen() {
                   toAccountId: transferDestinationAccountId || undefined,
                   category: editedCategory,
                   recipient: editedRecipient,
+                  personId: selectedPersonId,
+                  personName: selectedPerson?.displayName,
                   description: editedDescription,
                   tags: parseTagInput(tagsInput) || [],
                   splits: splitEnabled ? splits : [],
+                  project: splitEnabled ? commonSplitProject(splits) : (projectCost ? project : undefined),
+                  loanKind: recordAsLoan ? (editedType === 'INCOME' ? 'BORROWED' : 'LENT') : undefined,
+                  loanDueDate: loanDueDate ? new Date(`${loanDueDate}T12:00:00`).getTime() : undefined,
                 }}
                 formatCurrency={formatCurrency}
                 onClose={() => setShowSmsAssistant(false)}
@@ -1678,9 +1684,21 @@ export default function DraftTransactionsScreen() {
                       setSelectedPerson(undefined); setSelectedPersonId(undefined);
                     }
                   }
+                  if (proposal.personId) {
+                    void RecipientIdentityService.getAll().then(people => {
+                      const person = people.find(item => item.id === proposal.personId);
+                      if (person) { setSelectedPerson(person); setSelectedPersonId(person.id); setEditedRecipient(person.displayName); }
+                    });
+                  }
                   if (proposal.description) setEditedDescription(proposal.description);
                   if (proposal.category && proposal.type !== 'TRANSFER') changeMainCategory(proposal.category);
                   if (proposal.splits.length > 1 && proposal.type !== 'TRANSFER') { setSplitEnabled(true); setSplits(proposal.splits); }
+                  if (proposal.project && proposal.type !== 'TRANSFER') { setProjectCost(true); changeMainProject(proposal.project); }
+                  if (proposal.loanKind && proposal.type !== 'TRANSFER') {
+                    setRecordAsLoan(true);
+                    setLoanCounterparty(proposal.personName || proposal.recipient || editedRecipient || selectedDraft.sender_receiver || 'SMS loan');
+                    if (proposal.loanDueDate) setLoanDueDate(new Date(proposal.loanDueDate).toISOString().slice(0, 10));
+                  }
                   if (proposal.tags.length) setTagsInput(formatTagInput(proposal.tags));
                   setShowSmsAssistant(false);
                 }}

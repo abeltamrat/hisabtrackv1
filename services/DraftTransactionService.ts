@@ -1,5 +1,6 @@
 import AsyncStorage, { getSessionScope } from '@/services/SessionStorage';
 import { createSerialQueue } from '@/utils/asyncLock';
+import type { ProjectLink } from '@/types/database';
 
 export type DraftStatus = 'PENDING' | 'RECORDED' | 'REJECTED';
 
@@ -38,6 +39,8 @@ export interface DraftTransaction {
   transfer_from_account_id?: string;
   transfer_peer_account_number?: string;
   suggested_splits?: Array<{ id: string; category: string; amount: number; description?: string; tags?: string[] }>;
+  suggested_project?: ProjectLink;
+  suggested_loan_due_date?: number;
   is_loan_disbursement?: boolean;
   /** Id of the opposite-leg draft when this is one side of a paired self-transfer. */
   paired_draft_id?: string;

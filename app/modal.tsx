@@ -15,6 +15,7 @@ import { AppDispatch } from '@/store';
 import BudgetService from '@/services/BudgetService';
 import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { addTransaction, deleteTransaction, updateTransaction, fetchTransactions } from '@/store/slices/transactionsSlice';
+import { addLoan, deleteLoan } from '@/store/slices/loansSlice';
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { NotificationService } from '@/services/NotificationService';
 import { formatTagInput, mergeSplitTags, parseTagInput, pushTagsIntoSplits } from '@/utils/tags';
@@ -138,6 +139,8 @@ export default function AddTransactionScreen() {
   const [kbdHeight, setKbdHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const [inputDraft, setInputDraft] = useState<SmartInputDraft>();
+  const [recordAsLoan, setRecordAsLoan] = useState(false);
+  const [loanDueDate, setLoanDueDate] = useState('');
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -242,10 +245,22 @@ export default function AddTransactionScreen() {
       setType(value.type);
       if (value.category) setSelectedCategory(value.category);
       if (value.recipient) setRecipient(value.recipient);
+      if (value.personId) {
+        setSelectedPersonId(value.personId);
+        void RecipientIdentityService.getAll().then(people => setSelectedPerson(people.find(person => person.id === value.personId)));
+      }
       if (value.description) setNote(value.description);
       if (value.date) setTransactionDate(new Date(value.date));
       setTagsInput(formatTagInput(value.tags));
       if (value.splits?.length) { setSplits(pushTagsIntoSplits(value.tags, value.splits)); setSplitEnabled(true); setTagsInput(''); }
+      if (value.project) {
+        setProject(value.project); setProjectCost(true);
+        if (value.splits?.length) setSplits(current => pushProjectIntoSplits(value.project, current));
+      }
+      if (value.loanKind) {
+        setRecordAsLoan(true);
+        if (value.loanDueDate) setLoanDueDate(new Date(value.loanDueDate).toISOString().slice(0, 10));
+      }
     });
     return () => { active = false; };
   }, [draft]);
@@ -291,6 +306,11 @@ export default function AddTransactionScreen() {
     })) return;
     if (type === 'TRANSFER' && (!toAccountId || toAccountId === selectedAccountId)) {
       Alert.alert('Choose destination', 'Select a different account to receive the transfer.');
+      return;
+    }
+    const parsedLoanDueDate = loanDueDate ? new Date(`${loanDueDate}T12:00:00`).getTime() : NaN;
+    if (recordAsLoan && (type === 'TRANSFER' || !recipient.trim() || !Number.isFinite(parsedLoanDueDate))) {
+      Alert.alert('Check loan details', type === 'TRANSFER' ? 'A transfer between your own accounts cannot be recorded as a loan.' : !recipient.trim() ? 'Choose or enter the other person for this loan.' : 'Enter the loan due date as YYYY-MM-DD.');
       return;
     }
     if (splitEnabled && (splits.length < 2 || splits.some(item => !item.category.trim() || money(item.amount) <= 0) || sumMoney(splits.map(item => item.amount)) !== money(numericAmount))) {
@@ -401,6 +421,24 @@ export default function AddTransactionScreen() {
       }
     }
     let createdRecurringId: string | undefined;
+    let createdLoanId: string | undefined;
+    if (!isEditing && recordAsLoan) {
+      const loanResult = await dispatch(addLoan({
+        type: type === 'INCOME' ? 'BORROWED' : 'LENT',
+        principal_amount: numericAmount,
+        interest_rate: 0,
+        start_date: transactionDate.getTime(),
+        due_date: parsedLoanDueDate,
+        lender_borrower_name: selectedPerson?.displayName || recipient.trim(),
+        person_id: selectedPersonId,
+        person_name_snapshot: selectedPerson?.displayName,
+        status: 'ACTIVE',
+        remaining_balance: numericAmount,
+        currency,
+      }));
+      if (addLoan.fulfilled.match(loanResult)) createdLoanId = (loanResult.payload as any)?.id;
+      else Alert.alert('Transaction saved', 'The money movement was recorded, but the loan could not be added to Loans.');
+    }
     if (!isEditing && makeRecurring) {
       const match = /^(\d{1,2}):(\d{2})$/.exec(reminderTime.trim());
       const hour = match ? Number(match[1]) : -1;
@@ -453,6 +491,7 @@ export default function AddTransactionScreen() {
         { text: 'Undo', style: 'destructive', onPress: async () => {
           try {
             if (createdRecurringId) await RecurringTransactionService.remove(createdRecurringId);
+            if (createdLoanId) await dispatch(deleteLoan(createdLoanId)).unwrap();
             await dispatch(deleteTransaction(transactionId)).unwrap();
             if (inputDraft) await InputDraftService.markUnused(inputDraft.fingerprint);
             await dispatch(fetchAccounts());
@@ -763,6 +802,16 @@ export default function AddTransactionScreen() {
           </View>
         )}
         {type !== 'TRANSFER' && <ProjectCostToggle checked={projectCost || (splitEnabled && splits.some(split => !!split.project))} onToggle={toggleProjectCost} value={splitEnabled ? commonSplitProject(splits) : project} onChange={splitEnabled ? changeMainProject : setProject} income={type === 'INCOME'} batch={splitEnabled} />}
+
+        {!isEditing && type !== 'TRANSFER' && (
+          <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>
+            <TouchableOpacity accessibilityRole="checkbox" accessibilityState={{ checked: recordAsLoan }} onPress={() => setRecordAsLoan(!recordAsLoan)} className="flex-row items-center">
+              <FontAwesome name={recordAsLoan ? 'check-square' : 'square-o'} size={18} color={recordAsLoan ? '#6366f1' : '#94a3b8'} />
+              <View className="ml-2 flex-1"><Text className="text-slate-900 dark:text-white text-sm font-bold">This is a loan</Text><Text className="text-slate-500 dark:text-slate-400 text-[10px]">{type === 'INCOME' ? 'Money I borrowed and must repay.' : 'Money I lent and expect back.'}</Text></View>
+            </TouchableOpacity>
+            {recordAsLoan && <View className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700"><Text className="text-slate-500 dark:text-slate-400 text-[10px] font-bold mb-1 uppercase">Loan due date</Text><TextInput value={loanDueDate} onChangeText={setLoanDueDate} placeholder="YYYY-MM-DD" placeholderTextColor="#94a3b8" keyboardType="numbers-and-punctuation" className="bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-slate-900 dark:text-white" /><Text className="text-slate-500 dark:text-slate-400 text-[10px] mt-1.5">The recipient below becomes the borrower or lender in Loans.</Text></View>}
+          </View>
+        )}
 
         {!isEditing && (
           <View className="bg-white dark:bg-slate-800 rounded-2xl p-3 mb-3 shadow border border-slate-100 dark:border-slate-700" style={{ elevation: 3 }}>

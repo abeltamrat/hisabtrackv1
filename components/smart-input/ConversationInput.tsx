@@ -2,10 +2,13 @@ import CoinLoader from '@/components/CoinLoader';
 import type { Category } from '@/context/TransactionContext';
 import { DraftTransactionService, type DraftTransaction } from '@/services/DraftTransactionService';
 import { InputDraftService } from '@/services/InputDraftService';
+import MelaService, { type MelaProject } from '@/services/MelaService';
+import RecipientIdentityService, { type RecipientProfile } from '@/services/RecipientIdentityService';
 import {
   continueTransactionConversation,
   conversationFingerprint,
   createTransactionConversation,
+  refreshConversationReferences,
   selectTransactionEvidence,
   type TransactionConversationScope,
   type TransactionEvidenceCandidate,
@@ -14,7 +17,7 @@ import type { Account, Transaction } from '@/types/database';
 import { Alert } from '@/utils/alert';
 import { FontAwesome } from '@expo/vector-icons';
 import type { Router } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface Props {
@@ -35,7 +38,11 @@ export default function ConversationInput({ accounts, categories, transactions, 
   const [state, setState] = useState(createTransactionConversation);
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
-  const scope = useMemo<TransactionConversationScope>(() => ({ accounts, categories, transactions, smsDrafts, currency }), [accounts, categories, currency, smsDrafts, transactions]);
+  const [people, setPeople] = useState<RecipientProfile[]>([]);
+  const [projects, setProjects] = useState<MelaProject[]>([]);
+  useEffect(() => { void Promise.all([RecipientIdentityService.getAll(), MelaService.getProjects()]).then(([savedPeople, savedProjects]) => { setPeople(savedPeople); setProjects(savedProjects); }); }, []);
+  const scope = useMemo<TransactionConversationScope>(() => ({ accounts, categories, transactions, smsDrafts, currency, people, projects }), [accounts, categories, currency, people, projects, smsDrafts, transactions]);
+  useEffect(() => { if (people.length || projects.length) setState(current => refreshConversationReferences(current, scope)); }, [people, projects, scope]);
   const hasProvider = !!(keys.topToolsApiKey?.trim() || keys.groqApiKey?.trim() || keys.geminiApiKey?.trim());
   const proposal = state.proposal;
 
@@ -66,8 +73,14 @@ export default function ConversationInput({ accounts, categories, transactions, 
         await DraftTransactionService.updateMany([{ id: sms.id, patch: {
           category: proposal.category || sms.category,
           sender_receiver: proposal.recipient || sms.sender_receiver,
+          person_id: proposal.personId || sms.person_id,
+          person_name_snapshot: proposal.personName || sms.person_name_snapshot,
+          person_link_source: proposal.personId ? 'SMS_CONFIRMED' : sms.person_link_source,
           description: proposal.description || sms.description,
           suggested_splits: proposal.splits.length ? proposal.splits : sms.suggested_splits,
+          suggested_project: proposal.project || sms.suggested_project,
+          is_loan_disbursement: !!proposal.loanKind || sms.is_loan_disbursement,
+          suggested_loan_due_date: proposal.loanDueDate || sms.suggested_loan_due_date,
         } }]);
         router.push({ pathname: '/draft-transactions', params: { draftId: sms.id } });
         return;
@@ -83,10 +96,15 @@ export default function ConversationInput({ accounts, categories, transactions, 
         type: proposal.type,
         category: proposal.category,
         recipient: proposal.recipient,
+        personId: proposal.personId,
+        personName: proposal.personName,
         description: proposal.description,
         date: proposal.date,
         tags: proposal.tags,
         splits: proposal.splits,
+        project: proposal.project,
+        loanKind: proposal.loanKind,
+        loanDueDate: proposal.loanDueDate,
         matchedTransactionId: selected?.kind === 'TRANSACTION' ? selected.id : undefined,
       });
       router.push({ pathname: '/modal', params: { draft: draft.id, ...(draft.matchedTransactionId ? { edit: draft.matchedTransactionId } : {}) } });
@@ -102,7 +120,10 @@ export default function ConversationInput({ accounts, categories, transactions, 
     ['Account', accountName, sourceLabel(proposal.provenance.account)],
     ...(proposal.type === 'TRANSFER' ? [['To account', destinationName, sourceLabel(proposal.provenance.destination)]] : []),
     ['Person', proposal.recipient || (proposal.skipped.includes('recipient') ? 'Unknown / skipped' : undefined), sourceLabel(proposal.provenance.recipient)],
+    ...(proposal.personId ? [['People link', proposal.personName || 'Saved person', sourceLabel(proposal.provenance.person)]] : []),
     ['Category', proposal.type === 'TRANSFER' ? 'Transfer' : proposal.category, sourceLabel(proposal.provenance.category)],
+    ...(proposal.project ? [['Project', `${proposal.project.code ? `${proposal.project.code} · ` : ''}${proposal.project.title}`, sourceLabel(proposal.provenance.project)]] : []),
+    ...(proposal.loanKind ? [['Loan', `${proposal.loanKind === 'LENT' ? 'Given' : 'Borrowed'}${proposal.loanDueDate ? ` · due ${new Date(proposal.loanDueDate).toLocaleDateString()}` : ''}`, sourceLabel(proposal.provenance.loan)]] : []),
     ['Date', proposal.date ? new Date(proposal.date).toLocaleDateString() : undefined, sourceLabel(proposal.provenance.date)],
   ];
 

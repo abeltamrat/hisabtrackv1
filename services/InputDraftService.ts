@@ -1,5 +1,5 @@
 import Storage from './SessionStorage';
-import type { TransactionSplit, TransactionType } from '@/types/database';
+import type { LoanType, ProjectLink, TransactionSplit, TransactionType } from '@/types/database';
 import { Platform } from 'react-native';
 
 const KEY = 'smart_input_drafts';
@@ -15,10 +15,15 @@ export interface SmartInputDraft {
   type: TransactionType;
   category?: string;
   recipient?: string;
+  personId?: string;
+  personName?: string;
   description?: string;
   date?: number;
   tags?: string[];
   splits?: TransactionSplit[];
+  project?: ProjectLink;
+  loanKind?: LoanType;
+  loanDueDate?: number;
   attachmentUri?: string;
   retainAttachment?: boolean;
   matchedTransactionId?: string;
