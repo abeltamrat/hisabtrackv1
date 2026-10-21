@@ -7,10 +7,19 @@ import { fetchAccounts } from '@/store/slices/accountsSlice';
 import { fetchTransactions } from '@/store/slices/transactionsSlice';
 import { fetchBudgets } from '@/store/slices/budgetsSlice';
 import { fetchLoans } from '@/store/slices/loansSlice';
-import { collection, doc, getDocs, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDocs, getFirestore, onSnapshot, query, runTransaction, serverTimestamp, Timestamp, where } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const collections: Table[] = ['accounts', 'transactions', 'budgets', 'loans', 'meta'];
+// Every cloud row, tombstones included, carries _syncedAt (the server commit
+// time), so a routine sync only reads rows synced since the last pull. A full
+// pull still runs on the first sync, on a manual "Sync now" and every few hours,
+// as a safety net for rows a partial pull cannot see (e.g. very old clients
+// that wrote no _syncedAt).
+const FULL_PULL_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// Re-read a margin before the cursor; rows already known are skipped cheaply.
+const PULL_OVERLAP_MS = 10 * 60 * 1000;
+const syncedAtMillis = (value: any): number => typeof value?.toMillis === 'function' ? value.toMillis() : 0;
 const stableValue = (value: any): any => Array.isArray(value)
   ? value.map(stableValue)
   : value && typeof value === 'object'
@@ -49,6 +58,7 @@ export class SyncService {
   private static unsubs: Array<() => void> = [];
   private static running: Promise<void> | null = null;
   private static rerun = false;
+  private static forceFullPull = false;
   private static status: CloudSyncState = 'pending';
   private static statusListeners = new Set<(status: CloudSyncState) => void>();
   private static setStatus(status: CloudSyncState) {
@@ -166,21 +176,29 @@ export class SyncService {
     } finally { this.isPushing = false; }
     this.applyingRemote = true;
     try {
-      const changes: Array<Row & { revision: number }> = [];
-      for (const table of collections) {
-        const snapshot = await getDocs(collection(getFirestore(), `users/${uid}/${table}`));
-        this.check(uid, generation);
-        for (const item of snapshot.docs) {
-          if (table === 'meta' && item.id !== 'categories') continue;
-          const { _revision = 0, _deleted, _operation, _syncedAt, ...value } = item.data();
-          changes.push({ table, id: item.id, value: _deleted ? undefined : { ...value, id: item.id }, revision: _revision });
+      const cursor = Number(await db.readMeta('pull_cursor')) || 0;
+      const lastFullPull = Number(await db.readMeta('last_full_pull_at')) || 0;
+      let full = this.forceFullPull || !cursor || Date.now() - lastFullPull > FULL_PULL_INTERVAL_MS;
+      this.forceFullPull = false;
+      let pulled = await this.pullChanges(uid, generation, full ? null : cursor);
+      // Mixed-currency protection compares every cloud account, so a partial
+      // pull that brings an account in a currency this device lacks is redone in full.
+      if (!full) {
+        const localCurrencies = new Set((await db.getAccounts()).map(account => account.currency).filter(Boolean));
+        if (pulled.changes.some(change => change.table === 'accounts' && change.value?.currency && localCurrencies.size && !localCurrencies.has(change.value.currency))) {
+          full = true;
+          pulled = await this.pullChanges(uid, generation, null);
         }
       }
+      const changes = pulled.changes;
       this.check(uid, generation);
       const protectedChanges = await this.protectMixedCurrencies(db, changes);
       const changed = await db.applyRemote(protectedChanges.changes);
       if (protectedChanges.relabelTo) { await db.relabelCurrency(protectedChanges.relabelTo, true); this.rerun = true; }
       if (Object.keys(await db.readMeta('outbox') || {}).length) this.rerun = true;
+      // The cursor advances only after the pulled rows are safely applied.
+      if (pulled.newest > cursor) await db.writeMeta('pull_cursor', pulled.newest);
+      if (full) await db.writeMeta('last_full_pull_at', Date.now());
       await db.writeMeta('last_cloud_sync_at', Date.now());
       // Local saves already refreshed the store when they were made; reload only
       // when the cloud brought something new.
@@ -190,6 +208,29 @@ export class SyncService {
       this.lastPushFinishedAt = Date.now(); this.lastError = protectedChanges.warning;
       NativeErrorReporter.reset();
     } finally { this.applyingRemote = false; }
+  }
+  /**
+   * Reads cloud rows: every row when `since` is null, otherwise only rows whose
+   * _syncedAt is after `since` (minus an overlap). Also returns the newest
+   * _syncedAt seen, which becomes the next cursor.
+   */
+  private static async pullChanges(uid: string, generation: number, since: number | null) {
+    const changes: Array<Row & { revision: number }> = [];
+    let newest = 0;
+    for (const table of collections) {
+      const ref = collection(getFirestore(), `users/${uid}/${table}`);
+      const snapshot = await getDocs(since === null
+        ? ref
+        : query(ref, where('_syncedAt', '>', Timestamp.fromMillis(Math.max(0, since - PULL_OVERLAP_MS)))));
+      this.check(uid, generation);
+      for (const item of snapshot.docs) {
+        const { _revision = 0, _deleted, _operation, _syncedAt, ...value } = item.data();
+        newest = Math.max(newest, syncedAtMillis(_syncedAt));
+        if (table === 'meta' && item.id !== 'categories') continue;
+        changes.push({ table, id: item.id, value: _deleted ? undefined : { ...value, id: item.id }, revision: _revision });
+      }
+    }
+    return { changes, newest };
   }
   private static async execute(uid: string): Promise<void> {
     if (this.running) { this.rerun = true; await this.running; return; }
@@ -210,6 +251,8 @@ export class SyncService {
     if (!uid) return { cloudSynced: false };
     const { loadStoredAppSettings } = await import('@/contexts/AppSettingsContext');
     if (!(await loadStoredAppSettings()).cloudSyncEnabled) return { cloudSynced: false };
+    // A sync the user asks for re-reads the whole cloud ledger.
+    this.forceFullPull = true;
     await this.execute(uid); return { cloudSynced: true };
   }
   static async getDataStatus(uid: string) {
