@@ -243,7 +243,7 @@ export class SyncService {
   static startAutoSync(uid: string) {
     if (this.currentUid === uid) return;
     this.stopAutoSync(); this.currentUid = uid;
-    this.unsubs.push(LocalChangeEmitter.subscribe(() => { if (!this.applyingRemote) this.schedule(); }));
+    this.unsubs.push(LocalChangeEmitter.subscribeImmediate(() => { if (!this.applyingRemote) this.schedule(); }));
     for (const table of collections) this.unsubs.push(onSnapshot(collection(getFirestore(), `users/${uid}/${table}`), snapshot => {
       if (!snapshot.metadata.hasPendingWrites) this.schedule();
     }, error => { if (!this.isConnectivityError(error)) this.lastError = error.message; }));
