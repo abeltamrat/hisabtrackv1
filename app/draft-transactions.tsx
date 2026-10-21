@@ -73,6 +73,12 @@ const formatDate = (timestamp: number) => {
   }
 };
 
+type BulkDraftEdit = {
+  category?: string;
+  description?: string;
+  tagsInput?: string;
+};
+
 export default function DraftTransactionsScreen() {
   const { t } = useI18n();
   const router = useRouter();
@@ -165,6 +171,8 @@ export default function DraftTransactionsScreen() {
   const [bulkCategory, setBulkCategory] = useState('');
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkTagsInput, setBulkTagsInput] = useState('');
+  const [bulkDraftEdits, setBulkDraftEdits] = useState<Record<string, BulkDraftEdit>>({});
+  const [expandedBulkDraftId, setExpandedBulkDraftId] = useState<string>();
 
   // Filter & Grouping States
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
@@ -854,8 +862,8 @@ export default function DraftTransactionsScreen() {
   };
 
   // ── Bulk selection helpers ──────────────────────────────────────────────────
-  const pendingDrafts = filteredDrafts.filter(d => d.status === 'PENDING');
-  const selectedDrafts = pendingDrafts.filter(d => selectedIds.has(d.id));
+  const pendingDrafts = useMemo(() => filteredDrafts.filter(d => d.status === 'PENDING'), [filteredDrafts]);
+  const selectedDrafts = useMemo(() => pendingDrafts.filter(d => selectedIds.has(d.id)), [pendingDrafts, selectedIds]);
   const bulkEditEligibility = useMemo(
     () => getBulkEditEligibility(selectedDrafts),
     [selectedDrafts],
@@ -909,6 +917,8 @@ export default function DraftTransactionsScreen() {
       setBulkCategory(commonCategory || firstCategory);
       setBulkDescription('');
       setBulkTagsInput('');
+      setBulkDraftEdits({});
+      setExpandedBulkDraftId(undefined);
     }
     setBulkAction(action);
     setShowBulkReviewModal(true);
@@ -938,7 +948,11 @@ export default function DraftTransactionsScreen() {
           category: bulkCategory,
           description: bulkDescription,
           tags: parseTagInput(bulkTagsInput),
-        }, bulkEditEligibility.canEditTogether);
+        }, bulkEditEligibility.canEditTogether, bulkDraftEdits[draft.id] ? {
+          category: bulkDraftEdits[draft.id].category,
+          description: bulkDraftEdits[draft.id].description,
+          tags: bulkDraftEdits[draft.id].tagsInput === undefined ? undefined : (parseTagInput(bulkDraftEdits[draft.id].tagsInput || '') || []),
+        } : undefined);
         const result = await dispatch(addTransaction({
           account_id: isBulkIncomingTransfer ? draft.transfer_from_account_id! : draft.account_id,
           type: (isBulkTransfer || isBulkIncomingTransfer) ? 'TRANSFER' : draft.type,
@@ -1297,7 +1311,9 @@ export default function DraftTransactionsScreen() {
           maxToRenderPerBatch={10}
           windowSize={10}
           initialNumToRender={10}
-          removeClippedSubviews={true}
+          removeClippedSubviews={Platform.OS !== 'android'}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: isSelectionMode ? 104 : 32 }}
           renderSectionHeader={({ section: { title } }) => title ? (
             <View className="flex-row items-center mb-4 mt-2 bg-slate-50 dark:bg-background-dark py-1">
               <View className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -1326,7 +1342,7 @@ export default function DraftTransactionsScreen() {
 
             return (
               <TouchableOpacity
-                activeOpacity={isSelectable ? 0.7 : 1}
+                activeOpacity={1}
                 onPress={isSelectable ? () => toggleSelection(draft.id) : undefined}
                 className={`bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-sm border ${ isSelected ? 'border-indigo-400 dark:border-indigo-500' : isRecorded ? 'border-green-200 dark:border-green-900' : 'border-yellow-200 dark:border-yellow-900' }`}
                 style={{ elevation: 2 }}
@@ -1492,7 +1508,7 @@ export default function DraftTransactionsScreen() {
               </TouchableOpacity>
             );
           }}
-          ListFooterComponent={<View className="h-8" />}
+          ListFooterComponent={null}
         />
       )}
 
@@ -1564,7 +1580,7 @@ export default function DraftTransactionsScreen() {
             <View className="flex-row items-center px-5 py-2 bg-slate-50 dark:bg-slate-800 border-t border-b border-slate-100 dark:border-slate-700">
               <View className="w-7" />
               <Text className="text-[10px] font-bold text-slate-500 uppercase w-24 dark:text-slate-400">Amount</Text>
-              <Text className="text-[10px] font-bold text-slate-500 uppercase flex-1 dark:text-slate-400">Original SMS details</Text>
+              <Text className="text-[10px] font-bold text-slate-500 uppercase flex-1 dark:text-slate-400">Confirmation details</Text>
               <View className="w-6" />
             </View>
 
@@ -1579,31 +1595,89 @@ export default function DraftTransactionsScreen() {
               {selectedDrafts.map(draft => {
                 const isIncome = draft.type === 'INCOME';
                 const accountName = accounts.find(item => item.id === draft.account_id)?.name || 'Unknown account';
+                const itemEdit = bulkDraftEdits[draft.id];
+                const isExpanded = expandedBulkDraftId === draft.id;
+                const draftCategories = categories.filter(category => category.type === draft.type.toLowerCase());
+                const effectiveCategory = itemEdit?.category
+                  || (bulkEditEligibility.canEditTogether && bulkApplyCategory ? bulkCategory : draft.category);
+                const effectiveDescription = itemEdit?.description
+                  ?? (bulkEditEligibility.canEditTogether && bulkDescription.trim() ? bulkDescription : draft.description);
+                const effectiveTags = itemEdit?.tagsInput
+                  ?? (bulkEditEligibility.canEditTogether ? bulkTagsInput : '');
+                const updateItemEdit = (patch: BulkDraftEdit) => setBulkDraftEdits(current => ({
+                  ...current,
+                  [draft.id]: { ...current[draft.id], ...patch },
+                }));
                 return (
-                  <View key={draft.id} className="flex-row items-center py-3 border-b border-slate-50 dark:border-slate-800">
-                    {/* Type icon */}
-                    <View className={`w-6 h-6 rounded-full justify-center items-center mr-1 ${isIncome ? 'bg-green-100 dark:bg-green-900/40' : 'bg-red-100 dark:bg-red-900/40'}`}>
-                      <FontAwesome name={isIncome ? 'arrow-down' : 'arrow-up'} size={9} color={isIncome ? '#10b981' : '#ef4444'} />
-                    </View>
-                    {/* Amount */}
-                    <Text className={`text-sm font-bold w-24 ${isIncome ? 'text-green-600' : 'text-red-500'}`} numberOfLines={1}>
-                      {isIncome ? '+' : '-'}{formatCurrency(draft.amount)}
-                    </Text>
-                    {/* Description + category */}
-                    <View className="flex-1 pr-2">
-                      <Text className="text-slate-800 dark:text-slate-200 text-xs font-semibold" numberOfLines={1}>{draft.description}</Text>
-                      <Text className="text-slate-500 text-[10px] dark:text-slate-400" numberOfLines={1}>{draft.category}</Text>
-                      <Text className="text-slate-500 text-[10px] dark:text-slate-400" numberOfLines={1}>
-                        {accountName} · {new Date(draft.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  <View key={draft.id} className="py-3 border-b border-slate-100 dark:border-slate-800">
+                    <View className="flex-row items-center">
+                      <View className={`w-6 h-6 rounded-full justify-center items-center mr-1 ${isIncome ? 'bg-green-100 dark:bg-green-900/40' : 'bg-red-100 dark:bg-red-900/40'}`}>
+                        <FontAwesome name={draft.is_transfer ? 'exchange' : isIncome ? 'arrow-down' : 'arrow-up'} size={9} color={draft.is_transfer ? '#6366f1' : isIncome ? '#10b981' : '#ef4444'} />
+                      </View>
+                      <Text className={`text-sm font-bold w-24 ${isIncome ? 'text-green-600' : 'text-red-500'}`} numberOfLines={1}>
+                        {isIncome ? '+' : '-'}{formatCurrency(draft.amount)}
                       </Text>
+                      <View className="flex-1 pr-2">
+                        <Text className="text-slate-800 dark:text-slate-200 text-xs font-semibold" numberOfLines={1}>{effectiveDescription}</Text>
+                        <Text className="text-indigo-600 dark:text-indigo-300 text-[10px] font-semibold" numberOfLines={1}>{effectiveCategory}</Text>
+                        <Text className="text-slate-500 text-[10px] dark:text-slate-400" numberOfLines={1}>
+                          {accountName} · {new Date(draft.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </Text>
+                      </View>
+                      {bulkAction === 'record' && <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={`${isExpanded ? 'Close' : 'Edit'} ${draft.description}`}
+                        onPress={() => setExpandedBulkDraftId(current => current === draft.id ? undefined : draft.id)}
+                        className={`px-2.5 py-2 rounded-lg mr-1 ${isExpanded ? 'bg-indigo-600' : 'bg-indigo-50 dark:bg-indigo-950/40'}`}
+                      >
+                        <Text className={`text-[10px] font-bold ${isExpanded ? 'text-white' : 'text-indigo-600 dark:text-indigo-300'}`}>{isExpanded ? 'Done' : 'Edit'}</Text>
+                      </TouchableOpacity>}
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Remove from selection"
+                        onPress={() => toggleSelection(draft.id)}
+                        className="w-7 h-7 ml-1 justify-center items-center"
+                      >
+                        <FontAwesome name="times-circle" size={15} color="#cbd5e1" />
+                      </TouchableOpacity>
                     </View>
-                    {/* Remove from selection */}
-                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close"
-                      onPress={() => toggleSelection(draft.id)}
-                      className="w-6 h-6 ml-1 justify-center items-center"
-                    >
-                      <FontAwesome name="times-circle" size={14} color="#cbd5e1" />
-                    </TouchableOpacity>
+
+                    {bulkAction === 'record' && isExpanded && <View className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800 p-3 border border-slate-200 dark:border-slate-700">
+                      <View className="flex-row justify-between items-center mb-3">
+                        <Text className="text-xs font-bold text-slate-800 dark:text-slate-200">Edit this transaction</Text>
+                        {itemEdit && <TouchableOpacity onPress={() => setBulkDraftEdits(current => {
+                          const next = { ...current };
+                          delete next[draft.id];
+                          return next;
+                        })}><Text className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300">Reset</Text></TouchableOpacity>}
+                      </View>
+                      <Text className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">CATEGORY</Text>
+                      {draft.is_transfer ? <View className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-3 mb-3"><Text className="text-xs font-semibold text-slate-600 dark:text-slate-300">Transfer · account direction is preserved</Text></View> : <View className="mb-3">
+                        <CategoryTreeSelect
+                          categories={draftCategories}
+                          value={effectiveCategory}
+                          onChange={category => updateItemEdit({ category })}
+                          placeholder={`Choose ${draft.type.toLowerCase()} category`}
+                          accessibilityLabel={`Category for ${draft.description}`}
+                          compact
+                        />
+                      </View>}
+                      <Text className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">DESCRIPTION</Text>
+                      <TextInput
+                        value={effectiveDescription}
+                        onChangeText={description => updateItemEdit({ description })}
+                        placeholder="Transaction description"
+                        placeholderTextColor="#94a3b8"
+                        className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-3 text-slate-900 dark:text-white text-xs mb-3"
+                      />
+                      <Text className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">TAGS</Text>
+                      <TextInput
+                        value={effectiveTags}
+                        onChangeText={tagsInput => updateItemEdit({ tagsInput })}
+                        placeholder="parking, work"
+                        placeholderTextColor="#94a3b8"
+                        autoCapitalize="none"
+                        className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-3 text-slate-900 dark:text-white text-xs"
+                      />
+                    </View>}
                   </View>
                 );
               })}
@@ -1617,6 +1691,9 @@ export default function DraftTransactionsScreen() {
                     </View>
                     <Text className="text-emerald-700 dark:text-emerald-300 text-[11px] leading-4">
                       Each amount, account, date, time, reference, recipient, fee and SMS remains attached to its own separate transaction.
+                    </Text>
+                    <Text className="text-emerald-700 dark:text-emerald-300 text-[11px] leading-4 mt-1">
+                      Tap Edit beside any row to choose its category, description and tags.
                     </Text>
                   </View>
 

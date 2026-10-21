@@ -12,6 +12,12 @@ export type BulkConfirmationEdits = {
   tags?: string[];
 };
 
+export type BulkConfirmationItemEdits = {
+  category?: string;
+  description?: string;
+  tags?: string[];
+};
+
 export type BulkEditEligibility = {
   canEditTogether: boolean;
   type?: 'INCOME' | 'EXPENSE';
@@ -50,15 +56,22 @@ export function resolveBulkConfirmationFields(
   draft: BulkConfirmationDraft,
   edits: BulkConfirmationEdits,
   canEditTogether: boolean,
+  itemEdits?: BulkConfirmationItemEdits,
 ): { category: string; description: string; tags: string[]; isCorrection: boolean } {
   const sharedDescription = edits.description?.trim();
-  const category = canEditTogether && edits.applyCategory && edits.category?.trim()
-    ? edits.category.trim()
-    : draft.category;
-  const description = canEditTogether && sharedDescription
-    ? sharedDescription
-    : draft.description;
-  const tags = canEditTogether ? [...(edits.tags || [])] : [];
+  const itemCategory = itemEdits?.category?.trim();
+  const itemDescription = itemEdits?.description?.trim();
+  const category = !draft.is_transfer && itemCategory
+    ? itemCategory
+    : canEditTogether && edits.applyCategory && edits.category?.trim()
+      ? edits.category.trim()
+      : draft.category;
+  const description = itemDescription || (canEditTogether && sharedDescription ? sharedDescription : draft.description);
+  const tags = itemEdits && Object.prototype.hasOwnProperty.call(itemEdits, 'tags')
+    ? [...(itemEdits.tags || [])]
+    : canEditTogether
+      ? [...(edits.tags || [])]
+      : [];
 
   return {
     category,

@@ -102,3 +102,29 @@ test('transfers and mixed directions cannot be reclassified as one batch', () =>
     isCorrection: false,
   });
 });
+
+test('each selected SMS can override shared category, description and tags', () => {
+  const first = expense(50, { category: 'Other', description: 'Detected A' });
+  const second = expense(30, { category: 'Other', description: 'Detected B' });
+  const shared = { applyCategory: true, category: 'Parking', description: 'Parking fees', tags: ['parking'] };
+  const eligibility = getBulkEditEligibility([first, second]);
+
+  assert.deepEqual(resolveBulkConfirmationFields(first, shared, eligibility.canEditTogether), {
+    category: 'Parking', description: 'Parking fees', tags: ['parking'], isCorrection: true,
+  });
+  assert.deepEqual(resolveBulkConfirmationFields(second, shared, eligibility.canEditTogether, {
+    category: 'Meals', description: 'Lunch', tags: ['food'],
+  }), {
+    category: 'Meals', description: 'Lunch', tags: ['food'], isCorrection: true,
+  });
+  assert.deepEqual(resolveBulkConfirmationFields(second, shared, eligibility.canEditTogether, { tags: [] }).tags, []);
+});
+
+test('individual edits work for mixed batches but cannot reclassify a transfer', () => {
+  const income = expense(100, { type: 'INCOME', category: 'Other Income' });
+  const transfer = expense(50, { is_transfer: true, category: 'Transfer' });
+  assert.equal(getBulkEditEligibility([income, transfer]).canEditTogether, false);
+
+  assert.equal(resolveBulkConfirmationFields(income, { applyCategory: false }, false, { category: 'Salary' }).category, 'Salary');
+  assert.equal(resolveBulkConfirmationFields(transfer, { applyCategory: false }, false, { category: 'Shopping' }).category, 'Transfer');
+});
