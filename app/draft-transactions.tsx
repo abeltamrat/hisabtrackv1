@@ -52,6 +52,8 @@ import type { FundEntry, SharedFund, Transaction } from '@/types/database';
 import { custodianFundFields } from '@/utils/fundLedger';
 import { generateUUID } from '@/utils/uuid';
 import { getBulkEditEligibility, resolveBulkConfirmationFields } from '@/utils/smsBulkConfirmation';
+import SmsDraftFilterSheet from '@/components/SmsDraftFilterSheet';
+import { countActiveSmsDraftFilters, EMPTY_SMS_DRAFT_FILTERS, matchesSmsDraftFilters, smsDraftFilterOptions, type SmsDraftFilters } from '@/utils/smsDraftFilters';
 
 const formatTime = (timestamp: number) => {
   const date = new Date(timestamp);
@@ -78,6 +80,206 @@ type BulkDraftEdit = {
   description?: string;
   tagsInput?: string;
 };
+
+type DraftCardActions = {
+  toggleSelection: (id: string) => void;
+  preview: (draft: DraftTransaction) => void;
+  adjustBalance: (draft: DraftTransaction, analysis: BalanceGapAnalysis) => void;
+  confirm: (draft: DraftTransaction) => void;
+  reject: (id: string) => void;
+};
+type DraftCardProps = {
+  draft: DraftTransaction;
+  isSelected: boolean;
+  isSelectionMode: boolean;
+  balanceAnalysis: BalanceGapAnalysis | null;
+  formatCurrency: (amount: number) => string;
+  actions: DraftCardActions;
+};
+// One SMS card. Memoized so that ticking one SMS in selection mode re-renders
+// only that card instead of every visible card (which made the list flicker).
+const DraftCard = React.memo(function DraftCard({ draft, isSelected, isSelectionMode, balanceAnalysis, formatCurrency, actions }: DraftCardProps) {
+  const isIncome = draft.type === 'INCOME';
+  const isRecorded = draft.status === 'RECORDED';
+  const isSelectable = isSelectionMode && !isRecorded;
+  const wasCorrected = !!draft.confirmation && (
+    draft.confirmation.type !== (draft.is_transfer ? 'TRANSFER' : draft.type)
+    || draft.confirmation.category !== draft.category
+    || draft.confirmation.description !== draft.description
+    || (draft.confirmation.recipient || '') !== (draft.sender_receiver || '')
+  );
+
+  const hasDiscrepancy = !!balanceAnalysis?.hasDiscrepancy;
+  const hasPendingExplanation = balanceAnalysis?.reason === 'UNRECORDED_DRAFT';
+
+  return (
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={isSelectable ? () => actions.toggleSelection(draft.id) : undefined}
+      className={`bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-sm border ${ isSelected ? 'border-indigo-400 dark:border-indigo-500' : isRecorded ? 'border-green-200 dark:border-green-900' : 'border-yellow-200 dark:border-yellow-900' }`}
+      style={{ elevation: 2 }}
+    >
+      {/* Status Badge */}
+      <View className="flex-row justify-between items-start mb-3">
+        <View className="flex-row items-center gap-2">
+          {isSelectionMode && !isRecorded && (
+            <View className={`w-6 h-6 rounded-full border-2 justify-center items-center ${ isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 dark:border-slate-600' }`}>
+              {isSelected && <FontAwesome name="check" size={10} color="#fff" />}
+            </View>
+          )}
+          <View className={`px-3 py-1 rounded-full ${isRecorded ? 'bg-green-100 dark:bg-green-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30' }`}>
+            <Text className={`text-xs font-bold ${isRecorded ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400' }`}>
+              {isRecorded ? 'Recorded' : 'Unrecorded'}
+            </Text>
+          </View>
+          {draft.is_transfer && (
+            <View className="px-2 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
+              <Text className="text-xs font-bold text-indigo-700 dark:text-indigo-400">Transfer</Text>
+            </View>
+          )}
+          {draft.is_loan_disbursement && (
+            <View className="px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30">
+              <Text className="text-xs font-bold text-amber-700 dark:text-amber-400">Loan proceeds</Text>
+            </View>
+          )}
+          {isRecorded && draft.confirmation && (
+            <View className="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-700"><Text className="text-[10px] font-bold text-slate-600 dark:text-slate-300">Reviewed {new Date(draft.confirmation.recorded_at).toLocaleDateString()}</Text></View>
+          )}
+          {wasCorrected && <View className="px-2 py-1 rounded-full bg-violet-100 dark:bg-violet-900/30"><Text className="text-[10px] font-bold text-violet-700 dark:text-violet-300">Corrected</Text></View>}
+        </View>
+        <View className="flex-row items-center gap-3">
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="View original SMS"
+            onPress={() => actions.preview(draft)}
+            className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg"
+          >
+            <FontAwesome name="envelope-o" size={14} color="#64748b" />
+          </TouchableOpacity>
+          <Text className="text-slate-500 text-xs dark:text-slate-400">{formatDate(draft.date)}</Text>
+        </View>
+      </View>
+
+      {/* Transaction Details */}
+      <View className="flex-row items-center mb-3">
+        <View
+          className={`w-12 h-12 rounded-xl justify-center items-center mr-3 ${draft.is_transfer ? 'bg-indigo-100 dark:bg-indigo-900/30' : isIncome ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30' }`}
+        >
+          <FontAwesome
+            name={draft.is_transfer ? 'exchange' : isIncome ? 'arrow-down' : 'arrow-up'}
+            size={18}
+            color={draft.is_transfer ? '#6366f1' : isIncome ? '#10b981' : '#ef4444'}
+          />
+        </View>
+        <View className="flex-1">
+          <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">
+            {draft.description}
+          </Text>
+          <View className="flex-row items-center">
+            <Text className="text-slate-500 text-xs dark:text-slate-400">{draft.category}</Text>
+            <View className="w-1 h-1 bg-slate-300 rounded-full mx-2" />
+            <Text className="text-slate-500 text-xs dark:text-slate-400">{formatTime(draft.date)}</Text>
+          </View>
+        </View>
+        <Text className={`font-bold text-lg ${isIncome ? 'text-green-600' : 'text-red-500' }`}>
+          {isIncome ? '+' : '-'}{formatCurrency(draft.amount)}
+        </Text>
+      </View>
+
+      {/* Additional Info */}
+      {(draft.fees || draft.tax || draft.reference_number || draft.suggested_balance !== undefined) && (
+        <View className="bg-slate-50 dark:bg-slate-900 rounded-xl p-3 mb-3">
+          {draft.fees && (
+            <View className="flex-row justify-between mb-1">
+              <Text className="text-slate-500 dark:text-slate-400 text-xs">Fee</Text>
+              <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
+                {formatCurrency(draft.fees)}
+              </Text>
+            </View>
+          )}
+          {draft.tax && (
+            <View className="flex-row justify-between mb-1">
+              <Text className="text-slate-500 dark:text-slate-400 text-xs">Tax</Text>
+              <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
+                {formatCurrency(draft.tax)}
+              </Text>
+            </View>
+          )}
+          {draft.reference_number && (
+            <View className="flex-row justify-between mb-1">
+              <Text className="text-slate-500 dark:text-slate-400 text-xs">Ref</Text>
+              <Text className="text-slate-700 dark:text-slate-300 text-xs font-mono">
+                {draft.reference_number}
+              </Text>
+            </View>
+          )}
+          {draft.suggested_balance !== undefined && (
+            <View className="flex-row justify-between mb-1">
+              <Text className="text-slate-500 dark:text-slate-400 text-xs">Stated Bank Bal</Text>
+              <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
+                {formatCurrency(draft.suggested_balance)}
+              </Text>
+            </View>
+          )}
+          {draft.receipt_url && (
+            <TouchableOpacity
+              onPress={() => Linking.openURL(draft.receipt_url!)}
+              className="flex-row items-center mt-1"
+            >
+              <FontAwesome name="external-link" size={11} color="#6366f1" />
+              <Text className="text-indigo-500 text-xs ml-1.5 underline" numberOfLines={1}>
+                View Receipt
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {hasDiscrepancy && (
+        <View className="bg-red-50 dark:bg-red-950/20 p-2.5 rounded-xl mb-3 border border-red-100 dark:border-red-900/30">
+          <View className="flex-row items-center">
+            <FontAwesome name="exclamation-triangle" size={12} color="#ef4444" />
+            <Text className="text-red-600 dark:text-red-400 text-[10px] ml-2 font-semibold flex-1">
+              Balance gap {formatCurrency(Math.abs(balanceAnalysis?.gap || 0))}: bank states {formatCurrency(balanceAnalysis?.bankBalance || 0)}, while the historical ledger reconstructs {formatCurrency(balanceAnalysis?.expectedBalance || 0)}. {balanceAnalysis?.explanation}
+            </Text>
+          </View>
+          {balanceAnalysis && (balanceAnalysis.evidence.transactions.length > 0 || balanceAnalysis.evidence.previousAnchor) && (
+            <View className="mt-2 border-t border-red-200 dark:border-red-900/40 pt-2">
+              {balanceAnalysis.evidence.previousAnchor && <Text className="text-red-600/80 dark:text-red-300/80 text-[10px]">Previous bank balance: {formatCurrency(balanceAnalysis.evidence.previousAnchor.suggested_balance || 0)} on {formatDate(balanceAnalysis.evidence.previousAnchor.date)}</Text>}
+              {balanceAnalysis.evidence.transactions.slice(0, 3).map(transaction => <Text key={transaction.id} className="text-red-600/80 dark:text-red-300/80 text-[10px] mt-1">• {formatDate(transaction.date)} · {transaction.description} · {formatCurrency(transaction.gross_amount ?? transaction.amount)}</Text>)}
+            </View>
+          )}
+          {balanceAnalysis && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Review balance adjustment" onPress={() => actions.adjustBalance(draft, balanceAnalysis)} className="self-start mt-2 px-3 py-2 rounded-lg bg-red-600">
+            <Text className="text-white text-[10px] font-bold">Review adjustment</Text>
+          </TouchableOpacity>}
+        </View>
+      )}
+
+      {hasPendingExplanation && balanceAnalysis?.suggestedDraft && (
+        <View className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-xl mb-3 border border-indigo-200 dark:border-indigo-900/40">
+          <Text className="text-indigo-700 dark:text-indigo-300 text-xs font-semibold">{balanceAnalysis.explanation}</Text>
+          {balanceAnalysis.suggestedDraft.id !== draft.id && <TouchableOpacity onPress={() => actions.confirm(balanceAnalysis.suggestedDraft!)} className="self-start mt-2 px-3 py-2 rounded-lg bg-indigo-600"><Text className="text-white text-[10px] font-bold">Review matching draft</Text></TouchableOpacity>}
+        </View>
+      )}
+
+      {/* Actions */}
+      {draft.status === 'PENDING' && !isSelectionMode && (
+        <View className="flex-row gap-2">
+          <TouchableOpacity
+            onPress={() => actions.confirm(draft)}
+            className="flex-1 bg-primary-500 py-3 rounded-xl items-center"
+          >
+            <Text className="text-white font-bold">Record Transaction</Text>
+          </TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ignore"
+            onPress={() => actions.reject(draft.id)}
+            className="bg-red-50 dark:bg-red-900/30 px-4 py-3 rounded-xl items-center"
+          >
+            <FontAwesome name="ban" size={16} color="#ef4444" />
+          </TouchableOpacity>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+});
 
 export default function DraftTransactionsScreen() {
   const { t } = useI18n();
@@ -178,7 +380,13 @@ export default function DraftTransactionsScreen() {
   const [expandedBulkDraftId, setExpandedBulkDraftId] = useState<string>();
 
   // Filter & Grouping States
-  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [smsFilters, setSmsFilters] = useState<SmsDraftFilters>(EMPTY_SMS_DRAFT_FILTERS);
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
+  // The options panel's type chips edit the same filter as the filter sheet.
+  const typeFilter = smsFilters.type;
+  const setTypeFilter = (type: SmsDraftFilters['type']) => setSmsFilters(current => ({ ...current, type }));
+  const activeFilterCount = countActiveSmsDraftFilters(smsFilters);
+  const clearFilter = (patch: Partial<SmsDraftFilters>) => setSmsFilters(current => ({ ...current, ...patch }));
   const [groupingMode, setGroupingMode] = useState<'none' | 'date' | 'month' | 'year' | 'type'>('date');
   const [showOptions, setShowOptions] = useState(false);
 
@@ -227,11 +435,62 @@ export default function DraftTransactionsScreen() {
     const evidenceIds = new Set((evidenceIdsParam || '').split(',').filter(Boolean));
     return drafts.filter(d => {
       if (evidenceIds.size && !evidenceIds.has(d.id)) return false;
-      if (typeFilter === 'income') return d.type === 'INCOME';
-      if (typeFilter === 'expense') return d.type === 'EXPENSE';
-      return true;
+      return matchesSmsDraftFilters(d, smsFilters);
     });
-  }, [drafts, evidenceIdsParam, typeFilter]);
+  }, [drafts, evidenceIdsParam, smsFilters]);
+  const filterOptions = useMemo(() => smsDraftFilterOptions(drafts), [drafts]);
+  // Balance-gap checks scan the ledger, so run them once per data change rather
+  // than inside every card render (selection taps re-rendered them all).
+  const balanceAnalyses = useMemo(() => {
+    const byId = new Map<string, BalanceGapAnalysis | null>();
+    const accountById = new Map(accounts.map((a: any) => [a.id, a]));
+    for (const draft of filteredDrafts) {
+      const draftAccount = accountById.get(draft.account_id);
+      byId.set(draft.id, draftAccount ? ReconciliationService.analyzeDraft(draftAccount, draft, transactions, drafts) : null);
+    }
+    return byId;
+  }, [accounts, filteredDrafts, transactions, drafts]);
+  // Cards get one stable actions object; it forwards to the latest handlers,
+  // which are recreated on every render of this screen.
+  const cardHandlers = useRef<DraftCardActions | null>(null);
+  const draftCardActions = useMemo<DraftCardActions>(() => ({
+    toggleSelection: id => cardHandlers.current?.toggleSelection(id),
+    preview: draft => cardHandlers.current?.preview(draft),
+    adjustBalance: (draft, analysis) => cardHandlers.current?.adjustBalance(draft, analysis),
+    confirm: draft => cardHandlers.current?.confirm(draft),
+    reject: id => cardHandlers.current?.reject(id),
+  }), []);
+  const filterAccounts = useMemo(
+    () => accountId ? [] : accounts.filter(a => filterOptions.accountIds.includes(a.id)).map(a => ({ id: a.id, name: a.name })),
+    [accountId, accounts, filterOptions.accountIds],
+  );
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; clear: () => void }> = [];
+    const f = smsFilters;
+    if (f.search) chips.push({ key: 'search', label: `“${f.search}”`, clear: () => clearFilter({ search: '' }) });
+    if (f.type !== 'all') chips.push({ key: 'type', label: f.type[0].toUpperCase() + f.type.slice(1), clear: () => clearFilter({ type: 'all' }) });
+    if (f.accountIds.length) {
+      const names = f.accountIds.map(id => accounts.find(a => a.id === id)?.name || 'Account');
+      chips.push({ key: 'accounts', label: names.length > 2 ? `${names.length} accounts` : names.join(', '), clear: () => clearFilter({ accountIds: [] }) });
+    }
+    if (f.recipient) chips.push({ key: 'recipient', label: `To/from ${f.recipient}`, clear: () => clearFilter({ recipient: '' }) });
+    if (f.dateFrom !== undefined || f.dateTo !== undefined) {
+      const day = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const label = f.dateFrom !== undefined && f.dateTo !== undefined ? `${day(f.dateFrom)} – ${day(f.dateTo)}`
+        : f.dateFrom !== undefined ? `From ${day(f.dateFrom)}` : `Until ${day(f.dateTo!)}`;
+      chips.push({ key: 'date', label, clear: () => clearFilter({ dateFrom: undefined, dateTo: undefined }) });
+    }
+    if (f.amountMin !== undefined || f.amountMax !== undefined) {
+      const label = f.amountMin !== undefined && f.amountMax !== undefined
+        ? (f.amountMin === f.amountMax ? `= ${formatCurrency(f.amountMin)}` : `${formatCurrency(f.amountMin)} – ${formatCurrency(f.amountMax)}`)
+        : f.amountMin !== undefined ? `≥ ${formatCurrency(f.amountMin)}` : `≤ ${formatCurrency(f.amountMax!)}`;
+      chips.push({ key: 'amount', label, clear: () => clearFilter({ amountMin: undefined, amountMax: undefined }) });
+    }
+    if (f.categories.length) chips.push({ key: 'categories', label: f.categories.length > 2 ? `${f.categories.length} categories` : f.categories.join(', '), clear: () => clearFilter({ categories: [] }) });
+    return chips;
+    // clearFilter only wraps setSmsFilters, which is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smsFilters, accounts, formatCurrency]);
 
   const groupedDrafts = useMemo(() => {
     if (groupingMode === 'none') return [{ title: '', data: filteredDrafts }];
@@ -933,6 +1192,16 @@ export default function DraftTransactionsScreen() {
     });
   };
 
+  // A filter change drops hidden SMS from the selection, so the count and the batch match what is shown.
+  useEffect(() => {
+    setSelectedIds(prev => {
+      if (!prev.size) return prev;
+      const visible = new Set(pendingDrafts.map(d => d.id));
+      const next = new Set([...prev].filter(id => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [pendingDrafts]);
+
   const selectAll = () => setSelectedIds(new Set(pendingDrafts.map(d => d.id)));
   const clearSelection = () => setSelectedIds(new Set());
 
@@ -1160,6 +1429,14 @@ export default function DraftTransactionsScreen() {
     setEditedCategory((matchingDraftCategory ?? confirmCategories[0]).name);
   }, [categories, confirmCategories, editedCategory, selectedDraft]);
 
+  cardHandlers.current = {
+    toggleSelection,
+    preview: draft => { setSelectedDraft(draft); setShowPreviewModal(true); },
+    adjustBalance: handleBalanceAdjustment,
+    confirm: openConfirmModal,
+    reject: handleReject,
+  };
+
   return (
     <View className="flex-1 bg-slate-50 dark:bg-background-dark">
       <Stack.Screen options={{ headerShown: false }} />
@@ -1322,6 +1599,10 @@ export default function DraftTransactionsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel={activeFilterCount ? `Filters, ${activeFilterCount} active` : 'Filters'} onPress={() => setShowFilterSheet(true)} className="w-8 h-8 items-center justify-center mr-1">
+          <FontAwesome name="filter" size={16} color={activeFilterCount ? '#6366f1' : '#64748b'} />
+          {activeFilterCount > 0 && <View className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-indigo-500 items-center justify-center"><Text className="text-white text-[10px] font-bold">{activeFilterCount}</Text></View>}
+        </TouchableOpacity>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh" onPress={handleRefresh} disabled={refreshing} className="w-8 h-8 items-center justify-center">
           <FontAwesome
             name="refresh"
@@ -1331,10 +1612,34 @@ export default function DraftTransactionsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Active filters: each chip removes its filter */}
+      {activeFilterChips.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-grow-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800" contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8, alignItems: 'center' }}>
+          {activeFilterChips.map(chip => (
+            <TouchableOpacity key={chip.key} accessibilityRole="button" accessibilityLabel={`Remove filter ${chip.label}`} onPress={chip.clear} className="flex-row items-center px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900">
+              <Text className="text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold mr-1.5" numberOfLines={1}>{chip.label}</Text>
+              <FontAwesome name="times" size={10} color="#6366f1" />
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity accessibilityRole="button" onPress={() => setSmsFilters(EMPTY_SMS_DRAFT_FILTERS)} className="px-2 py-1">
+            <Text className="text-slate-500 dark:text-slate-400 text-[11px] font-bold">Clear all</Text>
+          </TouchableOpacity>
+          <Text className="text-slate-500 dark:text-slate-400 text-[11px]">{filteredDrafts.length} shown</Text>
+        </ScrollView>
+      )}
+
       {/* Drafts List */}
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <Text className="text-slate-500 dark:text-slate-400">Loading...</Text>
+        </View>
+      ) : filteredDrafts.length === 0 && activeFilterCount > 0 ? (
+        <View className="flex-1 items-center justify-center px-6">
+          <FontAwesome name="filter" size={28} color="#cbd5e1" />
+          <Text className="text-slate-700 dark:text-slate-200 font-bold mt-3">No SMS match these filters</Text>
+          <TouchableOpacity accessibilityRole="button" onPress={() => setSmsFilters(EMPTY_SMS_DRAFT_FILTERS)} className="mt-3 px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40">
+            <Text className="text-indigo-600 dark:text-indigo-300 text-xs font-bold">Clear filters</Text>
+          </TouchableOpacity>
         </View>
       ) : filteredDrafts.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
@@ -1371,193 +1676,17 @@ export default function DraftTransactionsScreen() {
               <View className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-800" />
             </View>
           ) : null}
-          renderItem={({ item: draft }) => {
-            const isIncome = draft.type === 'INCOME';
-            const isRecorded = draft.status === 'RECORDED';
-            const isSelected = selectedIds.has(draft.id);
-            const isSelectable = isSelectionMode && !isRecorded;
-            const wasCorrected = !!draft.confirmation && (
-              draft.confirmation.type !== (draft.is_transfer ? 'TRANSFER' : draft.type)
-              || draft.confirmation.category !== draft.category
-              || draft.confirmation.description !== draft.description
-              || (draft.confirmation.recipient || '') !== (draft.sender_receiver || '')
-            );
-
-            const draftAccount = accounts.find((a: any) => a.id === draft.account_id);
-            const balanceAnalysis = draftAccount
-              ? ReconciliationService.analyzeDraft(draftAccount, draft, transactions, drafts)
-              : null;
-            const hasDiscrepancy = !!balanceAnalysis?.hasDiscrepancy;
-            const hasPendingExplanation = balanceAnalysis?.reason === 'UNRECORDED_DRAFT';
-
-            return (
-              <TouchableOpacity
-                activeOpacity={1}
-                onPress={isSelectable ? () => toggleSelection(draft.id) : undefined}
-                className={`bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 shadow-sm border ${ isSelected ? 'border-indigo-400 dark:border-indigo-500' : isRecorded ? 'border-green-200 dark:border-green-900' : 'border-yellow-200 dark:border-yellow-900' }`}
-                style={{ elevation: 2 }}
-              >
-                {/* Status Badge */}
-                <View className="flex-row justify-between items-start mb-3">
-                  <View className="flex-row items-center gap-2">
-                    {isSelectionMode && !isRecorded && (
-                      <View className={`w-6 h-6 rounded-full border-2 justify-center items-center ${ isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 dark:border-slate-600' }`}>
-                        {isSelected && <FontAwesome name="check" size={10} color="#fff" />}
-                      </View>
-                    )}
-                    <View className={`px-3 py-1 rounded-full ${isRecorded ? 'bg-green-100 dark:bg-green-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30' }`}>
-                      <Text className={`text-xs font-bold ${isRecorded ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400' }`}>
-                        {isRecorded ? 'Recorded' : 'Unrecorded'}
-                      </Text>
-                    </View>
-                    {draft.is_transfer && (
-                      <View className="px-2 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
-                        <Text className="text-xs font-bold text-indigo-700 dark:text-indigo-400">Transfer</Text>
-                      </View>
-                    )}
-                    {draft.is_loan_disbursement && (
-                      <View className="px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30">
-                        <Text className="text-xs font-bold text-amber-700 dark:text-amber-400">Loan proceeds</Text>
-                      </View>
-                    )}
-                    {isRecorded && draft.confirmation && (
-                      <View className="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-700"><Text className="text-[10px] font-bold text-slate-600 dark:text-slate-300">Reviewed {new Date(draft.confirmation.recorded_at).toLocaleDateString()}</Text></View>
-                    )}
-                    {wasCorrected && <View className="px-2 py-1 rounded-full bg-violet-100 dark:bg-violet-900/30"><Text className="text-[10px] font-bold text-violet-700 dark:text-violet-300">Corrected</Text></View>}
-                  </View>
-                  <View className="flex-row items-center gap-3">
-                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="View original SMS"
-                      onPress={() => { setSelectedDraft(draft); setShowPreviewModal(true); }}
-                      className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg"
-                    >
-                      <FontAwesome name="envelope-o" size={14} color="#64748b" />
-                    </TouchableOpacity>
-                    <Text className="text-slate-500 text-xs dark:text-slate-400">{formatDate(draft.date)}</Text>
-                  </View>
-                </View>
-
-                {/* Transaction Details */}
-                <View className="flex-row items-center mb-3">
-                  <View
-                    className={`w-12 h-12 rounded-xl justify-center items-center mr-3 ${draft.is_transfer ? 'bg-indigo-100 dark:bg-indigo-900/30' : isIncome ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30' }`}
-                  >
-                    <FontAwesome
-                      name={draft.is_transfer ? 'exchange' : isIncome ? 'arrow-down' : 'arrow-up'}
-                      size={18}
-                      color={draft.is_transfer ? '#6366f1' : isIncome ? '#10b981' : '#ef4444'}
-                    />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-slate-900 dark:text-white font-bold text-base mb-1">
-                      {draft.description}
-                    </Text>
-                    <View className="flex-row items-center">
-                      <Text className="text-slate-500 text-xs dark:text-slate-400">{draft.category}</Text>
-                      <View className="w-1 h-1 bg-slate-300 rounded-full mx-2" />
-                      <Text className="text-slate-500 text-xs dark:text-slate-400">{formatTime(draft.date)}</Text>
-                    </View>
-                  </View>
-                  <Text className={`font-bold text-lg ${isIncome ? 'text-green-600' : 'text-red-500' }`}>
-                    {isIncome ? '+' : '-'}{formatCurrency(draft.amount)}
-                  </Text>
-                </View>
-
-                {/* Additional Info */}
-                {(draft.fees || draft.tax || draft.reference_number || draft.suggested_balance !== undefined) && (
-                  <View className="bg-slate-50 dark:bg-slate-900 rounded-xl p-3 mb-3">
-                    {draft.fees && (
-                      <View className="flex-row justify-between mb-1">
-                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Fee</Text>
-                        <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
-                          {formatCurrency(draft.fees)}
-                        </Text>
-                      </View>
-                    )}
-                    {draft.tax && (
-                      <View className="flex-row justify-between mb-1">
-                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Tax</Text>
-                        <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
-                          {formatCurrency(draft.tax)}
-                        </Text>
-                      </View>
-                    )}
-                    {draft.reference_number && (
-                      <View className="flex-row justify-between mb-1">
-                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Ref</Text>
-                        <Text className="text-slate-700 dark:text-slate-300 text-xs font-mono">
-                          {draft.reference_number}
-                        </Text>
-                      </View>
-                    )}
-                    {draft.suggested_balance !== undefined && (
-                      <View className="flex-row justify-between mb-1">
-                        <Text className="text-slate-500 dark:text-slate-400 text-xs">Stated Bank Bal</Text>
-                        <Text className="text-slate-700 dark:text-slate-300 text-xs font-semibold">
-                          {formatCurrency(draft.suggested_balance)}
-                        </Text>
-                      </View>
-                    )}
-                    {draft.receipt_url && (
-                      <TouchableOpacity
-                        onPress={() => Linking.openURL(draft.receipt_url!)}
-                        className="flex-row items-center mt-1"
-                      >
-                        <FontAwesome name="external-link" size={11} color="#6366f1" />
-                        <Text className="text-indigo-500 text-xs ml-1.5 underline" numberOfLines={1}>
-                          View Receipt
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-
-                {hasDiscrepancy && (
-                  <View className="bg-red-50 dark:bg-red-950/20 p-2.5 rounded-xl mb-3 border border-red-100 dark:border-red-900/30">
-                    <View className="flex-row items-center">
-                      <FontAwesome name="exclamation-triangle" size={12} color="#ef4444" />
-                      <Text className="text-red-600 dark:text-red-400 text-[10px] ml-2 font-semibold flex-1">
-                        Balance gap {formatCurrency(Math.abs(balanceAnalysis?.gap || 0))}: bank states {formatCurrency(balanceAnalysis?.bankBalance || 0)}, while the historical ledger reconstructs {formatCurrency(balanceAnalysis?.expectedBalance || 0)}. {balanceAnalysis?.explanation}
-                      </Text>
-                    </View>
-                    {balanceAnalysis && (balanceAnalysis.evidence.transactions.length > 0 || balanceAnalysis.evidence.previousAnchor) && (
-                      <View className="mt-2 border-t border-red-200 dark:border-red-900/40 pt-2">
-                        {balanceAnalysis.evidence.previousAnchor && <Text className="text-red-600/80 dark:text-red-300/80 text-[10px]">Previous bank balance: {formatCurrency(balanceAnalysis.evidence.previousAnchor.suggested_balance || 0)} on {formatDate(balanceAnalysis.evidence.previousAnchor.date)}</Text>}
-                        {balanceAnalysis.evidence.transactions.slice(0, 3).map(transaction => <Text key={transaction.id} className="text-red-600/80 dark:text-red-300/80 text-[10px] mt-1">• {formatDate(transaction.date)} · {transaction.description} · {formatCurrency(transaction.gross_amount ?? transaction.amount)}</Text>)}
-                      </View>
-                    )}
-                    {balanceAnalysis && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Review balance adjustment" onPress={() => handleBalanceAdjustment(draft, balanceAnalysis)} className="self-start mt-2 px-3 py-2 rounded-lg bg-red-600">
-                      <Text className="text-white text-[10px] font-bold">Review adjustment</Text>
-                    </TouchableOpacity>}
-                  </View>
-                )}
-
-                {hasPendingExplanation && balanceAnalysis?.suggestedDraft && (
-                  <View className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-xl mb-3 border border-indigo-200 dark:border-indigo-900/40">
-                    <Text className="text-indigo-700 dark:text-indigo-300 text-xs font-semibold">{balanceAnalysis.explanation}</Text>
-                    {balanceAnalysis.suggestedDraft.id !== draft.id && <TouchableOpacity onPress={() => openConfirmModal(balanceAnalysis.suggestedDraft!)} className="self-start mt-2 px-3 py-2 rounded-lg bg-indigo-600"><Text className="text-white text-[10px] font-bold">Review matching draft</Text></TouchableOpacity>}
-                  </View>
-                )}
-
-                {/* Actions */}
-                {draft.status === 'PENDING' && !isSelectionMode && (
-                  <View className="flex-row gap-2">
-                    <TouchableOpacity
-                      onPress={() => openConfirmModal(draft)}
-                      className="flex-1 bg-primary-500 py-3 rounded-xl items-center"
-                    >
-                      <Text className="text-white font-bold">Record Transaction</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ignore"
-                      onPress={() => handleReject(draft.id)}
-                      className="bg-red-50 dark:bg-red-900/30 px-4 py-3 rounded-xl items-center"
-                    >
-                      <FontAwesome name="ban" size={16} color="#ef4444" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          }}
+          renderItem={({ item: draft }) => (
+            <DraftCard
+              draft={draft}
+              isSelected={selectedIds.has(draft.id)}
+              isSelectionMode={isSelectionMode}
+              balanceAnalysis={balanceAnalyses.get(draft.id) ?? null}
+              formatCurrency={formatCurrency}
+              actions={draftCardActions}
+            />
+          )}
+          extraData={selectedIds}
           ListFooterComponent={null}
         />
       )}
@@ -2569,6 +2698,15 @@ export default function DraftTransactionsScreen() {
             </TouchableOpacity>
         </View>
       </FormSheet>
+      <SmsDraftFilterSheet
+        visible={showFilterSheet}
+        onClose={() => setShowFilterSheet(false)}
+        value={smsFilters}
+        onApply={setSmsFilters}
+        accounts={filterAccounts}
+        recipients={filterOptions.recipients}
+        categories={filterOptions.categories}
+      />
       <PersonPicker visible={showPersonPicker} selectedId={selectedPersonId} suggestedName={editedRecipient} onClose={() => setShowPersonPicker(false)} onSelect={person => { setSelectedPerson(person); setSelectedPersonId(person?.id); if (person) setEditedRecipient(person.displayName); }} />
     </View>
   );
