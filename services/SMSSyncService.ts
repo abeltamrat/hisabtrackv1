@@ -8,6 +8,7 @@ import { SMSLearningService } from './SMSLearningService';
 import { StorageService } from '@/utils/storage';
 import { createSerialQueue } from '@/utils/asyncLock';
 import { findSelfTransferPairs } from '@/utils/transferPairing';
+import { isSameSmsDraft, isSameSmsTransaction, type SmsEvidence } from '@/utils/smsTransactionIdentity';
 import { SMSAICalibrationService } from './SMSAICalibrationService';
 import RecipientIdentityService from './RecipientIdentityService';
 import { findLatestSmsBalance, type LatestSmsBalance } from '@/utils/latestSmsBalance';
@@ -362,10 +363,19 @@ export class SMSSyncService {
 
         if (!parsed) continue;
 
-        const isAlreadyInDrafts = [...existingDrafts, ...draftsToAdd].some(d =>
-          d.account_id === account.id && ((sms.id && d.sms_id === sms.id) ||
-          (parsed!.referenceNumber && d.reference_number === parsed!.referenceNumber && d.type === parsed!.type))
-        );
+        const smsEvidence: SmsEvidence = {
+          account_id: account.id,
+          type: parsed.type,
+          amount: parsed.amount,
+          gross_amount: parsed.grossAmount,
+          fees: parsed.fees,
+          tax: parsed.tax,
+          date: parsed.date,
+          sms_id: parsed.smsId,
+          reference_number: parsed.referenceNumber,
+          receipt_url: parsed.receiptUrl,
+        };
+        const isAlreadyInDrafts = [...existingDrafts, ...draftsToAdd].some(d => isSameSmsDraft(smsEvidence, d));
 
         if (isAlreadyInDrafts) {
           result.alreadyRecorded++;
@@ -401,7 +411,11 @@ export class SMSSyncService {
         }
 
         result.matchedAccounts++;
-        const isAlreadyRecorded = this.isTransactionRecorded(parsed, existingTransactions.filter(t => t.account_id === account.id || t.to_account_id === account.id));
+        const recordedMatch = this.findRecordedSmsTransaction(
+          smsEvidence,
+          existingTransactions.filter(t => t.account_id === account.id || t.to_account_id === account.id),
+        );
+        const isAlreadyRecorded = !!recordedMatch;
 
         // ── Transfer detection ──────────────────────────────────────────────
         let isTransfer = false;
@@ -416,26 +430,28 @@ export class SMSSyncService {
             if (!storedNumber) return false;
             const n = storedNumber.replace(/\D/g, '');
             const d = smsDigits.replace(/\D/g, '');
-            if (!n || !d || d.length < 2) return false;
+            // Short masked tails collide too often to safely choose an account.
+            if (!n || !d || d.length < 4) return false;
             return n.endsWith(d) || d.endsWith(n.slice(-d.length));
           };
+          const uniqueOwnedAccount = (matches: Account[]) => matches.length === 1 ? matches[0] : undefined;
 
           if (parsed.type === 'EXPENSE' && parsed.transferToAccountNumber) {
             transferPeerAccountNumber = parsed.transferToAccountNumber;
-            const toAcct = allAccts.find(a => a.id !== account.id && matchAcctNumber(a.account_number, parsed.transferToAccountNumber!));
+            const toAcct = uniqueOwnedAccount(allAccts.filter(a => a.id !== account.id && matchAcctNumber(a.account_number, parsed.transferToAccountNumber!)));
             if (toAcct) transferToAccountId = toAcct.id;
           } else if (parsed.type === 'INCOME' && parsed.transferFromAccountNumber) {
             transferPeerAccountNumber = parsed.transferFromAccountNumber;
-            const fromAcct = allAccts.find(a => a.id !== account.id && matchAcctNumber(a.account_number, parsed.transferFromAccountNumber!));
+            const fromAcct = uniqueOwnedAccount(allAccts.filter(a => a.id !== account.id && matchAcctNumber(a.account_number, parsed.transferFromAccountNumber!)));
             if (fromAcct) transferFromAccountId = fromAcct.id;
           }
 
           const merchantKey = (parsed.merchant || '').trim().toLocaleLowerCase();
           if (merchantKey && parsed.type === 'EXPENSE' && !transferToAccountId) {
-            transferToAccountId = allAccts.find(a => a.id !== account.id && a.aliases?.some(alias => alias.trim().toLocaleLowerCase() === merchantKey))?.id;
+            transferToAccountId = uniqueOwnedAccount(allAccts.filter(a => a.id !== account.id && a.aliases?.some(alias => alias.trim().toLocaleLowerCase() === merchantKey)))?.id;
           }
           if (merchantKey && parsed.type === 'INCOME' && !transferFromAccountId) {
-            transferFromAccountId = allAccts.find(a => a.id !== account.id && a.aliases?.some(alias => alias.trim().toLocaleLowerCase() === merchantKey))?.id;
+            transferFromAccountId = uniqueOwnedAccount(allAccts.filter(a => a.id !== account.id && a.aliases?.some(alias => alias.trim().toLocaleLowerCase() === merchantKey)))?.id;
           }
 
           // Keep both directions. The receiving SMS is evidence for transfer
@@ -498,6 +514,7 @@ export class SMSSyncService {
           receipt_url: parsed.receiptUrl,
           status: isAlreadyRecorded ? 'RECORDED' : 'PENDING',
           is_recorded: isAlreadyRecorded,
+          matched_transaction_id: recordedMatch?.id,
           categoryHint,
           is_transfer: isTransfer || undefined,
           transfer_to_account_id: transferToAccountId,
@@ -565,12 +582,10 @@ export class SMSSyncService {
       if (pairs.length === 0) return 0;
 
       const nameOf = (id: string) => allAccounts.find(a => a.id === id)?.name;
-      const byId = new Map(drafts.map(d => [d.id, d]));
       const patches: Array<{ id: string; patch: Partial<DraftTransaction> }> = [];
       for (const pair of pairs) {
         const toName = nameOf(pair.incomeAccountId);
         const fromName = nameOf(pair.expenseAccountId);
-        const expenseLeg = byId.get(pair.expenseId);
         patches.push({
           id: pair.expenseId,
           patch: {
@@ -589,10 +604,6 @@ export class SMSSyncService {
             paired_draft_id: pair.expenseId,
             category: 'Transfer',
             description: fromName ? `Transfer from ${fromName}` : 'Transfer from own account',
-            // Carry the sender-side charges so recording from this leg can
-            // reconstruct the gross source debit (amount + fees + tax).
-            fees: expenseLeg?.fees,
-            tax: expenseLeg?.tax,
           },
         });
       }
@@ -617,17 +628,8 @@ export class SMSSyncService {
     } catch (e) { return null; }
   }
 
-  private static isTransactionRecorded(parsed: any, existingTransactions: Transaction[]): boolean {
-    if (parsed.referenceNumber) {
-      if (existingTransactions.some(t => t.reference_number === parsed.referenceNumber)) return true;
-    }
-    if (parsed.smsId) {
-      if (existingTransactions.some(t => t.sms_id === parsed.smsId)) return true;
-    }
-    if (parsed.receiptUrl) {
-      if (existingTransactions.some(t => t.receipt_url === parsed.receiptUrl)) return true;
-    }
-    return false; // Ambiguous amount/time matches remain available for human review.
+  private static findRecordedSmsTransaction(sms: SmsEvidence, existingTransactions: Transaction[]): Transaction | undefined {
+    return existingTransactions.find(transaction => isSameSmsTransaction(sms, transaction));
   }
 
   private static getMockSMS(sender: string): SMSMessage[] {

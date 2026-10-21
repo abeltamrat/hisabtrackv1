@@ -25,6 +25,10 @@ export function operatingExpense(t: Transaction) {
   return t.type === 'EXPENSE' ? purpose(t) === 'OPERATING' ? (t.gross_amount ?? t.amount) : (t.interest_amount || 0) : 0;
 }
 export function cashDelta(t: Transaction) { return t.type === 'TRANSFER' ? -money((t.fees || 0) + (t.tax || 0)) : t.type === 'INCOME' ? t.amount : -(t.gross_amount ?? t.amount); }
+/** Source-side debit for an SMS transfer, including charges if the SMS exposed them. */
+export function transferSourceDebit(leg: { amount: number; gross_amount?: number; fees?: number; tax?: number }): number {
+  return money(leg.gross_amount ?? (leg.amount + (leg.fees ?? 0) + (leg.tax ?? 0)));
+}
 export function operatingTransactions(transactions: Transaction[]): Transaction[] {
   return transactions.flatMap(t => {
     if (t.type === 'TRANSFER') {

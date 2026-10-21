@@ -1,5 +1,5 @@
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { MAX_TAGS_PER_TRANSACTION, MAX_TAG_LENGTH, normalizeTransactionTags } from '@/utils/tags';
@@ -13,6 +13,7 @@ export default function TagInputField({
   placeholder = 'Add a tag',
   savedLabel = 'Saved tags',
   compact = false,
+  suggestOnFocus = false,
 }: {
   tags?: string[];
   suggestions?: string[];
@@ -20,8 +21,14 @@ export default function TagInputField({
   placeholder?: string;
   savedLabel?: string;
   compact?: boolean;
+  /** Show saved tags only while the field is in use (keeps repeated forms short). */
+  suggestOnFocus?: boolean;
 }) {
   const [draft, setDraft] = useState('');
+  const [focused, setFocused] = useState(false);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (blurTimer.current) clearTimeout(blurTimer.current); }, []);
+  const keepOpen = () => { if (blurTimer.current) clearTimeout(blurTimer.current); };
   const selected = tags || [];
   const atLimit = selected.length >= MAX_TAGS_PER_TRANSACTION;
 
@@ -120,6 +127,8 @@ export default function TagInputField({
           value={draft}
           onChangeText={handleChangeText}
           onSubmitEditing={() => addTag(draft)}
+          onFocus={() => { keepOpen(); setFocused(true); }}
+          onBlur={() => { blurTimer.current = setTimeout(() => setFocused(false), 300); }}
           editable={!atLimit}
           placeholder={atLimit ? `Tag limit reached (${MAX_TAGS_PER_TRANSACTION})` : placeholder}
           placeholderTextColor="#94a3b8"
@@ -141,7 +150,7 @@ export default function TagInputField({
         )}
       </View>
 
-      {!atLimit && visible.length > 0 && (
+      {!atLimit && visible.length > 0 && (!suggestOnFocus || focused || needle.length > 0) && (
         <View className="mt-2">
           <Text className="text-[10px] text-slate-500 font-bold uppercase mb-1.5 dark:text-slate-400">
             {needle ? 'Matching tags' : savedLabel}
@@ -152,6 +161,7 @@ export default function TagInputField({
                 key={tag}
                 accessibilityRole="button"
                 accessibilityLabel={`Add tag ${tag}`}
+                onPressIn={keepOpen}
                 onPress={() => addTag(tag)}
                 className="mr-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
               >

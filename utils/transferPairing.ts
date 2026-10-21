@@ -1,3 +1,5 @@
+import type { Transaction } from '@/types/database';
+
 /**
  * Cross-account self-transfer pairing.
  *
@@ -47,17 +49,30 @@ const AMOUNT_EPSILON = 0.01;
 function amountsMatch(expense: PairableDraft, income: PairableDraft): boolean {
   const gross = expense.gross_amount ?? expense.amount;
   const net = expense.amount;
+  // Some destination banks report the credited amount after a receiving fee.
+  const incomingBeforeFees = income.amount + (income.fees ?? 0) + (income.tax ?? 0);
   return (
+    Math.abs(incomingBeforeFees - gross) < AMOUNT_EPSILON ||
+    Math.abs(incomingBeforeFees - net) < AMOUNT_EPSILON ||
     Math.abs(income.amount - gross) < AMOUNT_EPSILON ||
     Math.abs(income.amount - net) < AMOUNT_EPSILON
   );
 }
+
+const normalizedReference = (value?: string) => (value ?? '').toLocaleUpperCase().replace(/[^A-Z0-9]/g, '');
 
 export interface TransferCandidate extends TransferPair {
   gapMs: number;
   confidence: 'HIGH' | 'MEDIUM';
   score: number;
   reasons: string[];
+}
+
+export interface RecordedTransferCandidate {
+  transactionId: string;
+  sourceAccountId: string;
+  destinationAccountId: string;
+  gapMs: number;
 }
 
 /**
@@ -90,10 +105,12 @@ export function findTransferCandidates(
       if (gapMs <= TRANSFER_PAIR_WINDOW_MS) { score += 20; reasons.push('Within 15 minutes'); }
       else { score += 10; reasons.push('Same date'); }
       if (explicit) { score += 25; reasons.push('Owned account identified'); }
-      if (expense.reference_number && income.reference_number && expense.reference_number === income.reference_number) {
+      if (normalizedReference(expense.reference_number)
+        && normalizedReference(expense.reference_number) === normalizedReference(income.reference_number)) {
         score += 15; reasons.push('Same bank reference');
       }
-      if (expense.transfer_peer_account_number || income.transfer_peer_account_number) {
+      if ((expense.transfer_peer_account_number ?? '').replace(/\D/g, '').length >= 4
+        || (income.transfer_peer_account_number ?? '').replace(/\D/g, '').length >= 4) {
         score += 10; reasons.push('Account ending detected');
       }
       score = Math.min(100, score);
@@ -110,6 +127,30 @@ export function findTransferCandidates(
     })
     .filter((item): item is TransferCandidate => item !== null)
     .sort((a, b) => a.gapMs - b.gapMs);
+}
+
+/** Find a recent recorded transfer whose other account leg may be this SMS. */
+export function findRecordedTransferCandidates(
+  draft: PairableDraft,
+  transactions: Transaction[],
+  windowMs = TRANSFER_PAIR_WINDOW_MS,
+): RecordedTransferCandidate[] {
+  if (draft.status !== 'PENDING') return [];
+  const smsAmount = draft.type === 'EXPENSE'
+    ? (draft.gross_amount ?? draft.amount + (draft.fees ?? 0) + (draft.tax ?? 0))
+    : draft.amount;
+  return transactions.flatMap(transaction => {
+    if (transaction.type !== 'TRANSFER' || !transaction.to_account_id) return [];
+    const isSourceLeg = draft.type === 'EXPENSE' && transaction.account_id === draft.account_id;
+    const isDestinationLeg = draft.type === 'INCOME' && transaction.to_account_id === draft.account_id;
+    if (!isSourceLeg && !isDestinationLeg) return [];
+    const expected = isSourceLeg
+      ? transaction.amount
+      : Math.max(0, transaction.amount - (transaction.fees ?? 0) - (transaction.tax ?? 0));
+    const gapMs = Math.abs(transaction.date - draft.date);
+    if (gapMs > windowMs || Math.abs(expected - smsAmount) >= AMOUNT_EPSILON) return [];
+    return [{ transactionId: transaction.id, sourceAccountId: transaction.account_id, destinationAccountId: transaction.to_account_id, gapMs }];
+  }).sort((a, b) => a.gapMs - b.gapMs);
 }
 
 /**
@@ -160,3 +201,4 @@ export function findSelfTransferPairs(
   }
   return pairs;
 }
+

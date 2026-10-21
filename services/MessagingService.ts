@@ -21,9 +21,29 @@ export interface Conversation {
   lastMessageText?: string;
   lastMessageType?: 'TEXT' | MessageRequestType;
   lastSenderUid?: string;
+  lastMessageId?: string;
+  /** When each participant last opened the conversation / last received it on a device. */
+  readAt?: Record<string, number>;
+  deliveredAt?: Record<string, number>;
   createdAt: number;
   updatedAt: number;
 }
+
+export interface MessageReply {
+  id: string;
+  senderUid: string;
+  senderName: string;
+  type: 'TEXT' | MessageRequestType;
+  text: string;
+  deleted?: boolean;
+}
+
+/** Delivery state of a message you sent, as seen from your side. */
+export type MessageDelivery = 'SENDING' | 'FAILED' | 'SENT' | 'DELIVERED' | 'SEEN';
+
+/** A message may be edited for 15 minutes and unsent for 48 hours (enforced by the server). */
+export const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+export const MESSAGE_UNSEND_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 export interface ConversationMessage {
   id: string;
@@ -37,9 +57,19 @@ export interface ConversationMessage {
   communityGroupId?: string;
   communityName?: string;
   status?: MessageRequestStatus;
+  replyTo?: MessageReply;
+  editedAt?: number;
+  deletedAt?: number;
+  hiddenFor?: string[];
   createdAt: number;
   respondedAt?: number;
   respondedByUid?: string;
+}
+
+export function messageDelivery(message: Pick<ConversationMessage, 'createdAt'>, conversation: Conversation | undefined, otherUid: string): MessageDelivery {
+  if (message.createdAt <= (Number(conversation?.readAt?.[otherUid]) || 0)) return 'SEEN';
+  if (message.createdAt <= (Number(conversation?.deliveredAt?.[otherUid]) || 0)) return 'DELIVERED';
+  return 'SENT';
 }
 
 export interface SendRequestInput {
@@ -81,8 +111,22 @@ export default class MessagingService {
     }, error => onError?.(error));
   }
 
+  /**
+   * App-wide unread badge. Seeing new messages arrive here also tells the
+   * sender they were delivered to this device (double grey tick).
+   */
   static listenUnreadCount(uid: string, callback: (count: number) => void) {
-    return this.listenToConversations(uid, items => callback(items.reduce((sum, item) => sum + Math.max(0, Number(item.unreadBy?.[uid]) || 0), 0)), () => callback(0));
+    const reported = new Map<string, number>();
+    return this.listenToConversations(uid, items => {
+      callback(items.reduce((sum, item) => sum + Math.max(0, Number(item.unreadBy?.[uid]) || 0), 0));
+      for (const item of items) {
+        const fromOther = item.lastSenderUid && item.lastSenderUid !== uid;
+        const alreadyDelivered = (Number(item.deliveredAt?.[uid]) || 0) >= item.updatedAt;
+        if (!fromOther || alreadyDelivered || (reported.get(item.id) || 0) >= item.updatedAt) continue;
+        reported.set(item.id, item.updatedAt);
+        void this.markDelivered(item.id).catch(() => reported.delete(item.id));
+      }
+    }, () => callback(0));
   }
 
   static async startConversation(recipientUid: string): Promise<string> {
@@ -90,8 +134,9 @@ export default class MessagingService {
     return (result.data as { conversationId: string }).conversationId;
   }
 
-  static async sendText(conversationId: string, text: string) {
-    return callable()({ action: 'send', conversationId, messageId: generateUUID(), type: 'TEXT', text });
+  /** Pass a messageId to retry the same message safely (the server treats repeats as one). */
+  static async sendText(conversationId: string, text: string, options: { messageId?: string; replyToId?: string } = {}) {
+    return callable()({ action: 'send', conversationId, messageId: options.messageId || generateUUID(), type: 'TEXT', text, ...(options.replyToId ? { replyToId: options.replyToId } : {}) });
   }
 
   static async sendRequest(conversationId: string, input: SendRequestInput) {
@@ -108,5 +153,23 @@ export default class MessagingService {
 
   static async markRead(conversationId: string) {
     return callable()({ action: 'markRead', conversationId });
+  }
+
+  static async markDelivered(conversationId: string) {
+    return callable()({ action: 'markDelivered', conversationId });
+  }
+
+  static async editText(conversationId: string, messageId: string, text: string) {
+    return callable()({ action: 'edit', conversationId, messageId, text });
+  }
+
+  /** Unsend for everyone (your own text messages, within 48 hours). */
+  static async unsend(conversationId: string, messageId: string) {
+    return callable()({ action: 'delete', conversationId, messageId });
+  }
+
+  /** Remove a message from your own view only. */
+  static async hideForMe(conversationId: string, messageId: string) {
+    return callable()({ action: 'hide', conversationId, messageId });
   }
 }

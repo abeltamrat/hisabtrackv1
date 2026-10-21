@@ -25,7 +25,7 @@ import { commonSplitProject, pushProjectIntoSplits } from '@/utils/projectFinanc
 import { attachLinesToSplits, detachLines, linesForSave, overfilledSplit, withoutProjects } from '@/utils/splitLines';
 import { RecurringTransactionService } from '@/services/RecurringTransactionService';
 import type { RecurringFrequency, TransactionType } from '@/types/database';
-import { findTransferCandidates } from '@/utils/transferPairing';
+import { findRecordedTransferCandidates, findTransferCandidates } from '@/utils/transferPairing';
 import TransactionSplitEditor from '@/components/TransactionSplitEditor';
 import LineItemsEditor from '@/components/LineItemsEditor';
 import SupplierField from '@/components/SupplierPicker';
@@ -33,7 +33,7 @@ import { ProjectCostToggle } from '@/components/ProjectPicker';
 import type { ProjectLink, SupplierLink } from '@/types/database';
 import type { PurchaseLine } from '@/types/database';
 import type { TransactionSplit } from '@/types/database';
-import { money, sumMoney } from '@/utils/finance';
+import { money, sumMoney, transferSourceDebit } from '@/utils/finance';
 import { detectRecurringPattern } from '@/utils/recurringDetection';
 import { useI18n } from '@/contexts/I18nContext';
 import { rankTagSuggestions } from '@/utils/tagSuggestions';
@@ -136,6 +136,9 @@ export default function DraftTransactionsScreen() {
   const [transferSourceAccountId, setTransferSourceAccountId] = useState('');
   const [transferDestinationAccountId, setTransferDestinationAccountId] = useState('');
   const [matchedCounterpartId, setMatchedCounterpartId] = useState('');
+  const [dismissedTransferCandidateId, setDismissedTransferCandidateId] = useState('');
+  const [dismissedRecordedTransferId, setDismissedRecordedTransferId] = useState('');
+  const [linkExistingTransferId, setLinkExistingTransferId] = useState('');
   const [rememberOwnedRecipient, setRememberOwnedRecipient] = useState(false);
   const [makeRecurring, setMakeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('MONTHLY');
@@ -491,6 +494,9 @@ export default function DraftTransactionsScreen() {
     setTransferSourceAccountId(draft.transfer_from_account_id || draft.account_id);
     setTransferDestinationAccountId(draft.transfer_to_account_id || (draft.type === 'INCOME' ? draft.account_id : ''));
     setMatchedCounterpartId(draft.paired_draft_id || '');
+    setDismissedTransferCandidateId('');
+    setDismissedRecordedTransferId('');
+    setLinkExistingTransferId('');
     setRememberOwnedRecipient(false);
     setMakeRecurring(false);
     setRecurringFrequency('MONTHLY');
@@ -582,6 +588,27 @@ export default function DraftTransactionsScreen() {
 
     setIsRecording(true);
     try {
+      if (linkExistingTransferId) {
+        const existingTransfer = transactions.find(item => item.id === linkExistingTransferId && item.type === 'TRANSFER');
+        if (!existingTransfer?.to_account_id) {
+          Alert.alert('Transfer no longer available', 'Refresh the transactions and review this SMS again.');
+          return;
+        }
+        await DraftTransactionService.markAsRecorded(selectedDraft.id, existingTransfer.id, {
+          recorded_at: Date.now(),
+          type: 'TRANSFER',
+          category: 'Transfer',
+          description: existingTransfer.description,
+          recipient: selectedDraft.sender_receiver,
+          source_account_id: existingTransfer.account_id,
+          destination_account_id: existingTransfer.to_account_id,
+        });
+        setShowConfirmModal(false);
+        setLinkExistingTransferId('');
+        await loadDrafts();
+        Alert.alert('SMS linked', 'This bank message is linked to the existing transfer. No second transaction was created.');
+        return;
+      }
       // 1. Learn / reinforce rules
       const hasCorrections =
         editedDescription !== selectedDraft.description ||
@@ -644,8 +671,16 @@ export default function DraftTransactionsScreen() {
       }
       const counterpart = matchedCounterpartId ? drafts.find(d => d.id === matchedCounterpartId) : undefined;
       const expenseLeg = selectedDraft.type === 'EXPENSE' ? selectedDraft : counterpart?.type === 'EXPENSE' ? counterpart : selectedDraft;
-      const transferAmount = expenseLeg.gross_amount
-        ?? Math.round((expenseLeg.amount + (expenseLeg.fees ?? 0) + (expenseLeg.tax ?? 0)) * 100) / 100;
+      const incomingLeg = selectedDraft.type === 'INCOME' ? selectedDraft : counterpart?.type === 'INCOME' ? counterpart : undefined;
+      const transferCharge = (key: 'fees' | 'tax' | 'service_charge' | 'vat' | 'disaster_recovery_fee') => {
+        const seen = new Set<string>();
+        return money([expenseLeg, incomingLeg].reduce((total, leg) => {
+          if (!leg || seen.has(leg.id)) return total;
+          seen.add(leg.id);
+          return total + (leg[key] ?? 0);
+        }, 0));
+      };
+      const transferAmount = transferSourceDebit(expenseLeg);
       if (isTransferDraft && rememberOwnedRecipient && editedRecipient.trim()) {
         const ownedAccountId = selectedDraft.type === 'EXPENSE' ? transferDestinationAccountId : transferSourceAccountId;
         const ownedAccount = accounts.find(item => item.id === ownedAccountId);
@@ -672,12 +707,12 @@ export default function DraftTransactionsScreen() {
         person_alias_used: !isTransferDraft && selectedPersonId ? selectedDraft.sender_receiver || editedRecipient.trim() : undefined,
         reference_number: selectedDraft.reference_number,
         sms_id: selectedDraft.sms_id,
-        fees: expenseLeg.fees,
-        tax: expenseLeg.tax,
+        fees: isTransferDraft ? transferCharge('fees') : expenseLeg.fees,
+        tax: isTransferDraft ? transferCharge('tax') : expenseLeg.tax,
         gross_amount: isTransferDraft ? undefined : selectedDraft.gross_amount,
-        service_charge: expenseLeg.service_charge,
-        vat: expenseLeg.vat,
-        disaster_recovery_fee: expenseLeg.disaster_recovery_fee,
+        service_charge: isTransferDraft ? transferCharge('service_charge') : expenseLeg.service_charge,
+        vat: isTransferDraft ? transferCharge('vat') : expenseLeg.vat,
+        disaster_recovery_fee: isTransferDraft ? transferCharge('disaster_recovery_fee') : expenseLeg.disaster_recovery_fee,
         receipt_url: expenseLeg.receipt_url || selectedDraft.receipt_url,
         ...(finalSplits ? { splits: finalSplits } : {}),
         ...(editedType !== 'TRANSFER' && purchaseLines.length ? { lines: splitActive || projectCost ? purchaseLines : withoutProjects(purchaseLines) } : {}),
@@ -953,13 +988,24 @@ export default function DraftTransactionsScreen() {
           description: bulkDraftEdits[draft.id].description,
           tags: bulkDraftEdits[draft.id].tagsInput === undefined ? undefined : (parseTagInput(bulkDraftEdits[draft.id].tagsInput || '') || []),
         } : undefined);
+        const pairedDraft = draft.paired_draft_id ? drafts.find(item => item.id === draft.paired_draft_id) : undefined;
+        const sourceLeg = draft.type === 'EXPENSE' ? draft : pairedDraft?.type === 'EXPENSE' ? pairedDraft : draft;
+        const destinationLeg = draft.type === 'INCOME' ? draft : pairedDraft?.type === 'INCOME' ? pairedDraft : undefined;
+        const pairedCharges = (key: 'fees' | 'tax' | 'service_charge' | 'vat' | 'disaster_recovery_fee') => {
+          const seen = new Set<string>();
+          return money([sourceLeg, destinationLeg].reduce((total, leg) => {
+            if (!leg || seen.has(leg.id)) return total;
+            seen.add(leg.id);
+            return total + (leg[key] ?? 0);
+          }, 0));
+        };
         const result = await dispatch(addTransaction({
           account_id: isBulkIncomingTransfer ? draft.transfer_from_account_id! : draft.account_id,
           type: (isBulkTransfer || isBulkIncomingTransfer) ? 'TRANSFER' : draft.type,
           ...(isBulkTransfer ? { to_account_id: draft.transfer_to_account_id } : {}),
           ...(isBulkIncomingTransfer ? { to_account_id: draft.account_id } : {}),
-          amount: isBulkIncomingTransfer
-            ? draft.amount + (draft.fees ?? 0) + (draft.tax ?? 0)
+          amount: (isBulkTransfer || isBulkIncomingTransfer)
+            ? transferSourceDebit(sourceLeg)
             : draft.amount,
           category: resolvedFields.category,
           description: resolvedFields.description,
@@ -974,13 +1020,13 @@ export default function DraftTransactionsScreen() {
           person_alias_used: (isBulkTransfer || isBulkIncomingTransfer) ? undefined : draft.person_alias_used,
           reference_number: draft.reference_number,
           sms_id: draft.sms_id,
-          fees: draft.fees,
-          tax: draft.tax,
-          gross_amount: draft.gross_amount,
-          service_charge: draft.service_charge,
-          vat: draft.vat,
-          disaster_recovery_fee: draft.disaster_recovery_fee,
-          receipt_url: draft.receipt_url,
+          fees: (isBulkTransfer || isBulkIncomingTransfer) ? pairedCharges('fees') : draft.fees,
+          tax: (isBulkTransfer || isBulkIncomingTransfer) ? pairedCharges('tax') : draft.tax,
+          gross_amount: (isBulkTransfer || isBulkIncomingTransfer) ? undefined : draft.gross_amount,
+          service_charge: (isBulkTransfer || isBulkIncomingTransfer) ? pairedCharges('service_charge') : draft.service_charge,
+          vat: (isBulkTransfer || isBulkIncomingTransfer) ? pairedCharges('vat') : draft.vat,
+          disaster_recovery_fee: (isBulkTransfer || isBulkIncomingTransfer) ? pairedCharges('disaster_recovery_fee') : draft.disaster_recovery_fee,
+          receipt_url: sourceLeg.receipt_url || draft.receipt_url,
         }));
         if (!addTransaction.rejected.match(result)) {
           const transactionId = (result.payload as any)?.id;
@@ -1084,7 +1130,16 @@ export default function DraftTransactionsScreen() {
     }
   };
   const unrecordedCount = drafts.filter(d => d.status === 'PENDING').length;
-  const transferCandidates = selectedDraft ? findTransferCandidates(selectedDraft, drafts) : [];
+  const transferCandidates = selectedDraft && !selectedDraft.paired_draft_id ? findTransferCandidates(selectedDraft, drafts) : [];
+  const topTransferCandidate = transferCandidates[0];
+  const topCounterpartId = topTransferCandidate
+    ? (topTransferCandidate.expenseId === selectedDraft?.id ? topTransferCandidate.incomeId : topTransferCandidate.expenseId)
+    : '';
+  const recordedTransferCandidates = selectedDraft ? findRecordedTransferCandidates(selectedDraft, transactions) : [];
+  const topRecordedTransferCandidate = recordedTransferCandidates[0];
+  const visibleRecordedTransferCandidate = topRecordedTransferCandidate?.transactionId !== dismissedRecordedTransferId
+    ? topRecordedTransferCandidate
+    : undefined;
   const confirmCategoryType = editedType === 'INCOME' ? 'income' : 'expense';
   const confirmCategories = categories.filter((category) => category.type === confirmCategoryType);
   useEffect(() => {
@@ -1850,7 +1905,7 @@ export default function DraftTransactionsScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView className="max-h-[60vh]" showsVerticalScrollIndicator={false}>
+            <ScrollView className="max-h-[60vh]" showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {/* Key Details Row */}
               <View className="flex-row gap-3 mb-6">
                 <View className="flex-1 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl">
@@ -1930,6 +1985,67 @@ export default function DraftTransactionsScreen() {
                 }}
               />}
 
+              {selectedDraft && !linkExistingTransferId && visibleRecordedTransferCandidate && (() => {
+                const existingTransfer = transactions.find(item => item.id === visibleRecordedTransferCandidate.transactionId);
+                const sourceAccount = accounts.find(item => item.id === visibleRecordedTransferCandidate.sourceAccountId);
+                const destinationAccount = accounts.find(item => item.id === visibleRecordedTransferCandidate.destinationAccountId);
+                if (!existingTransfer) return null;
+                return (
+                  <View className="bg-sky-50 dark:bg-sky-950/30 border border-sky-300 dark:border-sky-800 rounded-2xl p-4 mb-5">
+                    <Text className="text-sky-950 dark:text-sky-100 font-bold">This SMS may be the other side of a recorded transfer</Text>
+                    <Text className="text-sky-900 dark:text-sky-200 text-xs mt-1">
+                      {sourceAccount?.name || 'Source account'} → {destinationAccount?.name || 'Destination account'} · {formatCurrency(existingTransfer.amount)}
+                    </Text>
+                    <Text className="text-sky-800 dark:text-sky-300 text-xs mt-1">The amount and time are close. Link this SMS to that transfer, or keep it as a separate movement.</Text>
+                    <View className="flex-row gap-2 mt-3">
+                      <TouchableOpacity onPress={() => {
+                        setLinkExistingTransferId(existingTransfer.id);
+                        setMatchedCounterpartId('');
+                        setEditedType('TRANSFER');
+                        setTransferSourceAccountId(existingTransfer.account_id);
+                        setTransferDestinationAccountId(existingTransfer.to_account_id || '');
+                      }} className="flex-1 bg-sky-700 rounded-xl py-2.5 items-center">
+                        <Text className="text-white text-xs font-bold">Link to existing transfer</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setDismissedRecordedTransferId(existingTransfer.id)} className="flex-1 bg-white dark:bg-slate-800 border border-sky-300 dark:border-sky-700 rounded-xl py-2.5 items-center">
+                        <Text className="text-sky-950 dark:text-sky-100 text-xs font-bold">Keep separate</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {selectedDraft && !linkExistingTransferId && !visibleRecordedTransferCandidate && !selectedDraft.is_transfer && topTransferCandidate && topCounterpartId !== dismissedTransferCandidateId && (() => {
+                const otherDraft = drafts.find(item => item.id === topCounterpartId);
+                const sourceAccount = accounts.find(item => item.id === topTransferCandidate.expenseAccountId);
+                const destinationAccount = accounts.find(item => item.id === topTransferCandidate.incomeAccountId);
+                if (!otherDraft) return null;
+                return (
+                  <View className="bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-2xl p-4 mb-5">
+                    <Text className="text-amber-950 dark:text-amber-100 font-bold">These SMS may describe one transfer</Text>
+                    <Text className="text-amber-900 dark:text-amber-200 text-xs mt-1">
+                      {sourceAccount?.name || 'Source account'} → {destinationAccount?.name || 'Destination account'} · {formatCurrency(otherDraft.amount)}
+                    </Text>
+                    <Text className="text-amber-800 dark:text-amber-300 text-xs mt-1">
+                      {topTransferCandidate.reasons.join(' · ')}. Linking them records one transfer and closes both SMS drafts.
+                    </Text>
+                    <View className="flex-row gap-2 mt-3">
+                      <TouchableOpacity onPress={() => {
+                        setEditedType('TRANSFER');
+                        setSplitEnabled(false);
+                        setTransferSourceAccountId(topTransferCandidate.expenseAccountId);
+                        setTransferDestinationAccountId(topTransferCandidate.incomeAccountId);
+                        setMatchedCounterpartId(topCounterpartId);
+                      }} className="flex-1 bg-amber-600 rounded-xl py-2.5 items-center">
+                        <Text className="text-white text-xs font-bold">Link as one transfer</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setDismissedTransferCandidateId(topCounterpartId)} className="flex-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-xl py-2.5 items-center">
+                        <Text className="text-amber-950 dark:text-amber-100 text-xs font-bold">Keep separate</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })()}
 
               <View className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 mb-5">
                 <Text className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-2 uppercase">Record as</Text>
@@ -1950,7 +2066,7 @@ export default function DraftTransactionsScreen() {
                 <View className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-4 mb-5">
                   <Text className="text-indigo-900 dark:text-indigo-200 font-bold mb-1">Bank-to-bank transfer</Text>
                   <Text className="text-indigo-700 dark:text-indigo-300 text-xs mb-3">Choose the owned source and destination accounts. A matched opposite SMS will be closed with this transaction.</Text>
-                  {transferCandidates.length > 0 && (
+                  {transferCandidates.length > 0 && !linkExistingTransferId && (
                     <View className="mb-3">
                       <Text className="text-indigo-700 dark:text-indigo-300 text-[10px] font-bold uppercase mb-2">Possible counterpart SMS</Text>
                       {transferCandidates.slice(0, 3).map(candidate => {
@@ -2444,11 +2560,11 @@ export default function DraftTransactionsScreen() {
             <TouchableOpacity
               onPress={handleRecordConfirmed}
               disabled={isRecording}
-              className={`py-4 rounded-2xl flex-row justify-center items-center ${isRecording ? 'bg-slate-400' : 'bg-primary-500'}`}
+              className={`mt-3 py-4 rounded-2xl flex-row justify-center items-center ${isRecording ? 'bg-slate-400' : 'bg-primary-500'}`}
             >
               <FontAwesome name="check-circle" size={18} color="#fff" className="mr-2" />
               <Text className="text-white font-bold text-lg ml-2">
-                {isRecording ? 'Recording...' : 'Record Transaction'}
+                {isRecording ? 'Recording...' : linkExistingTransferId ? 'Link SMS to Transfer' : 'Record Transaction'}
               </Text>
             </TouchableOpacity>
         </View>

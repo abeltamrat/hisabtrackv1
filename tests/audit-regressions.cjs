@@ -38,7 +38,8 @@ const { IncomeInferenceService } = load('./services/IncomeInferenceService.ts');
 const { buildCategoryScopes, nonOverlappingCategoryNames } = load('./utils/categoryHierarchy.ts');
 const { reconcileForecastWarnings } = load('./utils/forecastWarnings.ts');
 const { BackupService } = load('./services/BackupService.ts');
-const { findSelfTransferPairs, findTransferCandidates } = load('./utils/transferPairing.ts');
+const { findSelfTransferPairs, findTransferCandidates, findRecordedTransferCandidates } = load('./utils/transferPairing.ts');
+const { isSameSmsDraft, isSameSmsTransaction, normalizeSmsReference } = load('./utils/smsTransactionIdentity.ts');
 const { EnhancedSMSParser } = load('./utils/enhancedSMSParser.ts');
 const { DraftTransactionService } = load('./services/DraftTransactionService.ts');
 const { detectRecurringPattern } = load('./utils/recurringDetection.ts');
@@ -62,6 +63,7 @@ class Adapter {
 const account = (name,balance=0) => ({name,balance,type:'BANK',currency:'ETB',is_locked:false,locked_amount:0});
 const transaction = (id,amount,type='EXPENSE') => ({account_id:id,amount,type,category:'Food',description:'Meal',date:Date.now()});
 const make = () => {const raw=new Adapter();return {raw,db:new LedgerDatabase(raw,'alice')};};
+
 test('one malformed cloud loan no longer aborts the whole pull', async () => {
   const { raw, db } = make();
   await db.init();
@@ -118,6 +120,10 @@ test('transfer fees reconcile cash and operating expense; retry is idempotent',a
  const accounts=await db.getAccounts();assert.equal(accounts.find(x=>x.id===a.id).balance,994);assert.equal(accounts.find(x=>x.id===b.id).balance,1000);
  assert.equal(finance.sumMoney((await db.getTransactions()).map(finance.operatingExpense)),6);
  await assert.rejects(db.createTransaction({...input,amount:1007}));
+});
+test('SMS transfer debit uses reported gross amount or adds charges exactly once',()=>{
+ assert.equal(finance.transferSourceDebit({amount:500,gross_amount:503.60,fees:3.15,tax:0.45}),503.60);
+ assert.equal(finance.transferSourceDebit({amount:500,fees:3.15,tax:0.45}),503.60);
 });
 
 test('recipient payment and bank charges remain separate operating expenses',()=>{
@@ -365,6 +371,43 @@ test('same-day opposite SMS are suggested for review without being silently merg
  assert.equal(candidates[0].confidence,'MEDIUM');
  assert.equal(candidates[0].score,60);
  assert.deepEqual(candidates[0].reasons,['Same amount','Same date']);
+});
+test('same-bank SMS duplicates require matching account, direction, reference, amount and time',()=>{
+ const base={account_id:'cbe-1',type:'EXPENSE',amount:500,gross_amount:503.60,fees:3.15,tax:0.45,date:100000,sms_id:'sms-a',reference_number:'FT 26-001',receipt_url:'https://bank/receipt/1'};
+ const duplicate={...base,sms_id:'sms-b',reference_number:'ft26001',receipt_url:undefined,date:102000};
+ assert.equal(normalizeSmsReference(base.reference_number),'FT26001');
+ assert.equal(isSameSmsDraft(duplicate,base),true);
+ assert.equal(isSameSmsDraft({...duplicate,amount:501,gross_amount:504.60},base),false);
+ assert.equal(isSameSmsDraft({...duplicate,date:500000},base),false);
+ assert.equal(isSameSmsDraft({...duplicate,account_id:'cbe-2'},base),false);
+ assert.equal(isSameSmsDraft({...duplicate,type:'INCOME'},base),false);
+});
+test('recorded transfers deduplicate each bank leg using its own account and credited amount',()=>{
+ const transfer={account_id:'cbe',to_account_id:'telebirr',type:'TRANSFER',amount:503.60,fees:4.15,tax:0.45,date:100000,sms_id:'cbe-sms',reference_number:'FT-1'};
+ const cbe={account_id:'cbe',type:'EXPENSE',amount:500,gross_amount:503.60,date:102000,sms_id:'other-cbe-sms',reference_number:'FT1'};
+ const telebirr={account_id:'telebirr',type:'INCOME',amount:499,date:102000,sms_id:'telebirr-sms',reference_number:'FT1'};
+ assert.equal(isSameSmsTransaction(cbe,transfer),true);
+ assert.equal(isSameSmsTransaction(telebirr,transfer),true);
+ assert.equal(isSameSmsTransaction({...telebirr,amount:500},transfer),false);
+ assert.equal(isSameSmsTransaction({...telebirr,account_id:'other'},transfer),false);
+});
+test('cross-bank matching accepts the same transfer amount after a destination fee',()=>{
+ const drafts=[
+  {id:'debit',account_id:'cbe',type:'EXPENSE',status:'PENDING',amount:500,gross_amount:503.60,fees:3.15,tax:0.45,date:100000,transfer_to_account_id:'telebirr'},
+  {id:'credit',account_id:'telebirr',type:'INCOME',status:'PENDING',amount:499,fees:1,date:101000,transfer_from_account_id:'cbe'},
+ ];
+ assert.equal(findSelfTransferPairs(drafts).length,1);
+ const candidate=findTransferCandidates({...drafts[0],transfer_to_account_id:undefined},drafts);
+ assert.equal(candidate.length,1);
+});
+test('a later bank SMS can be linked to a recent already-recorded transfer instead of duplicated',()=>{
+ const transfer={id:'tx-transfer',account_id:'cbe',to_account_id:'telebirr',type:'TRANSFER',amount:503.60,fees:3.60,tax:0,date:100000,category:'Transfer',description:'Transfer',sms_id:'cbe-sms'};
+ const incoming={id:'incoming',account_id:'telebirr',type:'INCOME',status:'PENDING',amount:500,date:102000};
+ const match=findRecordedTransferCandidates(incoming,[transfer]);
+ assert.equal(match.length,1);
+ assert.equal(match[0].transactionId,'tx-transfer');
+ assert.equal(findRecordedTransferCandidates({...incoming,date:100000+20*60*1000},[transfer]).length,0);
+ assert.equal(findRecordedTransferCandidates({...incoming,amount:501},[transfer]).length,0);
 });
 test('undo reopens only SMS drafts linked to the deleted transaction',async()=>{
  await DraftTransactionService.clearAll();

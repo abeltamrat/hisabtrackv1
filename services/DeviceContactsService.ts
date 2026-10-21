@@ -41,6 +41,20 @@ const DISCOVERY_CACHE_MS = 60 * 1000;
 
 let localContactsCache: { loadedAt: number; contacts: DeviceContact[] } | null = null;
 let discoveryCache: { loadedAt: number; matches: Map<string, LinkedContactMatch> } | null = null;
+// Matches by phone/email from the last successful lookups. Starting a chat right
+// after the contacts list found someone reuses this instead of spending another
+// call against the server's hourly discovery limit.
+const IDENTIFIER_MATCH_MS = 10 * 60 * 1000;
+const identifierMatches = new Map<string, { loadedAt: number; match: LinkedContactMatch }>();
+let lastDiscoveryError: unknown;
+
+const rememberMatches = (contacts: DeviceContact[]) => {
+  const loadedAt = Date.now();
+  for (const contact of contacts) {
+    if (!contact.linkedAccount) continue;
+    for (const value of [...contact.phones, ...contact.emails]) identifierMatches.set(value, { loadedAt, match: contact.linkedAccount });
+  }
+};
 
 /**
  * expo-contacts is native: app builds older than 1.0.5 don't include it, and
@@ -88,7 +102,8 @@ export class DeviceContactsService {
   }
 
   /** Add registered-user badges after local contacts are already visible. */
-  static async discoverLinkedContacts(contacts: DeviceContact[], forceRefresh = false): Promise<ContactDiscoveryResult> {
+  /** `cacheList` is false for one-person lookups, so they never replace the address-book result. */
+  static async discoverLinkedContacts(contacts: DeviceContact[], forceRefresh = false, cacheList = true): Promise<ContactDiscoveryResult> {
     if (!contacts.length) return { contacts, discoveryFailed: false };
 
     if (!forceRefresh && discoveryCache && Date.now() - discoveryCache.loadedAt < DISCOVERY_CACHE_MS) {
@@ -128,9 +143,12 @@ export class DeviceContactsService {
       for (const match of matches) {
         byKey.set(match.key, { uid: match.uid, displayName: match.displayName, verified: match.verified !== false });
       }
-      discoveryCache = { loadedAt: Date.now(), matches: byKey };
-      return { contacts: contacts.map(contact => ({ ...contact, linkedAccount: byKey.get(contact.id) })), discoveryFailed: false };
-    } catch {
+      if (cacheList) discoveryCache = { loadedAt: Date.now(), matches: byKey };
+      const discovered = contacts.map(contact => ({ ...contact, linkedAccount: byKey.get(contact.id) }));
+      rememberMatches(discovered);
+      return { contacts: discovered, discoveryFailed: false };
+    } catch (error) {
+      lastDiscoveryError = error;
       // Do not cache a network/backend failure as a valid empty discovery.
       // Otherwise every reopen keeps hiding badges until the cache expires.
       return {
@@ -160,7 +178,18 @@ export class DeviceContactsService {
       emails: email ? [email] : [],
     };
     if (!contact.phones.length && !contact.emails.length) return undefined;
-    const result = await this.discoverLinkedContacts([contact], true);
+    for (const value of [...contact.phones, ...contact.emails]) {
+      const known = identifierMatches.get(value);
+      if (known && Date.now() - known.loadedAt < IDENTIFIER_MATCH_MS) return known.match;
+    }
+    const result = await this.discoverLinkedContacts([contact], true, false);
+    // A failed lookup is not "no account": say so instead of blaming the person.
+    if (result.discoveryFailed) {
+      const code = (lastDiscoveryError as { code?: string } | undefined)?.code || '';
+      throw new Error(code.includes('resource-exhausted')
+        ? 'HisabTrack account lookups are limited per hour. Try again later.'
+        : 'Could not check HisabTrack accounts right now. Check your connection and try again.');
+    }
     return result.contacts[0]?.linkedAccount;
   }
 }

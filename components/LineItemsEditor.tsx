@@ -21,7 +21,7 @@ export function useItemCatalog(extra: ItemLink[] = []) {
   return { records, catalog };
 }
 
-export default function LineItemsEditor({ lines, onChange, total, formatCurrency, extraItems = [], onUseTotal, showProject = true }: {
+export default function LineItemsEditor({ lines, onChange, total, formatCurrency, extraItems = [], onUseTotal, showProject = true, nested = false }: {
   lines: PurchaseLine[];
   /** Per-item project pickers (only for project costs; items in a split part use the part's project). */
   showProject?: boolean;
@@ -29,6 +29,8 @@ export default function LineItemsEditor({ lines, onChange, total, formatCurrency
   total: number;
   formatCurrency: (amount: number) => string;
   extraItems?: ItemLink[];
+  /** Inside a split part: lighter item rows, so the part stays the visible container. */
+  nested?: boolean;
   /** Offered when lines and the transaction amount differ. */
   onUseTotal?: (linesTotal: number) => void;
 }) {
@@ -46,7 +48,7 @@ export default function LineItemsEditor({ lines, onChange, total, formatCurrency
   return (
     <View>
       {lines.map((line, index) => (
-        <LineRow key={line.id} index={index} line={line} catalog={catalog} records={records} formatCurrency={formatCurrency} showProject={showProject}
+        <LineRow key={line.id} index={index} line={line} catalog={catalog} records={records} formatCurrency={formatCurrency} showProject={showProject} nested={nested}
           onChange={patch => update(line.id, patch)} onRemove={() => onChange(lines.filter(l => l.id !== line.id))} />
       ))}
       <TouchableOpacity accessibilityRole="button" onPress={add} className="flex-row items-center justify-center py-3 rounded-xl border border-dashed border-indigo-300 dark:border-indigo-700 mb-2">
@@ -68,8 +70,8 @@ export default function LineItemsEditor({ lines, onChange, total, formatCurrency
   );
 }
 
-function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRemove, showProject }: {
-  index: number; line: PurchaseLine; catalog: CatalogEntry[]; records: ReturnType<typeof purchaseRecords>; showProject: boolean;
+function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRemove, showProject, nested }: {
+  index: number; line: PurchaseLine; catalog: CatalogEntry[]; records: ReturnType<typeof purchaseRecords>; showProject: boolean; nested: boolean;
   formatCurrency: (amount: number) => string; onChange: (patch: Partial<PurchaseLine>) => void; onRemove: () => void;
 }) {
   const [query, setQuery] = useState(line.item.name);
@@ -114,7 +116,7 @@ function LineRow({ index, line, catalog, records, formatCurrency, onChange, onRe
   };
 
   return (
-    <View className="bg-white dark:bg-slate-900 rounded-xl p-3 mb-3 border border-slate-200 dark:border-slate-700">
+    <View className={nested ? 'rounded-xl p-2.5 mb-2 bg-orange-50/60 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/40' : 'bg-white dark:bg-slate-900 rounded-xl p-3 mb-3 border border-slate-200 dark:border-slate-700'}>
       <View className="flex-row items-center mb-2">
         <Text className="text-slate-600 dark:text-slate-300 text-xs font-bold flex-1">Item {index + 1}{line.item.source === 'mela' ? ' · Mela' : ''}</Text>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove item ${index + 1}`} onPress={onRemove} className="p-2"><FontAwesome name="trash-o" size={15} color="#ef4444" /></TouchableOpacity>

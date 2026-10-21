@@ -77,8 +77,12 @@ export default function FormSheet({
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
     const onShow = (event: KeyboardEvent) => {
-      // The bottom inset is already padding the card, so don't double-count it.
-      const height = Math.max(0, event.endCoordinates.height - (variant === 'sheet' ? insets.bottom : 0));
+      // Android reports the keyboard without the navigation bar under it, so the
+      // card must also clear that bar (3-button phones). iOS includes the home
+      // indicator area, which the sheet's bottom padding already covered.
+      const height = Platform.OS === 'android'
+        ? event.endCoordinates.height + insets.bottom
+        : Math.max(0, event.endCoordinates.height - (variant === 'sheet' ? insets.bottom : 0));
       setKeyboardHeight(height);
       Animated.timing(lift, {
         toValue: height,

@@ -82,8 +82,30 @@ test('messaging can resolve a discovered app user without falsely verifying the 
   const service = read('services/DeviceContactsService.ts');
   const messages = read('app/messages/index.tsx');
   assert.match(service, /discoverLinkedPerson/);
-  assert.match(service, /discoverLinkedContacts\(\[contact\], true\)/, 'messaging should bypass stale contact discovery cache');
+  assert.match(service, /discoverLinkedContacts\(\[contact\], true(, false)?\)/, 'messaging should bypass stale contact discovery cache');
   assert.match(messages, /DeviceContactsService\.discoverLinkedPerson\(person\)/);
   assert.match(messages, /MessagingService\.startConversation\(discovered\.uid\)/);
   assert.match(messages, /if \(!person\.linkedUid && discovered\.verified\)/, 'only a verified discovery may be persisted as a linked identity');
+});
+
+test('starting a chat reuses recent contact discovery and reports a failed lookup', () => {
+  const service = fs.readFileSync(path.join(__dirname, '..', 'services', 'DeviceContactsService.ts'), 'utf8');
+  assert.match(service, /const known = identifierMatches\.get\(value\);/);
+  assert.match(service, /rememberMatches\(discovered\);/);
+  assert.match(service, /if \(result\.discoveryFailed\) \{/);
+});
+
+test('a one-person chat lookup never replaces the address-book badge cache', () => {
+  const service = fs.readFileSync(path.join(__dirname, '..', 'services', 'DeviceContactsService.ts'), 'utf8');
+  assert.match(service, /if \(cacheList\) discoveryCache = /);
+  assert.match(service, /discoverLinkedContacts\(\[contact\], true, false\)/);
+});
+
+test('the chat composer stays above the keyboard and the Android navigation bar', () => {
+  const chat = fs.readFileSync(path.join(__dirname, '..', 'app', 'messages', '[id].tsx'), 'utf8');
+  assert.match(chat, /Keyboard\.addListener\(showEvent/);
+  // Android's keyboard height excludes the navigation bar, so it is added back.
+  assert.match(chat, /kbdHeight \+ \(Platform\.OS === 'android' \? insets\.bottom : 0\)/);
+  const sheet = fs.readFileSync(path.join(__dirname, '..', 'components', 'FormSheet.tsx'), 'utf8');
+  assert.match(sheet, /event\.endCoordinates\.height \+ insets\.bottom/);
 });

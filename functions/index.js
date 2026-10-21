@@ -1205,6 +1205,9 @@ const MESSAGE_REQUEST_TYPES = [
   'LOAN_REPAYMENT_REQUEST', 'EQUB_PAYMENT_REQUEST', 'EQUB_INVITE',
 ];
 const messageText = (value, max = 1000) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+// A sender can correct a text for a short while and unsend it for two days.
+const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+const MESSAGE_UNSEND_WINDOW_MS = 48 * 60 * 60 * 1000;
 const messageBad = text => new HttpsError('invalid-argument', text);
 const messageName = (request) => messageText(request.auth.token && request.auth.token.name, 100) || 'HisabTrack user';
 const requestTitle = type => ({
@@ -1256,8 +1259,15 @@ exports.mutateConversation = onCall({ region: 'us-central1' }, async request => 
     await db.runTransaction(async tx => {
       const snapshot = await tx.get(conversationRef);
       if (!snapshot.exists || !snapshot.data().participantUids.includes(uid)) throw new HttpsError('permission-denied', 'You cannot open this conversation.');
-      tx.update(conversationRef, { unreadBy: { ...(snapshot.data().unreadBy || {}), [uid]: 0 } });
+      tx.update(conversationRef, { unreadBy: { ...(snapshot.data().unreadBy || {}), [uid]: 0 }, [`readAt.${uid}`]: now, [`deliveredAt.${uid}`]: now });
     });
+    return { saved: true };
+  }
+
+  if (action === 'markDelivered') {
+    const snapshot = await conversationRef.get();
+    if (!snapshot.exists || !snapshot.data().participantUids.includes(uid)) throw new HttpsError('permission-denied', 'You cannot open this conversation.');
+    await conversationRef.update({ [`deliveredAt.${uid}`]: now });
     return { saved: true };
   }
 
@@ -1283,9 +1293,12 @@ exports.mutateConversation = onCall({ region: 'us-central1' }, async request => 
     if ((type === 'EQUB_INVITE' || type === 'EQUB_PAYMENT_REQUEST') && !communityName) throw messageBad('Enter the Equb name.');
     const dueDate = data.dueDate == null ? undefined : Number(data.dueDate);
     if (dueDate !== undefined && (!Number.isFinite(dueDate) || dueDate <= 0)) throw messageBad('Enter a valid due date.');
+    const replyToId = data.replyToId == null ? '' : messageText(data.replyToId, 160);
+    if (replyToId && (!MESSAGE_ID.test(replyToId) || replyToId === messageId)) throw messageBad('Invalid reply.');
+    const replyRef = replyToId ? db.doc(`conversations/${conversationId}/messages/${replyToId}`) : null;
     const rateRef = db.doc(`messageRateLimits/${uid}`);
     const result = await db.runTransaction(async tx => {
-      const [conversation, existing, rateSnapshot] = await Promise.all([tx.get(conversationRef), tx.get(messageRef), tx.get(rateRef)]);
+      const [conversation, existing, rateSnapshot, replied] = await Promise.all([tx.get(conversationRef), tx.get(messageRef), tx.get(rateRef), replyRef ? tx.get(replyRef) : Promise.resolve(null)]);
       if (!conversation.exists || !conversation.data().participantUids.includes(uid)) throw new HttpsError('permission-denied', 'You cannot send to this conversation.');
       if (existing.exists) {
         const previous = existing.data();
@@ -1305,13 +1318,25 @@ exports.mutateConversation = onCall({ region: 'us-central1' }, async request => 
       const recipientUid = state.participantUids.find(value => value !== uid);
       const unreadBy = { ...(state.unreadBy || {}), [recipientUid]: (Number(state.unreadBy && state.unreadBy[recipientUid]) || 0) + 1 };
       const preview = type === 'TEXT' ? text.slice(0, 120) : `${requestTitle(type)}${amount ? ` · ${currency} ${amount.toFixed(2)}` : ''}`;
+      // A reply keeps a small snapshot of what it answers, so it still reads
+      // correctly if the original is later edited or unsent.
+      let replyTo;
+      if (replied && replied.exists) {
+        const original = replied.data();
+        replyTo = {
+          id: replyToId, senderUid: original.senderUid, senderName: original.senderName || '', type: original.type,
+          text: original.deletedAt ? '' : (original.type === 'TEXT' ? (original.text || '') : requestTitle(original.type)).slice(0, 160),
+          ...(original.deletedAt ? { deleted: true } : {}),
+        };
+      }
       tx.create(messageRef, {
         senderUid: uid, senderName: state.participantNames[uid] || messageName(request), type,
         ...(text ? { text } : {}), ...(amount !== undefined ? { amount, currency } : {}),
         ...(dueDate !== undefined ? { dueDate } : {}), ...(communityName ? { communityName } : {}),
+        ...(replyTo ? { replyTo } : {}),
         ...(type !== 'TEXT' ? { status: 'PENDING' } : {}), createdAt: now,
       });
-      tx.update(conversationRef, { lastMessageText: preview, lastMessageType: type, lastSenderUid: uid, unreadBy, updatedAt: now });
+      tx.update(conversationRef, { lastMessageText: preview, lastMessageType: type, lastSenderUid: uid, lastMessageId: messageId, unreadBy, updatedAt: now });
       return { recipientUid, preview };
     });
     if (!result.existing && result.recipientUid) {
@@ -1351,6 +1376,37 @@ exports.mutateConversation = onCall({ region: 'us-central1' }, async request => 
       });
     }
     return { saved: true, existing: !!result.existing };
+  }
+
+  if (action === 'edit' || action === 'delete' || action === 'hide') {
+    const nextText = action === 'edit' ? messageText(data.text) : '';
+    if (action === 'edit' && !nextText) throw messageBad('Write a message first.');
+    await db.runTransaction(async tx => {
+      const [conversation, message] = await Promise.all([tx.get(conversationRef), tx.get(messageRef)]);
+      if (!conversation.exists || !conversation.data().participantUids.includes(uid)) throw new HttpsError('permission-denied', 'You cannot update this conversation.');
+      if (!message.exists) throw new HttpsError('not-found', 'Message not found.');
+      const current = message.data();
+      if (action === 'hide') {
+        tx.update(messageRef, { hiddenFor: admin.firestore.FieldValue.arrayUnion(uid) });
+        return;
+      }
+      // Financial requests are a record of what was asked; they are cancelled, never rewritten.
+      if (current.senderUid !== uid) throw new HttpsError('permission-denied', 'Only the sender can change this message.');
+      if (current.type !== 'TEXT') throw new HttpsError('failed-precondition', 'Cancel a request instead of changing it.');
+      if (current.deletedAt) throw new HttpsError('failed-precondition', 'This message was already unsent.');
+      const isLast = conversation.data().lastMessageId === messageId;
+      if (action === 'edit') {
+        if (now - Number(current.createdAt || 0) > MESSAGE_EDIT_WINDOW_MS) throw new HttpsError('failed-precondition', 'Messages can only be edited for 15 minutes.');
+        if (nextText === current.text) return;
+        tx.update(messageRef, { text: nextText, editedAt: now });
+        if (isLast) tx.update(conversationRef, { lastMessageText: nextText.slice(0, 120) });
+      } else {
+        if (now - Number(current.createdAt || 0) > MESSAGE_UNSEND_WINDOW_MS) throw new HttpsError('failed-precondition', 'Messages can only be unsent for 48 hours.');
+        tx.update(messageRef, { text: admin.firestore.FieldValue.delete(), deletedAt: now });
+        if (isLast) tx.update(conversationRef, { lastMessageText: 'Message unsent' });
+      }
+    });
+    return { saved: true };
   }
 
   throw messageBad('Unknown action.');
