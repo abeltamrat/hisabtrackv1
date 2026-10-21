@@ -1113,14 +1113,24 @@ export default function DraftTransactionsScreen() {
       {/* Header */}
       <LinearGradient
         colors={['#4f46e5', '#4338ca']}
-        className="px-4 pt-3 pb-3 rounded-b-2xl"
+        className="px-4 py-2 rounded-b-xl"
         style={{ elevation: 4 }}
       >
-        <View className="flex-row justify-between items-center mb-2">
+        <View className="flex-row items-center">
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} className="w-9 h-9 bg-white/20 rounded-lg justify-center items-center">
             <FontAwesome name="arrow-left" size={16} color="#fff" />
           </TouchableOpacity>
-          <Text numberOfLines={1} className="text-white text-lg font-bold flex-1 text-center mx-2">SMS Transactions</Text>
+          <View className="flex-1 mx-3">
+            <Text numberOfLines={1} className="text-white text-base font-bold">SMS Transactions</Text>
+            <View className="flex-row items-center">
+              <Text numberOfLines={1} className="text-white/70 text-[10px] flex-shrink">
+                {account?.name || 'All SMS Accounts'}
+              </Text>
+              <Text className={`text-[10px] font-bold ml-1.5 ${unrecordedCount > 0 ? 'text-yellow-200' : 'text-emerald-200'}`}>
+                · {unrecordedCount > 0 ? `${unrecordedCount} pending` : 'Up to date'}
+              </Text>
+            </View>
+          </View>
           <View className="flex-row gap-1">
             {isSelectionMode ? (
               <>
@@ -1139,29 +1149,8 @@ export default function DraftTransactionsScreen() {
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel="Draft options" accessibilityState={{ expanded: showOptions }} onPress={() => setShowOptions(!showOptions)} className="w-9 h-9 bg-white/20 rounded-lg justify-center items-center">
                   <FontAwesome name="sliders" size={16} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete" onPress={handleClearAll} className="w-9 h-9 bg-white/20 rounded-lg justify-center items-center">
-                  <FontAwesome name="trash" size={16} color="#fff" />
-                </TouchableOpacity>
               </>
             )}
-          </View>
-        </View>
-
-        {/* Account Info */}
-        <View className="bg-white/10 rounded-xl px-3 py-2 flex-row items-center">
-          <View className="flex-1 mr-2">
-            <Text numberOfLines={1} className="text-white/75 text-[11px] font-medium">
-              {account?.name || 'All SMS Accounts'}
-            </Text>
-            <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.7} className="text-white text-base font-bold">
-              {account ? formatCurrency(account.balance || 0) : 'Parsed SMS drafts'}
-            </Text>
-          </View>
-          <View className={`flex-row items-center rounded-full px-2.5 py-1 ${unrecordedCount > 0 ? 'bg-amber-400/20' : 'bg-emerald-400/20'}`}>
-            <FontAwesome name={unrecordedCount > 0 ? 'exclamation-circle' : 'check-circle'} size={12} color={unrecordedCount > 0 ? '#fbbf24' : '#6ee7b7'} />
-            <Text className={`text-[11px] ml-1.5 font-bold ${unrecordedCount > 0 ? 'text-yellow-200' : 'text-emerald-200'}`}>
-              {unrecordedCount > 0 ? `${unrecordedCount} pending` : 'Up to date'}
-            </Text>
           </View>
         </View>
       </LinearGradient>
@@ -1182,6 +1171,29 @@ export default function DraftTransactionsScreen() {
       {/* View Options Panel */}
       {showOptions && (
         <View className="bg-white dark:bg-slate-900 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+          <View className="flex-row gap-2 mb-3">
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Teach SMS parser"
+              onPress={() => router.push({
+                pathname: '/manage-sms-rules',
+                params: accountId ? { accountId } : {},
+              } as any)}
+              className="flex-1 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex-row items-center justify-center"
+            >
+              <FontAwesome name="graduation-cap" size={13} color="#059669" />
+              <Text className="text-emerald-700 dark:text-emerald-400 text-xs font-bold ml-1.5">Teach parser</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Clear SMS drafts"
+              onPress={handleClearAll}
+              className="flex-1 h-9 rounded-lg bg-red-50 dark:bg-red-900/20 flex-row items-center justify-center"
+            >
+              <FontAwesome name="trash" size={13} color="#dc2626" />
+              <Text className="text-red-600 dark:text-red-400 text-xs font-bold ml-1.5">Clear drafts</Text>
+            </TouchableOpacity>
+          </View>
           <View className="mb-3">
             <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase mb-2">Filter by Type</Text>
             <View className="flex-row gap-2">
@@ -1239,13 +1251,13 @@ export default function DraftTransactionsScreen() {
         </View>
       )}
 
-      <View className="px-4 py-2 flex-row items-center bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+      <View className="px-3 py-1.5 flex-row items-center bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
         <View className="flex-row bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex-1 mr-2">
           {(['unrecorded', 'all', 'recorded'] as const).map((f: 'unrecorded' | 'all' | 'recorded') => (
             <TouchableOpacity
               key={f}
               onPress={() => setFilter(f)}
-              className={`flex-1 py-1.5 rounded-lg items-center ${filter === f ? 'bg-white dark:bg-slate-700 shadow-sm' : '' }`}
+              className={`flex-1 py-1 rounded-lg items-center ${filter === f ? 'bg-white dark:bg-slate-700 shadow-sm' : '' }`}
             >
               <Text
                 className={`text-xs font-bold capitalize ${filter === f ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500' }`}
@@ -1255,19 +1267,7 @@ export default function DraftTransactionsScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Teach SMS parser"
-          onPress={() => router.push({
-            pathname: '/manage-sms-rules',
-            params: accountId ? { accountId } : {},
-          } as any)}
-          className="h-9 px-2 mr-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex-row items-center justify-center"
-        >
-          <FontAwesome name="graduation-cap" size={13} color="#059669" />
-          <Text className="text-emerald-700 dark:text-emerald-400 text-[10px] font-bold ml-1">Teach</Text>
-        </TouchableOpacity>
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh" onPress={handleRefresh} disabled={refreshing} className="w-9 h-9 items-center justify-center">
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh" onPress={handleRefresh} disabled={refreshing} className="w-8 h-8 items-center justify-center">
           <FontAwesome
             name="refresh"
             size={16}
