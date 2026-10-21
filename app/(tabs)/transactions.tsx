@@ -14,8 +14,8 @@ import { buildTransactionDisplayRows } from '@/utils/transactionFilterRows';
 import { flattenCategoryHierarchy } from '@/utils/categoryHierarchy';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from '@/components/aurora/AuroraGradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Image, InteractionManager, Modal, Platform, ScrollView, SectionList, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Alert } from '@/utils/alert';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -24,6 +24,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import { themeTokens } from '@/constants/theme';
 import { formatCalendarDate } from '@/utils/ethiopianCalendar';
 import HisabUserBadge, { useLinkedPersonIds } from '@/components/HisabUserBadge';
+import MelaService from '@/services/MelaService';
+import { collectMelaFilterOptions, itemFilterKey, matchesMelaFilters, projectFilterKey, supplierFilterKey } from '@/utils/transactionMelaFilters';
+import type { ItemKind } from '@/types/database';
 
 const BUNDLED_LOGO_MAP = new Map(BUNDLED_LOGOS.map(b => [b.url, b]));
 
@@ -117,6 +120,13 @@ export default function TransactionsScreen() {
   const [showTagModal, setShowTagModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showDateModal, setShowDateModal] = useState(false);
+  const [showMelaFilterModal, setShowMelaFilterModal] = useState(false);
+  const [melaConnected, setMelaConnected] = useState(false);
+  const [melaFilterSearch, setMelaFilterSearch] = useState('');
+  const [selectedProjectKeys, setSelectedProjectKeys] = useState<string[]>([]);
+  const [selectedItemKeys, setSelectedItemKeys] = useState<string[]>([]);
+  const [selectedSupplierKeys, setSelectedSupplierKeys] = useState<string[]>([]);
+  const [selectedItemKinds, setSelectedItemKinds] = useState<ItemKind[]>([]);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -154,6 +164,19 @@ export default function TransactionsScreen() {
     return () => task.cancel();
   }, [dispatch]);
 
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    MelaService.getConnection().then(connection => {
+      if (!active) return;
+      const connected = !!connection && !connection.needsReconnect;
+      setMelaConnected(connected);
+      if (!connected) {
+        setSelectedProjectKeys([]); setSelectedItemKeys([]); setSelectedSupplierKeys([]); setSelectedItemKinds([]);
+      }
+    }).catch(() => { if (active) setMelaConnected(false); });
+    return () => { active = false; };
+  }, []));
+
   useEffect(() => {
     if (type && (type === 'INCOME' || type === 'EXPENSE')) {
       setFilter(type);
@@ -180,6 +203,17 @@ export default function TransactionsScreen() {
     });
     return [...tags.values()].sort((a, b) => a.localeCompare(b));
   }, [transactions]);
+  const melaFilterOptions = useMemo(() => collectMelaFilterOptions(transactions), [transactions]);
+  const melaFilterCount = selectedProjectKeys.length + selectedItemKeys.length + selectedSupplierKeys.length + selectedItemKinds.length;
+  const visibleMelaOptions = useMemo(() => {
+    const query = melaFilterSearch.trim().toLowerCase();
+    const includes = (value: string) => !query || value.toLowerCase().includes(query);
+    return {
+      projects: melaFilterOptions.projects.filter(item => includes(`${item.code || ''} ${item.title}`)),
+      items: melaFilterOptions.items.filter(item => includes(`${item.name} ${item.category || ''}`)),
+      suppliers: melaFilterOptions.suppliers.filter(item => includes(item.name)),
+    };
+  }, [melaFilterOptions, melaFilterSearch]);
 
   const filteredTransactions = useMemo(() => {
     const categoriesToInclude = getCategoryNamesToInclude(selectedCategories);
@@ -206,6 +240,7 @@ export default function TransactionsScreen() {
       if (filterAccountIds.length > 0 && !filterAccountIds.includes(t.account_id) && !filterAccountIds.includes(t.to_account_id ?? '')) return false;
       if (dateFrom && t.date < new Date(dateFrom).setHours(0, 0, 0, 0)) return false;
       if (dateTo && t.date > new Date(dateTo).setHours(23, 59, 59, 999)) return false;
+      if (!matchesMelaFilters(t, { projectKeys: selectedProjectKeys, itemKeys: selectedItemKeys, supplierKeys: selectedSupplierKeys, itemKinds: selectedItemKinds })) return false;
 
       if (categoriesToInclude || selectedTags.length > 0 || query) {
         const ownMatches = fieldsMatch(t.category, t.tags, t.description);
@@ -215,7 +250,7 @@ export default function TransactionsScreen() {
 
       return true;
     });
-  }, [transactions, filter, selectedCategories, selectedTags, searchQuery, categories, filterAccountIds, dateFrom, dateTo, evidenceIds]);
+  }, [transactions, filter, selectedCategories, selectedTags, searchQuery, categories, filterAccountIds, dateFrom, dateTo, evidenceIds, selectedProjectKeys, selectedItemKeys, selectedSupplierKeys, selectedItemKinds]);
 
   // Every category split of a transaction becomes its own row — each is
   // independently interactive, searchable and filterable, while still
@@ -522,8 +557,20 @@ export default function TransactionsScreen() {
           </TouchableOpacity>
         </View>
 
+        {melaConnected && (
+          <TouchableOpacity
+            onPress={() => setShowMelaFilterModal(true)}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, marginBottom: 4, backgroundColor: melaFilterCount ? '#0d9488' : filterControlBackground, borderWidth: 1, borderColor: melaFilterCount ? '#0d9488' : theme.border }}
+          >
+            <FontAwesome name="briefcase" size={12} color={melaFilterCount ? '#fff' : '#14b8a6'} />
+            <Text style={{ fontSize: 11, fontWeight: '700', marginLeft: 6, color: melaFilterCount ? '#fff' : theme.textMuted }}>
+              {melaFilterCount ? `Mela filters (${melaFilterCount})` : 'Mela: project, item, supplier and item type'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Active filter pills */}
-        {(selectedCategories.length > 0 || selectedTags.length > 0 || filterAccountIds.length > 0 || dateFrom || dateTo) && (
+        {(selectedCategories.length > 0 || selectedTags.length > 0 || filterAccountIds.length > 0 || dateFrom || dateTo || melaFilterCount > 0) && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2" style={{ marginHorizontal: -2 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2, paddingVertical: 4 }}>
               {selectedCategories.map(cat => (
@@ -571,6 +618,16 @@ export default function TransactionsScreen() {
                     {dateTo ? dateTo.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '…'}
                   </Text>
                   <FontAwesome name="times" size={9} color="#6366f1" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              )}
+              {melaFilterCount > 0 && (
+                <TouchableOpacity
+                  onPress={() => { setSelectedProjectKeys([]); setSelectedItemKeys([]); setSelectedSupplierKeys([]); setSelectedItemKinds([]); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#134e4a' : '#ccfbf1', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, borderWidth: 1, borderColor: '#0d9488' }}
+                >
+                  <FontAwesome name="briefcase" size={10} color="#0d9488" style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, color: '#0d9488', fontWeight: '700' }}>{melaFilterCount} Mela filter{melaFilterCount === 1 ? '' : 's'}</Text>
+                  <FontAwesome name="times" size={9} color="#0d9488" style={{ marginLeft: 6 }} />
                 </TouchableOpacity>
               )}
             </View>
@@ -907,6 +964,50 @@ export default function TransactionsScreen() {
                 </TouchableOpacity>
               );
             })}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Mela detail filters */}
+      <Modal visible={showMelaFilterModal} transparent animationType="slide" onRequestClose={() => setShowMelaFilterModal(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: filterBackdrop }} activeOpacity={1} onPress={() => setShowMelaFilterModal(false)} />
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: filterSheetBackground, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '82%', borderWidth: 1, borderBottomWidth: 0, borderColor: filterDivider, elevation: 24 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: filterDivider }}>
+            <TouchableOpacity onPress={() => { setSelectedProjectKeys([]); setSelectedItemKeys([]); setSelectedSupplierKeys([]); setSelectedItemKinds([]); }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#94a3b8' }}>Clear</Text>
+            </TouchableOpacity>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>Mela details</Text>
+              <Text style={{ fontSize: 10, color: '#94a3b8' }}>Filters combine to narrow results</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowMelaFilterModal(false)}><Text style={{ fontSize: 14, fontWeight: '700', color: '#14b8a6' }}>Done</Text></TouchableOpacity>
+          </View>
+          <View style={{ marginHorizontal: 16, marginTop: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: filterControlBackground, borderRadius: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: filterDivider }}>
+            <FontAwesome name="search" size={13} color="#94a3b8" />
+            <TextInput value={melaFilterSearch} onChangeText={setMelaFilterSearch} placeholder="Search projects, items or suppliers" placeholderTextColor="#94a3b8" style={{ flex: 1, color: theme.text, paddingHorizontal: 10, paddingVertical: 11, fontSize: 13 }} />
+          </View>
+          <ScrollView style={{ paddingHorizontal: 16, paddingTop: 12 }} contentContainerStyle={{ paddingBottom: 36 }} keyboardShouldPersistTaps="handled">
+            <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800', marginBottom: 8 }}>ITEM TYPE</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {(['MATERIAL', 'TOOL', 'OTHER'] as ItemKind[]).map(kind => {
+                const active = selectedItemKinds.includes(kind);
+                return <TouchableOpacity key={kind} onPress={() => setSelectedItemKinds(prev => active ? prev.filter(value => value !== kind) : [...prev, kind])} style={{ flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10, backgroundColor: active ? '#0d9488' : filterControlBackground, borderWidth: 1, borderColor: active ? '#0d9488' : filterDivider }}><Text style={{ color: active ? '#fff' : theme.textMuted, fontSize: 10, fontWeight: '800' }}>{kind}</Text></TouchableOpacity>;
+              })}
+            </View>
+            {[
+              { title: 'PROJECTS', values: visibleMelaOptions.projects, selected: selectedProjectKeys, setSelected: setSelectedProjectKeys, keyOf: projectFilterKey, label: (value: any) => `${value.code ? `${value.code} · ` : ''}${value.title}`, icon: 'folder-open' },
+              { title: 'ITEMS', values: visibleMelaOptions.items, selected: selectedItemKeys, setSelected: setSelectedItemKeys, keyOf: itemFilterKey, label: (value: any) => value.name, icon: 'cube' },
+              { title: 'SUPPLIERS', values: visibleMelaOptions.suppliers, selected: selectedSupplierKeys, setSelected: setSelectedSupplierKeys, keyOf: supplierFilterKey, label: (value: any) => value.name, icon: 'truck' },
+            ].map(section => section.values.length > 0 && (
+              <View key={section.title} style={{ marginBottom: 16 }}>
+                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800', marginBottom: 6 }}>{section.title}</Text>
+                {section.values.map((value: any) => {
+                  const key = section.keyOf(value as any); const active = section.selected.includes(key);
+                  return <TouchableOpacity key={key} onPress={() => section.setSelected((prev: string[]) => active ? prev.filter(item => item !== key) : [...prev, key])} style={{ flexDirection: 'row', alignItems: 'center', padding: 11, borderRadius: 12, marginBottom: 5, backgroundColor: active ? (isDark || isAurora ? '#134e4a' : '#ccfbf1') : (isAurora ? '#172036' : 'transparent') }}><FontAwesome name={section.icon as any} size={14} color={active ? '#14b8a6' : '#94a3b8'} /><Text style={{ flex: 1, marginLeft: 10, color: theme.text, fontSize: 13, fontWeight: '600' }}>{section.label(value)}</Text>{active && <FontAwesome name="check" size={13} color="#14b8a6" />}</TouchableOpacity>;
+                })}
+              </View>
+            ))}
+            {!visibleMelaOptions.projects.length && !visibleMelaOptions.items.length && !visibleMelaOptions.suppliers.length && <Text style={{ textAlign: 'center', color: '#94a3b8', marginTop: 20 }}>No matching Mela details in recorded transactions.</Text>}
           </ScrollView>
         </View>
       </Modal>
