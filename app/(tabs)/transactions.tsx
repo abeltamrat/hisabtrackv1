@@ -83,6 +83,40 @@ const SpinnerPickerSheet = ({
   );
 };
 
+// Table view columns; the list is laid out at this fixed width inside a sideways scroll.
+const TABLE_WIDTH = 62 + 130 + 80 + 68 + 80 + 80 + 90 + 12;
+
+type TableRowProps = {
+  id: string; striped: boolean; isDark: boolean; textColor: string; date: string; description: string; category: string;
+  tag: string; debit: string; credit: string; balance: string; negative: boolean; onOpen: (id: string) => void;
+};
+// Props are display strings, so a row only re-renders when what it shows changes.
+const TableRow = React.memo(function TableRow({ id, striped, isDark, textColor, date, description, category, tag, debit, credit, balance, negative, onOpen }: TableRowProps) {
+  const mutedColor = isDark ? '#64748b' : '#94a3b8';
+  return (
+    <TouchableOpacity
+      onPress={() => onOpen(id)}
+      activeOpacity={0.7}
+      style={{
+        flexDirection: 'row',
+        backgroundColor: isDark ? (striped ? '#1e293b' : '#0f172a') : (striped ? '#ffffff' : '#f8fafc'),
+        paddingVertical: 9,
+        paddingHorizontal: 6,
+        borderBottomWidth: 1,
+        borderBottomColor: isDark ? '#1e293b' : '#f1f5f9',
+      }}
+    >
+      <Text style={{ width: 62, fontSize: 11, color: mutedColor, paddingHorizontal: 4 }} numberOfLines={1}>{date}</Text>
+      <Text style={{ width: 130, fontSize: 12, color: textColor, fontWeight: '500', paddingHorizontal: 4 }} numberOfLines={1}>{description}</Text>
+      <Text style={{ width: 80, fontSize: 11, color: mutedColor, paddingHorizontal: 4 }} numberOfLines={1}>{category}</Text>
+      <Text style={{ width: 68, fontSize: 11, color: '#6366f1', paddingHorizontal: 4 }} numberOfLines={1}>{tag}</Text>
+      <Text style={{ width: 80, fontSize: 12, color: '#ef4444', textAlign: 'right', fontWeight: '500', paddingHorizontal: 4 }} numberOfLines={1}>{debit}</Text>
+      <Text style={{ width: 80, fontSize: 12, color: '#16a34a', textAlign: 'right', fontWeight: '500', paddingHorizontal: 4 }} numberOfLines={1}>{credit}</Text>
+      <Text style={{ width: 90, fontSize: 12, color: negative ? '#ef4444' : textColor, textAlign: 'right', fontWeight: '700', paddingHorizontal: 4 }} numberOfLines={1}>{balance}</Text>
+    </TouchableOpacity>
+  );
+});
+
 export default function TransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -390,6 +424,8 @@ export default function TransactionsScreen() {
       setExporting(false);
     }
   };
+
+  const openTransaction = useCallback((id: string) => router.push(`/transaction/${id}`), [router]);
 
   const formatTableDate = (ts: number) => {
     return formatCalendarDate(ts, calendarSystem, { month: 'short', day: 'numeric' });
@@ -773,126 +809,109 @@ export default function TransactionsScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Scrollable table */}
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={true} bounces={false}>
-              <View>
-                {/* Table header */}
-                <View style={{
-                  flexDirection: 'row',
-                  backgroundColor: isDark ? '#312e81' : '#6366f1',
-                  paddingVertical: 10,
-                  paddingHorizontal: 6,
-                }}>
-                  {[
-                    { label: 'Date',        w: 62 },
-                    { label: 'Description', w: 130 },
-                    { label: 'Category',    w: 80 },
-                    { label: 'Tag',         w: 68 },
-                    { label: 'Debit',       w: 80, right: true },
-                    { label: 'Credit',      w: 80, right: true },
-                    { label: 'Balance',     w: 90, right: true },
-                  ].map(col => (
-                    <Text
-                      key={col.label}
-                      style={{
-                        width: col.w,
-                        color: '#e0e7ff',
-                        fontSize: 11,
-                        fontWeight: '700',
-                        textAlign: col.right ? 'right' : 'left',
-                        paddingHorizontal: 4,
-                      }}
-                    >
-                      {col.label.toUpperCase()}
-                    </Text>
-                  ))}
-                </View>
-
-                {/* Table rows */}
-                {tableTransactions.length === 0 ? (
-                  <View style={{ paddingVertical: 48, alignItems: 'center', minWidth: 590 }}>
-                    <FontAwesome name="search" size={28} color="#cbd5e1" />
-                    <Text style={{ color: '#94a3b8', marginTop: 12, fontSize: 14 }}>No transactions found</Text>
-                  </View>
-                ) : (
-                  tableTransactions.map((item, index) => {
-                    const isIncome = item.type === 'INCOME';
-                    const isTransfer = item.type === 'TRANSFER';
-                    const runBal = transactionBalances.get(item.id) ?? 0;
-                    const evenRow = index % 2 === 0;
-                    const rowBg = isDark
-                      ? (evenRow ? '#1e293b' : '#0f172a')
-                      : (evenRow ? '#ffffff' : '#f8fafc');
-                    const textColor = theme.text;
-                    const mutedColor = isDark ? '#64748b' : '#94a3b8';
-                    const firstTag = item.tags?.[0];
-
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        onPress={() => router.push(`/transaction/${item.id}`)}
-                        activeOpacity={0.7}
-                        style={{
-                          flexDirection: 'row',
-                          backgroundColor: rowBg,
-                          paddingVertical: 9,
-                          paddingHorizontal: 6,
-                          borderBottomWidth: 1,
-                          borderBottomColor: isDark ? '#1e293b' : '#f1f5f9',
-                        }}
-                      >
-                        <Text style={{ width: 62, fontSize: 11, color: mutedColor, paddingHorizontal: 4 }} numberOfLines={1}>
-                          {formatTableDate(item.date)}
-                        </Text>
-                        <Text style={{ width: 130, fontSize: 12, color: textColor, fontWeight: '500', paddingHorizontal: 4 }} numberOfLines={1}>
-                          {item.description || '—'}
-                        </Text>
-                        <Text style={{ width: 80, fontSize: 11, color: mutedColor, paddingHorizontal: 4 }} numberOfLines={1}>
-                          {item.category || '—'}
-                        </Text>
-                        <Text style={{ width: 68, fontSize: 11, color: '#6366f1', paddingHorizontal: 4 }} numberOfLines={1}>
-                          {firstTag ? `#${firstTag}` : '—'}
-                        </Text>
-                        <Text style={{ width: 80, fontSize: 12, color: '#ef4444', textAlign: 'right', fontWeight: '500', paddingHorizontal: 4 }} numberOfLines={1}>
-                          {!isIncome && !isTransfer ? formatCurrency(item.amount) : ''}
-                        </Text>
-                        <Text style={{ width: 80, fontSize: 12, color: '#16a34a', textAlign: 'right', fontWeight: '500', paddingHorizontal: 4 }} numberOfLines={1}>
-                          {isIncome ? formatCurrency(item.amount) : isTransfer ? `↔ ${formatCurrency(item.amount)}` : ''}
-                        </Text>
-                        <Text style={{ width: 90, fontSize: 12, color: runBal < 0 ? '#ef4444' : textColor, textAlign: 'right', fontWeight: '700', paddingHorizontal: 4 }} numberOfLines={1}>
-                          {formatCurrency(runBal)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })
-                )}
-
-                {/* Totals footer */}
-                {tableTransactions.length > 0 && (
+          {/* Scrollable table: rows are virtualized; the sideways scroll keeps columns aligned */}
+          <ScrollView horizontal style={{ flex: 1 }} showsHorizontalScrollIndicator={true} bounces={false}>
+            <FlatList
+              data={tableTransactions}
+              keyExtractor={item => item.id}
+              style={{ width: TABLE_WIDTH }}
+              contentContainerStyle={{ paddingBottom: 80 }}
+              initialNumToRender={20}
+              maxToRenderPerBatch={20}
+              windowSize={11}
+              removeClippedSubviews
+              ListHeaderComponent={
+                <>
+                  {/* Table header */}
                   <View style={{
                     flexDirection: 'row',
-                    backgroundColor: isDark ? '#312e81' : '#eef2ff',
+                    backgroundColor: isDark ? '#312e81' : '#6366f1',
                     paddingVertical: 10,
                     paddingHorizontal: 6,
-                    borderTopWidth: 2,
-                    borderTopColor: isDark ? '#4338ca' : '#c7d2fe',
                   }}>
-                    <Text style={{ width: 62, paddingHorizontal: 4 }} />
-                    <Text style={{ width: 130, fontSize: 11, fontWeight: '700', color: isDark ? '#a5b4fc' : '#4338ca', paddingHorizontal: 4 }}>TOTAL</Text>
-                    <Text style={{ width: 80, paddingHorizontal: 4 }} />
-                    <Text style={{ width: 68, paddingHorizontal: 4 }} />
-                    <Text style={{ width: 80, fontSize: 12, color: '#ef4444', textAlign: 'right', fontWeight: '700', paddingHorizontal: 4 }}>
-                      {formatCurrency(totals.expense)}
-                    </Text>
-                    <Text style={{ width: 80, fontSize: 12, color: '#16a34a', textAlign: 'right', fontWeight: '700', paddingHorizontal: 4 }}>
-                      {formatCurrency(totals.income)}
-                    </Text>
-                    <Text style={{ width: 90, paddingHorizontal: 4 }} />
+                    {[
+                      { label: 'Date',        w: 62 },
+                      { label: 'Description', w: 130 },
+                      { label: 'Category',    w: 80 },
+                      { label: 'Tag',         w: 68 },
+                      { label: 'Debit',       w: 80, right: true },
+                      { label: 'Credit',      w: 80, right: true },
+                      { label: 'Balance',     w: 90, right: true },
+                    ].map(col => (
+                      <Text
+                        key={col.label}
+                        style={{
+                          width: col.w,
+                          color: '#e0e7ff',
+                          fontSize: 11,
+                          fontWeight: '700',
+                          textAlign: col.right ? 'right' : 'left',
+                          paddingHorizontal: 4,
+                        }}
+                      >
+                        {col.label.toUpperCase()}
+                      </Text>
+                    ))}
                   </View>
-                )}
-              </View>
-            </ScrollView>
+                </>
+              }
+              ListEmptyComponent={
+                <View style={{ paddingVertical: 48, alignItems: 'center', minWidth: 590 }}>
+                  <FontAwesome name="search" size={28} color="#cbd5e1" />
+                  <Text style={{ color: '#94a3b8', marginTop: 12, fontSize: 14 }}>No transactions found</Text>
+                </View>
+              }
+              ListFooterComponent={
+                <>
+                  {/* Totals footer */}
+                  {tableTransactions.length > 0 && (
+                    <View style={{
+                      flexDirection: 'row',
+                      backgroundColor: isDark ? '#312e81' : '#eef2ff',
+                      paddingVertical: 10,
+                      paddingHorizontal: 6,
+                      borderTopWidth: 2,
+                      borderTopColor: isDark ? '#4338ca' : '#c7d2fe',
+                    }}>
+                      <Text style={{ width: 62, paddingHorizontal: 4 }} />
+                      <Text style={{ width: 130, fontSize: 11, fontWeight: '700', color: isDark ? '#a5b4fc' : '#4338ca', paddingHorizontal: 4 }}>TOTAL</Text>
+                      <Text style={{ width: 80, paddingHorizontal: 4 }} />
+                      <Text style={{ width: 68, paddingHorizontal: 4 }} />
+                      <Text style={{ width: 80, fontSize: 12, color: '#ef4444', textAlign: 'right', fontWeight: '700', paddingHorizontal: 4 }}>
+                        {formatCurrency(totals.expense)}
+                      </Text>
+                      <Text style={{ width: 80, fontSize: 12, color: '#16a34a', textAlign: 'right', fontWeight: '700', paddingHorizontal: 4 }}>
+                        {formatCurrency(totals.income)}
+                      </Text>
+                      <Text style={{ width: 90, paddingHorizontal: 4 }} />
+                    </View>
+                  )}
+                </>
+              }
+              renderItem={({ item, index }) => {
+                const isIncome = item.type === 'INCOME';
+                const isTransfer = item.type === 'TRANSFER';
+                const runBal = transactionBalances.get(item.id) ?? 0;
+                const firstTag = item.tags?.[0];
+                return (
+                  <TableRow
+                    id={item.id}
+                    striped={index % 2 === 0}
+                    isDark={isDark}
+                    textColor={theme.text}
+                    date={formatTableDate(item.date)}
+                    description={item.description || '—'}
+                    category={item.category || '—'}
+                    tag={firstTag ? `#${firstTag}` : '—'}
+                    debit={!isIncome && !isTransfer ? formatCurrency(item.amount) : ''}
+                    credit={isIncome ? formatCurrency(item.amount) : isTransfer ? `↔ ${formatCurrency(item.amount)}` : ''}
+                    balance={formatCurrency(runBal)}
+                    negative={runBal < 0}
+                    onOpen={openTransaction}
+                  />
+                );
+              }}
+            />
           </ScrollView>
         </View>
       )}

@@ -17,9 +17,27 @@ const initialState: TransactionsState = {
   error: null,
 };
 
+// Many screens refetch the full ledger after the same change. Concurrent
+// unfiltered fetches share one read; a request made while a read is running
+// gets exactly one follow-up read, so it never receives rows read before a
+// write it may be reacting to.
+let runningRead: Promise<Transaction[]> | null = null;
+let queuedRead: Promise<Transaction[]> | null = null;
+function readAllTransactions(): Promise<Transaction[]> {
+  if (!runningRead) {
+    runningRead = getDatabase().then(db => db.getTransactions()).finally(() => { runningRead = null; });
+    return runningRead;
+  }
+  if (!queuedRead) {
+    queuedRead = runningRead.catch(() => undefined).then(() => { queuedRead = null; return readAllTransactions(); });
+  }
+  return queuedRead;
+}
+
 export const fetchTransactions = createAsyncThunk(
   'transactions/fetchTransactions',
   async (filters?: { account_id?: string; startDate?: number; endDate?: number }) => {
+    if (!filters) return readAllTransactions();
     const db = await getDatabase();
     return await db.getTransactions(filters);
   }
