@@ -6,7 +6,7 @@ import { FontAwesome } from '@expo/vector-icons';
 // whatever was on screen before locking show through underneath.
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Text, TouchableOpacity, Vibration, View } from 'react-native';
+import { Animated, Modal, Text, TouchableOpacity, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const PIN_LENGTH = 4;
@@ -74,7 +74,9 @@ export default function AppLockScreen() {
   const displayName = user?.displayName || user?.email?.split('@')[0] || 'User';
 
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }}>
+    // A native Modal (not an absolute View) so the lock also covers any form sheet
+    // or Modal that was open when the app was backgrounded. Back must not dismiss it.
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={() => {}}>
       <LinearGradient colors={['#1e3a8a', '#1d4ed8']} style={{ flex: 1 }}>
         <SafeAreaView style={{ flex: 1 }}>
           {/* Header */}
@@ -160,6 +162,6 @@ export default function AppLockScreen() {
           </TouchableOpacity>
         </SafeAreaView>
       </LinearGradient>
-    </View>
+    </Modal>
   );
 }

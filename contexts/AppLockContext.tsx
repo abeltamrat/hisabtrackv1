@@ -3,7 +3,7 @@ import { ActivityIndicator, View, Text } from 'react-native';
 import { AppLockService, type AppLockCloudPolicy } from '@/services/AppLockService';
 import CloudProfileService, { type CloudAppLockPolicy } from '@/services/CloudProfileService';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Keyboard } from 'react-native';
 import { useAuth } from './AuthContext';
 
 interface AppLockContextType {
@@ -39,6 +39,15 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
   const appLockEnabledRef = useRef(false);
 
   useEffect(() => { appLockEnabledRef.current = appLockEnabled; }, [appLockEnabled]);
+
+  // Content is first mounted after the initial unlock and then never torn down by locking.
+  const [contentMounted, setContentMounted] = useState(false);
+  useEffect(() => {
+    if (prefsLoaded && !isLocked) setContentMounted(true);
+  }, [prefsLoaded, isLocked]);
+  useEffect(() => {
+    if (isLocked) Keyboard.dismiss();
+  }, [isLocked]);
 
   const applyCloudPolicy = useCallback(async (policy: CloudAppLockPolicy, lockOnChange: boolean) => {
     const [localVerifier, localEnabled, localHasPin] = await Promise.all([
@@ -218,7 +227,14 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
       refreshHasPin,
     }}>
       {prefsError ? <View style={{ flex: 1, padding: 24 }}><Text>Unable to verify app lock. Restart the app to retry.</Text></View>
-        : !prefsLoaded ? <ActivityIndicator /> : isLocked ? <AppLockScreen /> : children}
+        : !prefsLoaded ? <ActivityIndicator /> : (
+          <>
+            {/* Once the app has been unlocked, keep it mounted under the lock screen so
+                navigation and half-filled forms survive a background lock. */}
+            {(contentMounted || !isLocked) && children}
+            {isLocked && <AppLockScreen />}
+          </>
+        )}
     </AppLockContext.Provider>
   );
 }

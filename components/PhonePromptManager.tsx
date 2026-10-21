@@ -1,4 +1,5 @@
 import CoinLoader from '@/components/CoinLoader';
+import { useAppLock } from '@/contexts/AppLockContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthService, validatePhone } from '@/services/AuthService';
 import { FontAwesome } from '@expo/vector-icons';
@@ -16,6 +17,7 @@ const DAYS_BETWEEN_PROMPTS = 7;
 
 export default function PhonePromptManager() {
   const { user } = useAuth();
+  const { isLocked } = useAppLock();
   const [visible, setVisible] = useState(false);
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -95,7 +97,7 @@ export default function PhonePromptManager() {
     }
   };
 
-  if (!visible) return null;
+  if (!visible || isLocked) return null;
 
   return (
     <Modal

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { useAppLock } from '@/contexts/AppLockContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { InstallPermissionRequiredError, UpdateInfo, UpdateInstallProgress, UpdateService } from '@/services/UpdateService';
 import UpdateCoinBadge from './UpdateCoinBadge';
@@ -13,6 +14,7 @@ interface UpdateModalProps {
 
 export default function UpdateModal({ visible, updateInfo, onClose }: UpdateModalProps) {
   const { isAurora } = useTheme();
+  const { isLocked } = useAppLock();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<UpdateInstallProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -84,7 +86,8 @@ export default function UpdateModal({ visible, updateInfo, onClose }: UpdateModa
 
   return (
     <Modal
-      visible={visible}
+      // Hidden (not closed) while locked, so it never appears above the lock screen.
+      visible={visible && !isLocked}
       transparent
       animationType="fade"
       onRequestClose={() => {

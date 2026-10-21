@@ -73,7 +73,6 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
-import AppLockScreen from '@/components/AppLockScreen';
 import AppShell from '@/components/AppShell';
 import CoinLoader from '@/components/CoinLoader';
 import { TransactionProvider } from '@/context/TransactionContext';
@@ -346,7 +345,6 @@ function RootLayoutNav() {
                         </Text>
                       </View>
                     )}
-                    <AppLockScreen />
                   </View>
                 </I18nProvider>
               </TransactionProvider>
