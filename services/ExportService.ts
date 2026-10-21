@@ -2,12 +2,16 @@ import { operatingIncome, operatingExpense, sumMoney } from '@/utils/finance';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
-import * as XLSX from 'xlsx';
+import type * as XlsxModule from 'xlsx';
 
 import { saveWorkbook } from '@/utils/fileHelper';
 import { Account, Budget, Loan, Transaction } from '@/types/database';
 import { formatCalendarDate, type CalendarSystem } from '@/utils/ethiopianCalendar';
 import { loadStoredAppSettings } from '@/contexts/AppSettingsContext';
+
+// xlsx is large; it is loaded on the first Excel export, not when screens that
+// import this service open.
+let XLSX: typeof XlsxModule;
 
 export type ReportType = 'transactions' | 'summary' | 'loans' | 'all_data';
 
@@ -377,6 +381,7 @@ export class ExportService {
 
   private static async exportToExcel(options: ExportOptions, fileName: string) {
     try {
+      XLSX = await import('xlsx');
       const workbook = this.buildWorkbook(options);
       await saveWorkbook(`${fileName}.xlsx`, workbook);
       return true;
@@ -417,7 +422,7 @@ export class ExportService {
     return workbook;
   }
 
-  private static appendSheet(workbook: XLSX.WorkBook, rows: SheetRow[], name: string) {
+  private static appendSheet(workbook: XlsxModule.WorkBook, rows: SheetRow[], name: string) {
     const safeRows = rows.length > 0 ? rows : [{ Message: 'No data available' }];
     const worksheet = XLSX.utils.json_to_sheet(safeRows);
     XLSX.utils.book_append_sheet(workbook, worksheet, name);

@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { loadStoredAppSettings } from '@/contexts/AppSettingsContext';
@@ -42,6 +41,7 @@ export class ReceiptOCRService {
   }
 
   private static async extractWithGemini(apiKey: string, base64: string, mimeType: string): Promise<string> {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: 'gemini-2.0-flash' });
     const result = await model.generateContent([
       RECEIPT_PROMPT,

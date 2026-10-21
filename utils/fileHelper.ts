@@ -1,9 +1,11 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
-import * as XLSX from 'xlsx';
+import type { WorkBook } from 'xlsx';
 
-export async function saveWorkbook(filename: string, wb: XLSX.WorkBook) {
+export async function saveWorkbook(filename: string, wb: WorkBook) {
+  // Loaded on demand: BackupService imports this file, and xlsx is large.
+  const XLSX = await import('xlsx');
   if (Platform.OS === 'web') {
     const fileSaver = require('file-saver');
     const saveAs = fileSaver.saveAs || fileSaver.default || fileSaver;

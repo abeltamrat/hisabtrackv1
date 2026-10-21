@@ -1,7 +1,7 @@
 import LocalChangeEmitter from '@/services/LocalChangeEmitter';
 import RecipientIdentityService from '@/services/RecipientIdentityService';
 import { FontAwesome } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, View } from 'react-native';
 
 export default function HisabUserBadge({ linked = true, size = 19 }: { linked?: boolean; size?: number }) {
@@ -17,17 +17,37 @@ export default function HisabUserBadge({ linked = true, size = 19 }: { linked?: 
   );
 }
 
+// Several mounted screens use the linked set; they share one People load per
+// change instead of each reading People on every local write.
+let sharedLinkedIds = new Set<string>();
+const linkedIdListeners = new Set<(ids: Set<string>) => void>();
+let unsubscribeLinkedIds: (() => void) | null = null;
+
+const sameIds = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every(id => b.has(id));
+
+async function loadLinkedPersonIds() {
+  const people = await RecipientIdentityService.getAll();
+  const next = new Set(people.filter(person => !!person.linkedUid && !person.archivedAt).map(person => person.id));
+  if (sameIds(next, sharedLinkedIds)) return;
+  sharedLinkedIds = next;
+  linkedIdListeners.forEach(listener => listener(next));
+}
+
 /** Keeps record-only screens in sync with linked status stored on People. */
 export function useLinkedPersonIds() {
-  const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
-  const load = useCallback(async () => {
-    const people = await RecipientIdentityService.getAll();
-    setLinkedIds(new Set(people.filter(person => !!person.linkedUid && !person.archivedAt).map(person => person.id)));
-  }, []);
+  const [linkedIds, setLinkedIds] = useState<Set<string>>(sharedLinkedIds);
   useEffect(() => {
-    void load();
-    const unsubscribe = LocalChangeEmitter.subscribe(() => { void load(); });
-    return () => { unsubscribe(); };
-  }, [load]);
+    linkedIdListeners.add(setLinkedIds);
+    if (!unsubscribeLinkedIds) {
+      unsubscribeLinkedIds = LocalChangeEmitter.subscribe(() => loadLinkedPersonIds().catch(() => undefined));
+    }
+    // Refresh on mount too, so a new screen (or a new signed-in user) never shows a stale set.
+    setLinkedIds(sharedLinkedIds);
+    void loadLinkedPersonIds().catch(() => undefined);
+    return () => {
+      linkedIdListeners.delete(setLinkedIds);
+      if (!linkedIdListeners.size && unsubscribeLinkedIds) { unsubscribeLinkedIds(); unsubscribeLinkedIds = null; }
+    };
+  }, []);
   return linkedIds;
 }
