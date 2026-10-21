@@ -178,11 +178,13 @@ export class SyncService {
       }
       this.check(uid, generation);
       const protectedChanges = await this.protectMixedCurrencies(db, changes);
-      await db.applyRemote(protectedChanges.changes);
+      const changed = await db.applyRemote(protectedChanges.changes);
       if (protectedChanges.relabelTo) { await db.relabelCurrency(protectedChanges.relabelTo, true); this.rerun = true; }
       if (Object.keys(await db.readMeta('outbox') || {}).length) this.rerun = true;
       await db.writeMeta('last_cloud_sync_at', Date.now());
-      await this.refreshLocalStore();
+      // Local saves already refreshed the store when they were made; reload only
+      // when the cloud brought something new.
+      if (changed || protectedChanges.relabelTo) await this.refreshLocalStore();
       await (await import('@/services/AuxiliarySyncService')).default.sync(uid);
       await (await import('@/services/PrivateConfigurationService')).default.sync(uid);
       this.lastPushFinishedAt = Date.now(); this.lastError = protectedChanges.warning;

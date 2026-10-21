@@ -536,9 +536,18 @@ export class LedgerDatabase implements IDatabase {
       }
       if (new Set([...accounts.values()].map(a => a.currency)).size > 1) throw new Error('Cloud records contain multiple ledger currencies; resolve them before merging');
       for (const tx of txs.values()) validateTransaction(tx, [...accounts.values()]);
-      for (const a of accounts.values()) rows.push({ table: 'accounts', id: a.id, value: { ...a, balance: sumMoney([...txs.values()].map(t => accountDelta(t, a.id))) } });
+      // Every sync re-sends the whole cloud ledger; most of it is already known
+      // and skipped above. Only report a change when something was applied or a
+      // derived balance moved, so screens don't all reload after an idle sync.
+      let changed = rows.length > 0;
+      for (const a of accounts.values()) {
+        const balance = sumMoney([...txs.values()].map(t => accountDelta(t, a.id)));
+        if (balance !== a.balance) changed = true;
+        rows.push({ table: 'accounts', id: a.id, value: { ...a, balance } });
+      }
       await this.rawCommit(rows, { revisions, outbox, sync_rejected: rejected });
-      if (changes.length) LocalChangeEmitter.emit();
+      if (changed) LocalChangeEmitter.emit();
+      return changed;
     });
   }
 }

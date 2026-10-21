@@ -681,3 +681,47 @@ test('legacy cloud loans gain an indexed reminder timestamp and an outbox write'
  assert.equal(pending['loans/legacy-loan'].base,3);
  assert.equal(pending['loans/legacy-loan'].value.reminder_at,loan.reminder_at);
 });
+
+test('an idle sync that re-sends known cloud rows reports no change', async () => {
+  const emitter = mocks['../LocalChangeEmitter'].default;
+  const originalEmit = emitter.emit;
+  let emits = 0;
+  emitter.emit = () => { emits++; };
+  try {
+    const { raw, db } = make();
+    await db.init();
+    const now = Date.now();
+    const cloud = [
+      { table: 'accounts', id: 'idle-acc', revision: 1, value: { id: 'idle-acc', ...account('CBE', 0), created_at: now } },
+      { table: 'transactions', id: 'idle-tx', revision: 1, value: { id: 'idle-tx', ...transaction('idle-acc', 40), created_at: now, updated_at: now } },
+    ];
+    emits = 0;
+    assert.equal(await db.applyRemote(cloud), true, 'first pull applies new rows');
+    assert.equal(emits, 1);
+    assert.equal(raw.rows.accounts.get('idle-acc').balance, -40);
+
+    emits = 0;
+    assert.equal(await db.applyRemote(cloud), false, 'the same revisions again change nothing');
+    assert.equal(emits, 0, 'screens are not told to reload');
+    assert.equal(raw.rows.accounts.get('idle-acc').balance, -40);
+
+    const edited = { ...cloud[1], revision: 2, value: { ...cloud[1].value, amount: 55, updated_at: now + 1 } };
+    assert.equal(await db.applyRemote([cloud[0], edited]), true, 'an edit from another device is applied');
+    assert.equal(emits, 1);
+    assert.equal(raw.rows.accounts.get('idle-acc').balance, -55);
+  } finally { emitter.emit = originalEmit; }
+});
+
+test('a stale stored balance is repaired and reported even when no cloud row is new', async () => {
+  const { raw, db } = make();
+  await db.init();
+  const now = Date.now();
+  const cloud = [
+    { table: 'accounts', id: 'stale-acc', revision: 1, value: { id: 'stale-acc', ...account('CBE', 0), created_at: now } },
+    { table: 'transactions', id: 'stale-tx', revision: 1, value: { id: 'stale-tx', ...transaction('stale-acc', 10), created_at: now, updated_at: now } },
+  ];
+  await db.applyRemote(cloud);
+  raw.rows.accounts.get('stale-acc').balance = 999;
+  assert.equal(await db.applyRemote(cloud), true);
+  assert.equal(raw.rows.accounts.get('stale-acc').balance, -10);
+});
