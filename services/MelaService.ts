@@ -18,7 +18,7 @@ const ITEMS_KEY = 'mela_items';
 const SUPPLIERS_KEY = 'mela_suppliers';
 const AUTO_SYNC_AFTER_MS = 6 * 60 * 60 * 1000;
 
-export interface MelaProject { id: number; code: string | null; title: string; status: string | null; customer: string | null; customerId?: string | null }
+export interface MelaProject { id: number; code: string | null; title: string; status: string | null; customer: string | null; customerId?: string | null; budget?: number | null; quotedPrice?: number | null }
 export interface MelaItem { id: number; code: string | null; name: string; type: string | null; category: string | null; unit: string | null }
 export interface MelaSupplier { id: number; name: string; store: string | null }
 export interface MelaConnection {
@@ -192,8 +192,9 @@ export class MelaService {
     const connection = await this.getConnection();
     if (!connection || connection.needsReconnect) return;
     // Projects cached before customer names were sent re-sync once to pick them up.
-    const needsCustomers = (await this.getProjects()).some(p => p.customerId === undefined);
-    if (!needsCustomers && connection.lastSyncAt && Date.now() - connection.lastSyncAt < AUTO_SYNC_AFTER_MS) return;
+    const cachedProjects = await this.getProjects();
+    const needsNewProjectFields = cachedProjects.some(p => p.customerId === undefined || p.budget === undefined);
+    if (!needsNewProjectFields && connection.lastSyncAt && Date.now() - connection.lastSyncAt < AUTO_SYNC_AFTER_MS) return;
     await this.syncProjects().catch(() => undefined);
   }
 
@@ -217,7 +218,7 @@ export class MelaService {
       };
       const projects: MelaProject[] = (await fetchList('projects', PROJECTS_KEY, 'projects'))
         .filter((p: any) => Number.isFinite(p?.id) && typeof p?.title === 'string')
-        .map((p: any) => ({ id: p.id, code: p.code ?? null, title: p.title.trim() || `Project ${p.id}`, status: p.status ?? null, customer: customerLabel(p.customer, p.customer_id), customerId: p.customer_id ?? null }));
+        .map((p: any) => ({ id: p.id, code: p.code ?? null, title: p.title.trim() || `Project ${p.id}`, status: p.status ?? null, customer: customerLabel(p.customer, p.customer_id), customerId: p.customer_id ?? null, budget: Number.isFinite(Number(p.budget)) && Number(p.budget) > 0 ? Number(p.budget) : null, quotedPrice: Number.isFinite(Number(p.quoted_price)) && Number(p.quoted_price) > 0 ? Number(p.quoted_price) : null }));
       const items: MelaItem[] = (await fetchList('items', ITEMS_KEY, 'items'))
         .filter((i: any) => Number.isFinite(i?.id) && typeof i?.name === 'string' && i.name.trim())
         .map((i: any) => ({ id: i.id, code: i.code ?? null, name: i.name.trim(), type: i.type ?? null, category: i.category ?? null, unit: i.unit ?? null }));

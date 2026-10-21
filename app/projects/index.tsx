@@ -4,6 +4,7 @@ import MelaService, { sortProjects } from '@/services/MelaService';
 import type { RootState } from '@/store';
 import { projectEntries, projectKey, projectTotals, snapshotLinks } from '@/utils/projectFinance';
 import { FontAwesome } from '@expo/vector-icons';
+import { projectBudgetMetrics, projectReviewIssues } from '@/utils/projectReview';
 import { Stack, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { FlatList, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -21,12 +22,13 @@ export default function ProjectsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const entries = useMemo(() => projectEntries(transactions), [transactions]);
+  const reviewCount = useMemo(() => projectReviewIssues(transactions).length, [transactions]);
   const rows = useMemo(() => {
     // Synced projects, plus any project still referenced by a transaction but no longer in Mela's list.
-    const fromMela = sortProjects(projects).map(p => ({ key: projectKey({ source: 'mela', id: p.id }), id: p.id, code: p.code, title: p.title, status: p.status, customer: p.customer }));
+    const fromMela = sortProjects(projects).map(p => ({ key: projectKey({ source: 'mela', id: p.id }), id: p.id, code: p.code, title: p.title, status: p.status, customer: p.customer, budget: p.budget }));
     const known = new Set(fromMela.map(r => r.key));
-    const orphaned = [...snapshotLinks(transactions)].filter(([key]) => !known.has(key)).map(([key, link]) => ({ key, id: link.id, code: link.code ?? null, title: link.title, status: 'Not in Mela', customer: null }));
-    return [...fromMela, ...orphaned].map(row => ({ ...row, totals: projectTotals(entries.get(row.key)) }));
+    const orphaned = [...snapshotLinks(transactions)].filter(([key]) => !known.has(key)).map(([key, link]) => ({ key, id: link.id, code: link.code ?? null, title: link.title, status: 'Not in Mela', customer: null, budget: null }));
+    return [...fromMela, ...orphaned].map(row => { const totals = projectTotals(entries.get(row.key)); return { ...row, totals, budgetMetrics: projectBudgetMetrics(row.budget, totals.paid) }; });
   }, [entries, projects, transactions]);
 
   const visible = useMemo(() => {
@@ -49,6 +51,11 @@ export default function ProjectsScreen() {
       </View>
 
       <View className="px-5">
+        <TouchableOpacity onPress={() => router.push('/projects/review' as any)} className="mb-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex-row items-center">
+          <View className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900 items-center justify-center mr-3"><FontAwesome name="exclamation-triangle" size={15} color="#d97706" /></View>
+          <View className="flex-1"><Text className="text-sm font-extrabold text-amber-900 dark:text-amber-200">Review missing project details</Text><Text className="text-xs text-amber-700 dark:text-amber-300 mt-1">{reviewCount ? `${reviewCount} transaction${reviewCount === 1 ? '' : 's'} need attention` : 'All detected project transactions are complete'}</Text></View>
+          <FontAwesome name="chevron-right" size={12} color="#d97706" />
+        </TouchableOpacity>
         <View className="flex-row items-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 px-4">
           <FontAwesome name="search" size={16} color="#94a3b8" />
           <TextInput value={search} onChangeText={setSearch} placeholder="Search ID, title or customer" placeholderTextColor="#94a3b8" className="flex-1 px-3 py-3 text-slate-900 dark:text-white" />
@@ -84,6 +91,12 @@ export default function ProjectsScreen() {
                 <View className="flex-1 rounded-2xl bg-red-50 dark:bg-red-950/30 p-3"><Text className="text-[10px] font-bold text-red-600 dark:text-red-400">PAID</Text><Text numberOfLines={1} className="text-sm font-extrabold text-red-700 dark:text-red-300 mt-1">{formatCurrency(item.totals.paid)}</Text></View>
                 <View className="flex-1 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 p-3"><Text className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">RECEIVED</Text><Text numberOfLines={1} className="text-sm font-extrabold text-emerald-700 dark:text-emerald-300 mt-1">{formatCurrency(item.totals.received)}</Text></View>
                 <View className="flex-1 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 p-3"><Text className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">NET</Text><Text numberOfLines={1} className="text-sm font-extrabold text-indigo-700 dark:text-indigo-300 mt-1">{item.totals.net >= 0 ? '+' : '-'}{formatCurrency(Math.abs(item.totals.net))}</Text></View>
+              </View>
+            )}
+            {item.totals.count > 0 && (
+              <View className="mt-3">
+                <View className="flex-row justify-between mb-1"><Text className="text-[10px] font-bold text-slate-500 dark:text-slate-400">BUDGET VS ACTUAL</Text><Text className={`text-[10px] font-bold ${item.budgetMetrics.status === 'OVER' ? 'text-red-600' : item.budgetMetrics.status === 'NEAR' ? 'text-amber-600' : 'text-emerald-600'}`}>{item.budgetMetrics.budget ? `${Math.round(item.budgetMetrics.percent || 0)}%` : 'Budget unavailable'}</Text></View>
+                {item.budgetMetrics.budget && <View className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><View style={{ width: `${Math.min(100, item.budgetMetrics.percent || 0)}%` }} className={`h-full ${item.budgetMetrics.status === 'OVER' ? 'bg-red-500' : item.budgetMetrics.status === 'NEAR' ? 'bg-amber-500' : 'bg-emerald-500'}`} /></View>}
               </View>
             )}
           </TouchableOpacity>
